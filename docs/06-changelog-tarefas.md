@@ -19,14 +19,14 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 
 | Fase | Escopo | Status |
 |---|---|---|
-| **Fase 0** | Estruturação inicial e documentação | 🟡 Em andamento |
-| **Fase 1** | Setup do projeto (Expo, TypeScript, navegação base) | ⚪ Não iniciado |
-| **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | ⚪ Não iniciado |
+| **Fase 0** | Estruturação inicial e documentação | 🟢 Concluído |
+| **Fase 1** | Setup do projeto (Expo, TypeScript, navegação base) | 🟢 Concluído |
+| **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟡 Em andamento (schema v1 + models prontos; `migrations.ts` só entra na 1ª alteração pós-v1) |
 | **Fase 3** | Módulo Clientes (CRUD + busca indexada) | ⚪ Não iniciado |
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | ⚪ Não iniciado |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | ⚪ Não iniciado |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | ⚪ Não iniciado |
-| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | ⚪ Não iniciado |
+| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (`licenseService` + `useLicenseGuard` + `LicenseBlockedScreen` prontos; acesso somente-leitura em `expired` depende das Fases 3/4/8) |
 | **Fase 8** | Módulo Backup (exportação/importação JSON) | ⚪ Não iniciado |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado |
 
@@ -45,11 +45,17 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 1 — Setup do projeto
 
+### 2026-08-21 — Setup de arquitetura, persistência local e sistema de licença
+- **Tipo:** feature / schema
+- **Resumo:** Branch `feature/setup-architecture-watermelondb`. Instaladas as dependências de persistência (WatermelonDB), navegação (React Navigation native-stack), PDF/compartilhamento (`expo-print`, `expo-sharing`), conectividade (`netinfo`) e build de dev (`expo-dev-client`, obrigatório pois WatermelonDB não roda no Expo Go). Configurados `babel.config.js` (decorators legacy + `allowDeclareFields` + alias `@/` via `babel-plugin-module-resolver`) e `tsconfig.json` (`experimentalDecorators`, `paths`). Criada a estrutura modular `src/` completa. Implementados `src/database/schema.ts` e os 5 models WatermelonDB, a instância `src/database/index.ts`, `services/licenseService.ts` (árvore de decisão do licenciamento + bootstrap de trial de 15 dias no primeiro uso), `hooks/useLicenseGuard.ts`, `screens/License/LicenseBlockedScreen.tsx`, `screens/HomeScreen.tsx` (diagnóstico de DB/licença) e `navigation/RootNavigator.tsx`. Validado com `tsc --noEmit` e um bundle Metro (`expo export --platform android`) completo, sem erros.
+- **Decisões que divergiram da documentação original:** o schema de `orders`/`order_items` implementado é mais enxuto do que o inicialmente descrito em `docs/03` (sem `order_number`, `updated_at`, soft delete ou snapshots de preço/nome; desconto só a nível de ordem, não por item; adicionado `payment_method`) — `docs/03` e `docs/05` foram reescritos para refletir o schema real.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/03-banco-de-dados.md`, `docs/04-sistema-licenca.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] Configurar estrutura de pastas conforme [docs/02-arquitetura.md](./02-arquitetura.md).
-- [ ] Configurar alias de import `@/` no `tsconfig.json` e `babel.config.js`.
-- [ ] Instalar e configurar React Navigation (`native-stack`).
-- [ ] Instalar React Hook Form + Zod + `@hookform/resolvers`.
+- [x] Configurar estrutura de pastas conforme [docs/02-arquitetura.md](./02-arquitetura.md).
+- [x] Configurar alias de import `@/` no `tsconfig.json` e `babel.config.js`.
+- [x] Instalar e configurar React Navigation (`native-stack`).
+- [ ] Instalar React Hook Form + Zod + `@hookform/resolvers` (adiado para a Fase 3/4, quando os formulários de Clientes/Produtos entrarem em cena).
 - [ ] Configurar ESLint/Prettier alinhados aos padrões de código descritos em [docs/02-arquitetura.md](./02-arquitetura.md#-padrões-de-código).
 
 ---
@@ -57,11 +63,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 ## Fase 2 — Banco de dados local
 
 ### Tarefas planejadas
-- [ ] Instalar `@nozbe/watermelondb` e adapter SQLite.
-- [ ] Implementar `src/database/schema.ts` conforme [docs/03-banco-de-dados.md](./03-banco-de-dados.md).
-- [ ] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl`.
-- [ ] Configurar `src/database/migrations.ts` (schema versão 1).
-- [ ] Implementar `hooks/useWatermelonData.ts` para observar queries reativamente.
+- [x] Instalar `@nozbe/watermelondb` e adapter SQLite.
+- [x] Implementar `src/database/schema.ts` conforme [docs/03-banco-de-dados.md](./03-banco-de-dados.md).
+- [x] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl`.
+- [ ] Configurar `src/database/migrations.ts` — não criado ainda; schema está na v1 inicial, migrations só são necessárias a partir da 1ª alteração de schema.
+- [ ] Implementar `hooks/useWatermelonData.ts` para observar queries reativamente (adiado para quando as telas de listagem — Fase 3/4/5 — precisarem de dados reativos).
 
 ---
 
@@ -70,7 +76,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 ### Tarefas planejadas
 - [ ] `ClientListScreen` com busca indexada.
 - [ ] `ClientFormScreen` com validação Zod (CPF/CNPJ, telefone).
-- [ ] Soft delete (`is_active`).
+- [ ] ~~Soft delete (`is_active`)~~ — removido do schema implementado na Fase 2 (ver [docs/03-banco-de-dados.md](./03-banco-de-dados.md)); avaliar se será reintroduzido via migration antes de iniciar esta fase.
 
 ---
 
@@ -104,12 +110,30 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 7 — Sistema de Licença Offline
 
+### 2026-08-21 — Validação remota de licença via Supabase
+- **Tipo:** feature
+- **Resumo:** Integrada a validação/renovação remota da licença com o Supabase (REST/PostgREST direto via `fetch`, sem SDK). Criado `src/services/api.ts` centralizando `EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` (lidas de `.env`, inlineadas pelo Metro; `.env.example` versionado como referência). `licenseService.ts` ganhou `fetchLicenseFromSupabase(deviceId)` (GET `/licenses?device_id=eq.{id}`), substituindo o placeholder genérico `LICENSE_API_URL` usado até então. Novo motivo de bloqueio `not_registered` (array vazio = device_id não cadastrado no Supabase) somado aos já existentes (`clock_tampered`, `offline`, `server_rejected`). `evaluateLicense()` agora também retorna `deviceId`, propagado por `useLicenseGuard` até `LicenseBlockedScreen` e `HomeScreen`, para o vendedor poder repassar o ID ao suporte quando o dispositivo não está cadastrado.
+- **Decisão de design:** o `device_id` é gerado aleatoriamente no dispositivo (UUID v4), então ele nunca pode já existir no Supabase no momento do bootstrap — por isso a consulta remota só acontece na renovação (`agora >= license_expires_at`), não na primeira abertura do app (ver nota em `docs/04`).
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-08-21 — Botão de debug + `license_expires_at` como fonte da verdade
+- **Tipo:** feature / fix
+- **Resumo:** Adicionado `testSupabaseFetch()` em `licenseService.ts` (consulta o Supabase pelo device_id atual sem persistir nada local) e um card "Debug — Supabase" com botão em `HomeScreen.tsx`, visível só em `__DEV__` (some em build de produção), pra facilitar testar a integração sem esperar o trial de 15 dias vencer. `fetchLicenseFromSupabase` deixou de confiar cegamente em `license_status`: mesmo que a coluna no Supabase ainda esteja `active` (job de expiração ainda não rodou), se `license_expires_at` já passou a licença é tratada como rejeitada — `license_expires_at` é a fonte da verdade, `license_status` é auxiliar. Documentado em `docs/04` um job `pg_cron` opcional para manter a coluna `license_status` do Supabase em si sincronizada (a app não depende dele para funcionar corretamente).
+- **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-08-21 — Job `pg_cron` bidirecional para sincronizar `license_status`
+- **Tipo:** infra (Supabase, fora deste repo) / docs
+- **Resumo:** Avaliamos duas formas de manter `license_status` sincronizado com `license_expires_at` no Supabase: (a) o app fazer o write-back a cada fetch, ou (b) um job `pg_cron` no banco. Optamos por (b): dar à chave `anon` permissão de `UPDATE` na tabela `licenses` (opção a) seria um risco de segurança sério, já que essa chave vem embutida no APK e não há autenticação por dispositivo — qualquer app instalado poderia reescrever o status de **qualquer** `device_id`, não só o próprio. O job `pg_cron` (`sync_license_statuses()`, substituindo o `expire_licenses()` anterior) agora sincroniza status nos dois sentidos (`active → expired` e `expired → active`, conforme a data), mas nunca sobrescreve `'blocked'` — que continua sendo um kill switch manual, independente da data. Nenhuma mudança de código neste repo; só SQL no Supabase (documentado em `docs/04`).
+- **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] `services/licenseService.ts` implementando a árvore de decisão de [docs/04-sistema-licenca.md](./04-sistema-licenca.md).
-- [ ] `hooks/useLicenseGuard.ts`.
-- [ ] `screens/License/LicenseBlockedScreen.tsx`.
-- [ ] Integração com `@react-native-community/netinfo`.
-- [ ] Testes do anti-fraude de relógio e dos três estados (`active`/`expired`/`blocked`).
+- [x] `services/licenseService.ts` implementando a árvore de decisão de [docs/04-sistema-licenca.md](./04-sistema-licenca.md).
+- [x] `hooks/useLicenseGuard.ts`.
+- [x] `screens/License/LicenseBlockedScreen.tsx`.
+- [x] Integração com `@react-native-community/netinfo`.
+- [x] Validação/renovação remota real via Supabase (`fetchLicenseFromSupabase`), substituindo o endpoint placeholder.
+- [ ] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementação manual feita, cobertura de testes ainda pendente (Fase 9).
+- [ ] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — depende das Fases 3, 4 e 8 existirem.
 
 ---
 

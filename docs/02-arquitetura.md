@@ -11,8 +11,11 @@
 | PDF | **expo-print** | Renderização de HTML → PDF no dispositivo |
 | Compartilhamento | **expo-sharing** | Abre o menu nativo de compartilhamento (WhatsApp, e-mail, etc.) |
 | Conectividade | **@react-native-community/netinfo** | Detecta online/offline para o fluxo de renovação de licença |
-| Formulários | **React Hook Form** | Estado e submissão de formulários performática |
-| Validação | **Zod** | Schemas de validação integrados ao React Hook Form (`@hookform/resolvers/zod`) |
+| Identificação de dispositivo | **expo-crypto** | Gera o `device_id` (UUID v4) usado pela licença, no primeiro uso |
+| Validação remota de licença | **Supabase REST (PostgREST)** via `fetch` puro | Consulta a tabela `licenses` para renovar/validar a licença quando o trial local expira — ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-integração-com-o-supabase) |
+| Build de desenvolvimento | **expo-dev-client** | Necessário pois o WatermelonDB tem módulo nativo e não roda no Expo Go |
+| Formulários | **React Hook Form** | Estado e submissão de formulários performática (a instalar nas fases de telas de cadastro) |
+| Validação | **Zod** | Schemas de validação integrados ao React Hook Form (`@hookform/resolvers/zod`) (idem) |
 
 > ⚠️ Nota de versão: o `package.json` atual do projeto está em **Expo ~57 / React Native 0.86 / React 19**. O `CLAUDE.md` referencia "Expo SDK 51+" como piso mínimo de compatibilidade das APIs usadas (expo-print, expo-sharing, netinfo) — a stack real instalada é mais recente. Sempre confira `package.json` como fonte da verdade da versão exata em uso.
 
@@ -23,6 +26,25 @@ WatermelonDB foi escolhido em vez de alternativas (AsyncStorage puro, Realm, exp
 - **Performance em listas grandes:** lazy loading e paginação eficientes, importante para bases de clientes/produtos que crescem com o tempo.
 - **Modelo relacional real:** suporta relações (`@relation`, `@children`) entre `orders`, `order_items`, `clients` e `products` de forma tipada.
 - **SQLite por baixo:** dados ficam em um arquivo `.db` local, robusto e testado, sem depender de serialização manual em JSON para todo acesso.
+
+## ⚙️ Configuração de build necessária para o WatermelonDB
+
+WatermelonDB depende de código nativo (módulo JSI, resolvido automaticamente pelo Metro via `adapters/sqlite/makeDispatcher/index.native.js`), então duas configurações de projeto são obrigatórias:
+
+1. **`babel.config.js`** — os decorators do WatermelonDB (`@field`, `@date`, `@relation`, `@children`, etc.) usam a sintaxe *legacy* de decorators. Isso exige, nesta ordem:
+   - `['@babel/plugin-transform-typescript', { isTSX: true, allowDeclareFields: true }]` **antes** do plugin de decorators — se não vier primeiro, o transform de TypeScript embutido no `babel-preset-expo` roda depois do transform de decorators e rejeita campos `declare`/`!` que os decorators já inicializaram.
+   - `['@babel/plugin-proposal-decorators', { legacy: true }]`.
+   - Nos models, os campos decorados usam `declare` (ex: `@field('name') declare name: string;`), não `!` — combinação exigida pelo `allowDeclareFields: true` acima.
+   - Alias `@/*` → `src/*` resolvido em runtime por `babel-plugin-module-resolver` (o `tsconfig.json` só cobre o type-check do `tsc`; o Metro desta versão do Expo não lê `paths` do tsconfig automaticamente).
+2. **`tsconfig.json`** — `experimentalDecorators: true` (para o `tsc` aceitar a sintaxe) e `paths: { "@/*": ["./src/*"] }` (sem `baseUrl`, deprecado a partir do TypeScript 6 — `paths` sozinho já resolve relativo ao `tsconfig.json` com `moduleResolution: "bundler"`).
+3. **Sem Expo Go:** por ter módulo nativo, o app não roda no app Expo Go da loja. É preciso `expo-dev-client` + `expo prebuild` + `expo run:android`/`expo run:ios` para gerar um build de desenvolvimento próprio.
+
+## 🔑 Variáveis de ambiente
+
+Config de serviços externos (hoje só o Supabase, ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-integração-com-o-supabase)) fica em variáveis com prefixo `EXPO_PUBLIC_`, que o Metro inlineia automaticamente no bundle (suporte nativo do Expo, sem lib adicional). Centralizadas em `src/services/api.ts`, nunca lidas diretamente de `process.env` no resto do código.
+- `.env` (não versionado, no `.gitignore`) tem os valores reais usados localmente.
+- `.env.example` (versionado) documenta as chaves esperadas.
+- Só valores seguros para o cliente (chaves `anon`/`publishable`, protegidas por RLS no backend) entram aqui — nunca uma `service_role key` ou outro segredo de servidor.
 
 ## 📁 Estrutura de Diretórios
 
