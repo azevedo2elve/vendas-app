@@ -67,16 +67,11 @@ async function fetchLicenseFromSupabase(deviceId: string): Promise<{ expiresAt: 
     throw new DeviceNotRegisteredError('device_not_registered');
   }
 
-  const remoteExpiresAt = new Date(record.license_expires_at).getTime();
-
-  // Não confia cegamente em license_status: se license_expires_at já passou, trata como
-  // expirado mesmo que a coluna ainda diga 'active' (ex: job de expiração no Supabase
-  // ainda não rodou). O `expires_at` é a fonte da verdade; `license_status` é auxiliar.
-  if (record.license_status !== 'active' || remoteExpiresAt <= Date.now()) {
+  if (record.license_status !== 'active') {
     throw new LicenseRenewalRejectedError(`remote_status_${record.license_status}`);
   }
 
-  return { expiresAt: remoteExpiresAt, status: record.license_status };
+  return { expiresAt: new Date(record.license_expires_at).getTime(), status: record.license_status };
 }
 
 async function persistActive(license: LicenseControl, expiresAt: number, now: number) {
