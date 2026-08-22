@@ -82,17 +82,18 @@ Fluxo composto por 3 telas em sequência (stack), representando o carrinho de co
   | Campo | Regra |
   |---|---|
   | Quantidade | Inteiro positivo, stepper +/- ou input numérico |
-  | Desconto | Valor em R$ **ou** percentual (toggle), sempre convertido para centavos absolutos ao persistir |
-  | Subtotal do item | `(preço_unitário × quantidade) − desconto`, recalculado a cada mudança |
-- Lista de itens editável (remover item, editar quantidade/desconto inline).
-- Rodapé fixo com subtotal corrente do carrinho, sempre visível durante o scroll.
+  | Preço unitário | Herdado do produto no momento da adição (`unit_price`, em centavos) |
+  | Total do item | `unit_price × quantity` (`total_price`), recalculado a cada mudança |
+- Lista de itens editável (remover item, editar quantidade inline).
+- Rodapé fixo com o total corrente do carrinho (soma dos `total_price`), sempre visível durante o scroll.
+- **Desconto:** aplicado uma única vez, a nível da ordem inteira (`orders.discount`) na tela seguinte — não há desconto por item no schema atual ([docs/03-banco-de-dados.md](./03-banco-de-dados.md#-tabela-order_items)).
 
 ### 3. `OrderSummaryScreen` — Resumo e confirmação
-- Exibe: dados do cliente, lista de itens (somente leitura), subtotal, desconto total, total final.
-- Campo opcional de observações da ordem.
+- Exibe: dados do cliente, lista de itens (somente leitura), desconto da ordem, forma de pagamento (`payment_method`) e total final.
+- Campo de desconto da ordem (`orders.discount`, em centavos) e seletor de forma de pagamento (`dinheiro` | `pix` | `cartao` | `boleto` | `outro`).
 - Botão **"Confirmar Ordem"**:
-  1. Persiste `orders` + `order_items` no WatermelonDB dentro de uma transação (`database.write`).
-  2. Gera `order_number` sequencial local.
+  1. Calcula `total_amount = soma(order_items.total_price) − discount`.
+  2. Persiste `orders` + `order_items` no WatermelonDB dentro de uma transação (`database.write`).
   3. Navega automaticamente para a geração do PDF.
 
 ### `OrderHistoryScreen`
@@ -104,18 +105,13 @@ Fluxo composto por 3 telas em sequência (stack), representando o carrinho de co
 
 ```ts
 // services/orderCalculationService.ts (referência)
-function calculateItemSubtotal(unitPrice: number, quantity: number, discount: number): number {
-  return unitPrice * quantity - discount; // tudo em centavos
+function calculateItemTotal(unitPrice: number, quantity: number): number {
+  return unitPrice * quantity; // centavos
 }
 
-function calculateOrderTotals(items: OrderItemInput[]): {
-  subtotal: number;
-  discountTotal: number;
-  total: number;
-} {
-  const subtotal = items.reduce((acc, i) => acc + i.unitPrice * i.quantity, 0);
-  const discountTotal = items.reduce((acc, i) => acc + i.discount, 0);
-  return { subtotal, discountTotal, total: subtotal - discountTotal };
+function calculateOrderTotal(items: { unitPrice: number; quantity: number }[], discount: number): number {
+  const itemsTotal = items.reduce((acc, i) => acc + calculateItemTotal(i.unitPrice, i.quantity), 0);
+  return itemsTotal - discount;
 }
 ```
 
@@ -128,7 +124,8 @@ O PDF é gerado a partir de uma string HTML renderizada pelo `expo-print` (`Prin
 ```text
 ┌─────────────────────────────────────────────┐
 │  [Cabeçalho]                                  │
-│  Ordem de Venda #0001         Data: 21/08/2026│
+│  Ordem de Venda #A1B2C3D4     Data: 21/08/2026│
+│  Forma de pagamento: PIX                      │
 │                                                │
 │  Cliente: João da Silva                       │
 │  CPF/CNPJ: 123.456.789-00                     │
@@ -136,20 +133,20 @@ O PDF é gerado a partir de uma string HTML renderizada pelo `expo-print` (`Prin
 │  Endereço: Rua Exemplo, 123 - São Paulo/SP    │
 ├─────────────────────────────────────────────┤
 │  [Tabela de Itens]                            │
-│  Produto        Qtd   Unit.    Desc.   Total  │
+│  Produto        Qtd   Unit.       Total       │
 │  ───────────────────────────────────────────  │
-│  Produto A       2   R$10,00   R$0,00  R$20,00│
-│  Produto B       1   R$50,00   R$5,00  R$45,00│
+│  Produto A       2   R$10,00     R$20,00      │
+│  Produto B       1   R$50,00     R$50,00      │
 ├─────────────────────────────────────────────┤
 │  [Totais]                                     │
-│  Subtotal:                          R$ 70,00  │
 │  Desconto:                          R$  5,00  │
 │  TOTAL:                             R$ 65,00  │
 ├─────────────────────────────────────────────┤
-│  Observações: ...                             │
 │  Documento gerado pelo app — não é NF-e       │
 └─────────────────────────────────────────────┘
 ```
+
+> O número exibido no cabeçalho (`#A1B2C3D4`) é derivado do `id` (WatermelonDB) da ordem — o schema v1 não tem uma coluna `order_number` sequencial dedicada (ver [docs/03-banco-de-dados.md](./03-banco-de-dados.md#-tabela-orders)). Uma numeração sequencial amigável pode ser adicionada em uma migration futura, se necessário.
 
 ### Exemplo de função geradora (referência)
 
@@ -166,7 +163,7 @@ export async function generateAndShareOrderPdf(order: OrderWithItems): Promise<v
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
       mimeType: 'application/pdf',
-      dialogTitle: `Ordem de Venda ${order.orderNumber}`,
+      dialogTitle: `Ordem de Venda ${order.id.slice(0, 8).toUpperCase()}`,
     });
   }
 }
