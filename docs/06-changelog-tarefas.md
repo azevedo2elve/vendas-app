@@ -22,12 +22,12 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 0** | Estruturação inicial e documentação | 🟢 Concluído |
 | **Fase 1** | Setup do projeto (Expo, TypeScript, navegação base) | 🟢 Concluído |
 | **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟡 Em andamento (schema v1 + models prontos; `migrations.ts` só entra na 1ª alteração pós-v1) |
-| **Fase 3** | Módulo Clientes (CRUD + busca indexada) | ⚪ Não iniciado |
-| **Fase 4** | Módulo Produtos (CRUD + filtros) | ⚪ Não iniciado |
+| **Fase 3** | Módulo Clientes (CRUD + busca indexada) | 🟢 Concluído |
+| **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | ⚪ Não iniciado |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | ⚪ Não iniciado |
 | **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (`licenseService` + `useLicenseGuard` + `LicenseBlockedScreen` prontos; acesso somente-leitura em `expired` depende das Fases 3/4/8) |
-| **Fase 8** | Módulo Backup (exportação/importação JSON) | ⚪ Não iniciado |
+| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (Clientes + Produtos prontos; `orders`/`order_items` entram quando a Fase 5 existir; acesso mesmo com licença `expired` ainda não implementado) |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
@@ -67,24 +67,35 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] Implementar `src/database/schema.ts` conforme [docs/03-banco-de-dados.md](./03-banco-de-dados.md).
 - [x] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl`.
 - [ ] Configurar `src/database/migrations.ts` — não criado ainda; schema está na v1 inicial, migrations só são necessárias a partir da 1ª alteração de schema.
-- [ ] Implementar `hooks/useWatermelonData.ts` para observar queries reativamente (adiado para quando as telas de listagem — Fase 3/4/5 — precisarem de dados reativos).
+- [x] Dados reativos nas listagens — decidido usar `withObservables` (`@nozbe/watermelondb/react`) direto nas telas de lista (Fase 3/4), em vez de um hook `useWatermelonData` customizado. `withObservables` já é a forma idiomática do WatermelonDB de conectar uma query observável a props de componente; um hook próprio seria uma camada redundante por cima disso sem necessidade concreta ainda.
 
 ---
 
 ## Fase 3 — Módulo Clientes
 
+### 2026-08-22 — CRUD de Clientes
+- **Tipo:** feature
+- **Resumo:** Branch `feature/crud-clientes-produtos`. Implementado `src/screens/clients/ClientListScreen.tsx` (lista reativa via `withObservables`, busca com debounce por nome/documento, botão de WhatsApp por card, FAB de criação) e `src/screens/clients/ClientFormScreen.tsx` (React Hook Form + Zod, máscaras de CPF/CNPJ e telefone, validação de dígito verificador real via `isValidCpfOuCnpj`, checagem de documento duplicado, exclusão com confirmação via `markAsDeleted()`). Novas rotas `ClientList`/`ClientForm` registradas em `RootNavigator`, acessíveis a partir de um card "Módulos" na `HomeScreen`.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] `ClientListScreen` com busca indexada.
-- [ ] `ClientFormScreen` com validação Zod (CPF/CNPJ, telefone).
-- [ ] ~~Soft delete (`is_active`)~~ — removido do schema implementado na Fase 2 (ver [docs/03-banco-de-dados.md](./03-banco-de-dados.md)); avaliar se será reintroduzido via migration antes de iniciar esta fase.
+- [x] `ClientListScreen` com busca (nome/documento, debounce 300ms).
+- [x] `ClientFormScreen` com validação Zod (CPF/CNPJ com dígito verificador real, telefone).
+- [x] ~~Soft delete (`is_active`)~~ — resolvido usando `markAsDeleted()` nativo do WatermelonDB (não precisa de coluna `is_active`; já exclui das queries automaticamente e preserva integridade com `orders`).
 
 ---
 
 ## Fase 4 — Módulo Produtos
 
+### 2026-08-22 — CRUD de Produtos
+- **Tipo:** feature
+- **Resumo:** Implementado junto com a Fase 3 na mesma branch. `src/screens/products/ProductListScreen.tsx` (lista reativa via `withObservables`, busca por nome/SKU, preço formatado em BRL) e `src/screens/products/ProductFormScreen.tsx` (React Hook Form + Zod, preço com `MaskedInput mask="currency"` operando em centavos, seletor de unidade por chips em vez de Picker — evita dependência extra —, validação de SKU duplicado, exclusão com confirmação). Novas rotas `ProductList`/`ProductForm` em `RootNavigator`.
+- **Decisão de design:** filtro por categoria (mencionado em versão anterior deste doc) não foi implementado — a coluna `category` não existe no schema real ([docs/03](./03-banco-de-dados.md)).
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] `ProductListScreen` com filtros por categoria/busca.
-- [ ] `ProductFormScreen` com máscara de preço (BRL) e validação de SKU único.
+- [x] `ProductListScreen` com busca por nome/SKU (filtro por categoria descartado — sem coluna `category` no schema).
+- [x] `ProductFormScreen` com máscara de preço (BRL, em centavos) e validação de SKU único.
 
 ---
 
@@ -139,10 +150,23 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 8 — Módulo Backup
 
+### 2026-08-22 — Exportar/importar backup de Clientes e Produtos
+- **Tipo:** feature
+- **Resumo:** Implementado `src/services/backupService.ts` (`exportBackup`, `pickAndPreviewBackupFile`, `importBackup`) e `src/screens/backup/BackupScreen.tsx`. Exporta `clients`+`products` para um JSON (via a API nova do `expo-file-system`: `File`/`Directory`/`Paths`) e abre o menu nativo de compartilhamento (`expo-sharing`, já instalado desde a Fase 1) para o usuário salvar onde quiser. Importar usa `File.pickFileAsync` (mesmo pacote — dispensou instalar `expo-document-picker`) para escolher o arquivo, valida com Zod, mostra uma prévia (quantos registros novos vs. duplicados por `document`/`sku`) antes de confirmar, e insere em lote via `database.batch()`. Rota `Backup` adicionada ao `RootNavigator` e ao card "Módulos" da `HomeScreen`.
+- **Escopo desta fase:** só `clients`/`products` (pedido explícito do usuário — o app continua guardando os dados só no dispositivo, Supabase segue usado somente para a licença). `orders`/`order_items` ficam para quando a Fase 5 existir.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-08-22 — Botão "Salvar no dispositivo" (fallback ao menu de compartilhamento)
+- **Tipo:** fix
+- **Resumo:** No emulador Pixel 7 (e potencialmente em aparelhos sem um app de "Arquivos" registrado), o menu de compartilhamento do Android (`expo-sharing`) só mostrava Nearby Share/Drive/Gmail — sem opção de salvar direto no aparelho, porque esse menu só lista apps que registram suporte a receber o tipo de conteúdo compartilhado. Adicionado `saveBackupToDevice()` em `backupService.ts`, usando `Directory.pickDirectoryAsync()` (Storage Access Framework via a API nova do `expo-file-system`) para o usuário escolher uma pasta (ex: Downloads) e gravar o backup ali diretamente — não depende de nenhum app de terceiros. `BackupScreen` ganhou um segundo botão, "Salvar no dispositivo", ao lado de "Compartilhar backup". Nome do arquivo passou a incluir hora/minuto/segundo (não só a data) para evitar colisão ao exportar mais de uma vez no mesmo dia.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] `services/backupService.ts` (exportação JSON via `expo-file-system`).
-- [ ] Importação com validação Zod e tela de confirmação pré-import.
-- [ ] `BackupScreen` acessível mesmo com licença `expired`.
+- [x] `services/backupService.ts` (exportação JSON via `expo-file-system`) — limitado a `clients`/`products` por enquanto.
+- [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".
+- [x] Importação com validação Zod e prévia (contagem de novos/duplicados) antes de confirmar.
+- [ ] `BackupScreen` acessível mesmo com licença `expired` — depende da distinção de acesso ainda não implementada no `RootNavigator` (ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
+- [ ] Incluir `orders`/`order_items` no backup — depende da Fase 5 (Ordem de Venda) existir.
 
 ---
 

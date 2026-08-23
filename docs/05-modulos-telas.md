@@ -14,56 +14,78 @@
 
 ## 👥 Módulo Clientes
 
-### `ClientListScreen`
-- Lista todos os clientes (`is_active = true` por padrão) ordenados por nome.
-- Campo de busca indexada (por `name` e `document`) com debounce de ~300ms.
-- Cada item exibe: nome, telefone/WhatsApp, e um atalho rápido para "Nova Ordem" com esse cliente pré-selecionado.
-- FAB (Floating Action Button) para "Novo Cliente".
-- Swipe-to-delete ou botão de desativar (soft delete via `is_active = false`, nunca delete físico — preserva histórico de ordens).
+### `ClientListScreen` (`src/screens/clients/ClientListScreen.tsx`)
+- Lista reativa via `withObservables` (`@nozbe/watermelondb/react`) observando `clients`, ordenada por nome (`Q.sortBy('name', Q.asc)`).
+- Busca em tempo real (por `name` **ou** `document`, `Q.or` + `Q.like`) com debounce de 300ms — componente reutilizável [`SearchBar`](../src/components/SearchBar.tsx).
+- Card por cliente: nome, documento formatado (`maskCpfCnpj`), telefone formatado (`maskPhone`), endereço (se houver) e um botão 💬 que abre o WhatsApp do cliente (`utils/whatsapp.ts`, via `https://wa.me/55...`).
+- Toque no card → `ClientFormScreen` em modo edição. [`Fab`](../src/components/Fab.tsx) (botão flutuante "+") → `ClientFormScreen` em modo criação.
+- [`EmptyState`](../src/components/EmptyState.tsx) quando não há clientes cadastrados/nenhum resultado de busca.
 
-### `ClientFormScreen`
-- Formulário com **React Hook Form + Zod**:
+> 🚧 Não há soft delete via `is_active` (essa coluna não existe no schema real — ver [docs/03](./03-banco-de-dados.md#-tabela-clients)). A exclusão usa `client.markAsDeleted()`, o soft-delete nativo do WatermelonDB (marca `_status: 'deleted'` e exclui das queries automaticamente, sem apagar a linha fisicamente — preserva integridade caso já existam `orders` referenciando o cliente).
+
+### `ClientFormScreen` (`src/screens/clients/ClientFormScreen.tsx`)
+- Formulário com **React Hook Form + Zod** (schema colocado no próprio arquivo da tela):
 
 ```ts
 const clientSchema = z.object({
-  name: z.string().min(3, 'Nome muito curto'),
+  name: z.string().trim().min(3, 'Nome muito curto'),
   document: z.string().refine(isValidCpfOuCnpj, 'CPF/CNPJ inválido'),
   phone: z.string().min(10, 'Telefone inválido'),
-  address: z.string().optional(),
-  notes: z.string().optional(),
+  address: z.string().trim().optional(),
 });
 ```
 
-- Máscara dinâmica de CPF/CNPJ conforme o tamanho do documento digitado.
-- Máscara de telefone com suporte a formato internacional (WhatsApp).
-- Validação de duplicidade: antes de salvar, verifica se já existe cliente ativo com o mesmo `document` (query indexada).
-- Botão "Salvar e criar pedido" — atalho que salva o cliente e navega direto para `NewOrderScreen` com o cliente já selecionado.
+- Campos de CPF/CNPJ e telefone usam o componente reutilizável [`MaskedInput`](../src/components/MaskedInput.tsx) (`mask="cpfCnpj"` / `mask="phone"`), que mascara para exibição e mantém o valor em dígitos puros internamente.
+- `isValidCpfOuCnpj` (`src/utils/validators.ts`) valida o dígito verificador real de CPF (11 dígitos) e CNPJ (14 dígitos) — não é só checagem de tamanho.
+- Validação de duplicidade: antes de salvar (criar ou editar), consulta se já existe outro cliente com o mesmo `document` (`Q.where('document', ...)`) e bloqueia com erro no campo.
+- Modo edição carrega o registro via `database.get('clients').find(id)` e usa `reset()` do React Hook Form para popular o formulário.
+- Botão "Excluir cliente" (só em modo edição) com `Alert.alert` de confirmação antes de chamar `markAsDeleted()`.
+- **Não implementado nesta fase:** atalho "Salvar e criar pedido" (mencionado em versões anteriores deste doc) — depende do módulo de Ordem de Venda, que é a Fase 5.
 
 ---
 
 ## 📦 Módulo Produtos
 
-### `ProductListScreen`
-- Lista produtos ativos, ordenados por nome.
-- Filtros: por categoria (chips horizontais) e busca textual por nome/SKU.
-- Exibe preço formatado em BRL (`Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })`) — lembrando que o valor é armazenado em centavos no banco.
-- FAB para "Novo Produto".
+### `ProductListScreen` (`src/screens/products/ProductListScreen.tsx`)
+- Lista reativa via `withObservables` observando `products`, ordenada por nome.
+- Busca em tempo real por `name` **ou** `sku` (mesmo padrão `Q.or` + `Q.like` + debounce do módulo Clientes).
+- Card por produto: nome, SKU, unidade de medida e preço formatado em BRL (`formatCurrencyBRL`, `src/utils/masks.ts` — `Intl`/`toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })` sobre o valor em centavos).
+- FAB "+" → `ProductFormScreen` em modo criação; toque no card → modo edição.
 
-### `ProductFormScreen`
+> 🚧 **Não implementado nesta fase:** filtro por categoria (chips) — a coluna `category` não existe no schema real ([docs/03](./03-banco-de-dados.md#-tabela-products)); e soft delete via `is_active`, pelo mesmo motivo do módulo Clientes (usa `markAsDeleted()`).
+
+### `ProductFormScreen` (`src/screens/products/ProductFormScreen.tsx`)
 - Formulário com **React Hook Form + Zod**:
 
 ```ts
+const UNITS = ['UN', 'KG', 'CX', 'L', 'PC'] as const;
+
 const productSchema = z.object({
-  name: z.string().min(2, 'Nome muito curto'),
-  sku: z.string().min(1, 'SKU obrigatório'),
-  price: z.number().positive('Preço deve ser maior que zero'), // em reais na UI, convertido para centavos ao salvar
-  unit: z.enum(['UN', 'KG', 'CX', 'L', 'PC']),
-  category: z.string().optional(),
+  name: z.string().trim().min(2, 'Nome muito curto'),
+  sku: z.string().trim().min(1, 'SKU obrigatório'),
+  price: z.string().refine((value) => Number(value) > 0, 'Preço deve ser maior que zero'),
+  unit: z.enum(UNITS),
 });
 ```
 
-- Campo de preço usa input mascarado de moeda (digitação em reais, conversão para centavos apenas na gravação).
-- Validação de SKU único (query indexada antes de salvar).
+- Campo de preço usa `MaskedInput` com `mask="currency"`: o valor do form já trafega em **centavos** (string), evitando conversão reais↔centavos fora do componente de máscara — digitação funciona como uma calculadora (dígitos entram pela direita).
+- Unidade de medida é um seletor de chips (`UN`/`KG`/`CX`/`L`/`PC`), não um `<select>`/Picker — evita dependência extra (`@react-native-picker/picker` não está instalado).
+- Validação de SKU único (mesmo padrão de duplicidade do módulo Clientes) antes de criar/atualizar.
+- Botão "Excluir produto" (modo edição) com confirmação via `Alert.alert` + `markAsDeleted()`.
+
+---
+
+## 🧩 Componentes reutilizáveis criados nesta fase
+
+| Componente | Arquivo | Uso |
+|---|---|---|
+| `MaskedInput` | `src/components/MaskedInput.tsx` | Input com label + erro, com máscara opcional (`cpfCnpj`, `phone`, `currency`) |
+| `SearchBar` | `src/components/SearchBar.tsx` | Busca com debounce de 300ms embutido |
+| `Fab` | `src/components/Fab.tsx` | Botão flutuante "+" para criar novo registro |
+| `EmptyState` | `src/components/EmptyState.tsx` | Placeholder para listas vazias |
+| `PrimaryButton` | `src/components/PrimaryButton.tsx` | Botão de ação (variantes `primary`/`danger`/`outline`), com estado de loading |
+
+Utilitários: `src/utils/masks.ts` (formatação), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 
 ---
 
@@ -176,21 +198,27 @@ export async function generateAndShareOrderPdf(order: OrderWithItems): Promise<v
 
 ## 💾 Módulo Backup
 
-### `BackupScreen`
-- **Exportar:** serializa `clients`, `products`, `orders`, `order_items` (não inclui `license_control`) em um único arquivo JSON, salvo via `expo-file-system` e oferecido para compartilhamento/salvamento.
-- **Importar:** lê um arquivo JSON previamente exportado, valida estrutura (schema Zod), e faz merge/insert no WatermelonDB dentro de uma transação — com tela de confirmação mostrando quantos registros serão importados antes de efetivar.
-- Sempre disponível mesmo com licença `expired` (ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
+### `BackupScreen` (`src/screens/backup/BackupScreen.tsx`)
+- **Exportar — duas opções**, ambas geram o mesmo JSON (`vendas-app-backup-AAAA-MM-DD_HH-mm-ss.json`, via a API nova do `expo-file-system` — classes `File`/`Directory`/`Paths`, não a API legada `FileSystem.writeAsStringAsync`):
+  - **"Compartilhar backup"** (`backupService.exportBackup()`): escreve o arquivo em `Paths.document` (armazenamento privado do app) e abre o menu nativo de compartilhamento (`expo-sharing`) — WhatsApp, e-mail, Drive, etc. Em alguns aparelhos/emuladores sem um app de "Arquivos" instalado, esse menu **não** mostra uma opção de "salvar no aparelho" (só apps que registram esse tipo de compartilhamento aparecem).
+  - **"Salvar no dispositivo"** (`backupService.saveBackupToDevice()`): abre o seletor de pastas do próprio sistema (`Directory.pickDirectoryAsync()` — Storage Access Framework no Android) e grava o arquivo diretamente na pasta escolhida (ex: Downloads). Funciona independentemente de quais apps estão instalados — é a forma garantida de "baixar" o arquivo.
+- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros com `document`/`sku` já cadastrado são ignorados na importação — evita duplicar dados se o mesmo backup for importado mais de uma vez. Inserção em lote via `database.batch(...)` (uma única transação).
+- `license_control` nunca entra no backup (é específico do dispositivo, não faz sentido restaurar em outro aparelho).
 
 ```json
 {
-  "exported_at": "2026-08-21T14:00:00.000Z",
+  "exported_at": "2026-08-22T14:00:00.000Z",
   "app_version": "1.0.0",
-  "clients": [ /* ... */ ],
-  "products": [ /* ... */ ],
-  "orders": [ /* ... */ ],
-  "order_items": [ /* ... */ ]
+  "clients": [
+    { "name": "João da Silva", "document": "11144477735", "phone": "11987654321", "address": "Rua Exemplo, 123" }
+  ],
+  "products": [
+    { "name": "Refrigerante 2L", "sku": "REF-2L-001", "price": 990, "unit": "UN" }
+  ]
 }
 ```
+
+> 🚧 **Escopo desta fase:** só `clients` e `products` — `orders`/`order_items` entram no backup quando o módulo de Ordem de Venda existir (Fase 5). **Também não está** disponível com licença `expired`/`blocked` ainda: o `RootNavigator` bloqueia toda a navegação (inclusive Backup) quando a licença não está `active` — a exceção "backup sempre acessível" descrita em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active) ainda não foi implementada (fica para quando essa distinção de acesso for construída).
 
 ## 📎 Documentos relacionados
 

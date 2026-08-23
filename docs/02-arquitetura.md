@@ -14,8 +14,10 @@
 | Identificação de dispositivo | **expo-crypto** | Gera o `device_id` (UUID v4) usado pela licença, no primeiro uso |
 | Validação remota de licença | **Supabase REST (PostgREST)** via `fetch` puro | Consulta a tabela `licenses` para renovar/validar a licença quando o trial local expira — ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-integração-com-o-supabase) |
 | Build de desenvolvimento | **expo-dev-client** | Necessário pois o WatermelonDB tem módulo nativo e não roda no Expo Go |
-| Formulários | **React Hook Form** | Estado e submissão de formulários performática (a instalar nas fases de telas de cadastro) |
-| Validação | **Zod** | Schemas de validação integrados ao React Hook Form (`@hookform/resolvers/zod`) (idem) |
+| Formulários | **React Hook Form** | Estado e submissão de formulários performática — em uso desde a Fase 3 (`ClientFormScreen`, `ProductFormScreen`) |
+| Validação | **Zod** | Schemas de validação integrados ao React Hook Form via `@hookform/resolvers/zod` |
+| Persistência reativa em UI | **`@nozbe/watermelondb/react`** (`withObservables`) | Conecta queries observáveis do WatermelonDB a props de componente nas telas de listagem |
+| Arquivos (backup) | **expo-file-system** (API nova: `File`/`Directory`/`Paths`, não a legada `FileSystem.*`) | Escreve o JSON de backup e abre o seletor nativo de arquivos para importar — sem depender de `expo-document-picker`, redundante com `File.pickFileAsync` |
 
 > ⚠️ Nota de versão: o `package.json` atual do projeto está em **Expo ~57 / React Native 0.86 / React 19**. O `CLAUDE.md` referencia "Expo SDK 51+" como piso mínimo de compatibilidade das APIs usadas (expo-print, expo-sharing, netinfo) — a stack real instalada é mais recente. Sempre confira `package.json` como fonte da verdade da versão exata em uso.
 
@@ -69,8 +71,11 @@ src/
 │   └── useWatermelonData.ts # Observa queries do WatermelonDB em componentes
 ├── navigation/       # Stacks e rotas (RootNavigator, tipos de rota)
 ├── templates/        # Template HTML para expo-print (Ordem de Venda A4)
-└── types/            # Interfaces e definições TypeScript compartilhadas
+├── types/            # Interfaces e definições TypeScript compartilhadas
+└── utils/            # Funções puras (máscaras, validadores, formatação) sem estado ou I/O
 ```
+
+> 📁 Nomes reais de pastas em `screens/` usam `camelCase`/lowercase (`clients/`, `products/`, `License/`) — o `Clients/`/`Products/` acima é ilustrativo do `CLAUDE.md` original.
 
 ### Regra de dependência entre camadas
 
@@ -80,6 +85,8 @@ screens/  ──depende de──>  hooks/ ──depende de──>  services/ ─
     └──────────────────────> components/ ─────────────────────────────────────────┘
                                 (apenas UI pura, sem acesso direto ao database/)
 ```
+
+> 🚧 **Exceção deliberada (Fase 3):** as telas de listagem (`ClientListScreen`, `ProductListScreen`) acessam `database` diretamente para montar a query observável usada com `withObservables` — não passam por `hooks/`/`services/`. Isso é o padrão idiomático do WatermelonDB (a query observável fica colocada junto do componente que a usa) e não um `useWatermelonData.ts` genérico, que acabou não sendo criado (ver decisão em [docs/06](./06-changelog-tarefas.md)). Regras de negócio de fato (validação de duplicidade, cálculos) continuam vivendo nos arquivos das telas de formulário por enquanto — considerar extrair para `services/` se crescerem além do CRUD simples.
 
 - `components/` **não** deve importar `database/` diretamente — recebe dados via props.
 - `screens/` **não** deve conter lógica de negócio complexa — delega a `services/` e `hooks/`.
