@@ -13,10 +13,12 @@ export default class Order extends Model {
   } as const;
 
   @field('client_id') declare clientId: string;
-  @field('total_amount') declare totalAmount: number;
-  @field('discount') declare discount: number;
-  @field('payment_method') declare paymentMethod: PaymentMethod;
   @field('status') declare status: OrderStatus;
+  @field('total_gross') declare totalGross: number;
+  @field('discount_total') declare discountTotal: number;
+  @field('total_net') declare totalNet: number;
+  @field('payment_method') declare paymentMethod: PaymentMethod;
+  @field('notes') declare notes?: string;
 
   @readonly @date('created_at') declare createdAt: Date;
 

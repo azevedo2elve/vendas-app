@@ -74,6 +74,10 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.navButtonText}>Produtos</Text>
           <Text style={styles.navButtonChevron}>›</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('OrderList')}>
+          <Text style={styles.navButtonText}>Ordens de Venda</Text>
+          <Text style={styles.navButtonChevron}>›</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('Backup')}>
           <Text style={styles.navButtonText}>Backup (exportar/importar)</Text>
           <Text style={styles.navButtonChevron}>›</Text>

@@ -91,51 +91,66 @@ Utilitários: `src/utils/masks.ts` (formatação), `src/utils/validators.ts` (d�
 
 ## 🛒 Módulo Ordem de Venda
 
-Fluxo composto por 3 telas em sequência (stack), representando o carrinho de compras:
+Implementado na Fase 5, branch `feature/modulo-ordem-venda`. Fluxo guiado de 3 etapas (`OrderDraftNavigator`, um `Stack.Navigator` **aninhado**, registrado como a rota `NewOrder` do stack raiz) + listagem/detalhe fora do fluxo de criação.
 
-### 1. `NewOrderScreen` — Seleção de cliente
-- Busca/seleção de cliente existente (reaproveita o componente de busca do módulo Clientes).
-- Atalho "Cadastrar novo cliente" sem sair do fluxo (modal ou navegação com retorno automático).
-- Avança para `OrderCartScreen` somente após cliente selecionado.
+### Estado do rascunho (`useOrderDraft`, `src/hooks/useOrderDraft.tsx`)
 
-### 2. `OrderCartScreen` — Carrinho de produtos
-- Busca/adiciona produtos ao carrinho (lista com busca, igual ao módulo Produtos).
-- Para cada item no carrinho:
-  | Campo | Regra |
-  |---|---|
-  | Quantidade | Inteiro positivo, stepper +/- ou input numérico |
-  | Preço unitário | Herdado do produto no momento da adição (`unit_price`, em centavos) |
-  | Total do item | `unit_price × quantity` (`total_price`), recalculado a cada mudança |
-- Lista de itens editável (remover item, editar quantidade inline).
-- Rodapé fixo com o total corrente do carrinho (soma dos `total_price`), sempre visível durante o scroll.
-- **Desconto:** aplicado uma única vez, a nível da ordem inteira (`orders.discount`) na tela seguinte — não há desconto por item no schema atual ([docs/03-banco-de-dados.md](./03-banco-de-dados.md#-tabela-order_items)).
+As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvider`), que envolve só o `OrderDraftNavigator` — monta zerado a cada "Nova Ordem" e desmonta (descarta o rascunho) ao sair do fluxo. Guarda `clientId`/`clientName`, a lista de itens do carrinho (`CartItem[]`, ver [`src/types/orderDraft.ts`](../src/types/orderDraft.ts)) e expõe totais computados (`useMemo`). Escolhido em vez de passar tudo via params de navegação (evita serializar um carrinho inteiro a cada navegação) e em vez de uma lib de state management externa (Context resolve bem pro escopo de 3 telas).
 
-### 3. `OrderSummaryScreen` — Resumo e confirmação
-- Exibe: dados do cliente, lista de itens (somente leitura), desconto da ordem, forma de pagamento (`payment_method`) e total final.
-- Campo de desconto da ordem (`orders.discount`, em centavos) e seletor de forma de pagamento (`dinheiro` | `pix` | `cartao` | `boleto` | `outro`).
-- Botão **"Confirmar Ordem"**:
-  1. Calcula `total_amount = soma(order_items.total_price) − discount`.
-  2. Persiste `orders` + `order_items` no WatermelonDB dentro de uma transação (`database.write`).
-  3. Navega automaticamente para a geração do PDF.
+### 1. `OrderSelectClientScreen` — Seleção do cliente
+- Lista reativa (`withObservables`) + busca por nome/documento — mesmo padrão de [`ClientListScreen`](./05-modulos-telas.md#-módulo-clientes).
+- Toque num cliente → `setClient(id, name)` no contexto → avança para `OrderItems`.
+- Botão "Cadastrar novo cliente": usa `navigation.getParent()` para navegar até a rota `ClientForm` do stack **raiz** (fora do fluxo aninhado) — ao voltar, o cliente novo já aparece na lista (reativa) para ser selecionado.
 
-### `OrderHistoryScreen`
-- Lista ordens já confirmadas, mais recentes primeiro.
-- Filtro por cliente e por período.
-- Reabrir uma ordem permite gerar o PDF novamente (reenvio) sem duplicar o registro.
+### 2. `OrderItemsScreen` — Catálogo e carrinho
+- Uma única `FlatList` reativa do catálogo de produtos (busca por nome/SKU) — o carrinho fica no `ListHeaderComponent` (evita o warning de `VirtualizedList` aninhada de duas listas separadas).
+- Toque num produto → adiciona ao carrinho (ou soma +1 na quantidade se já estiver lá).
+- Cada item do carrinho: [`QuantityStepper`](../src/components/QuantityStepper.tsx) (+/-) e [`DiscountInput`](../src/components/DiscountInput.tsx) (alterna R$/%, mas sempre entrega o valor em **centavos** pro estado do carrinho — o modo % é só conveniência de digitação, calculado contra o valor bruto do item).
+- Resumo em tempo real: **Total de itens** (soma das quantidades), **Subtotal** (soma de `unit_price × quantity`, sem descontos), **Total de descontos** (soma dos descontos por item) e **Total geral** (soma dos subtotais líquidos por item — vira `orders.total_gross` no Passo 3).
+- Botão "Continuar" desabilitado com carrinho vazio.
 
-### Regra de cálculo (centralizada em `services/`, não na tela)
+### 3. `OrderReviewScreen` — Resumo e fechamento
+- Mostra cliente e itens tabulados (somente leitura).
+- `DiscountInput` para o **desconto geral do pedido** (`orders.discount_total`, aplicado sobre `total_gross` — depois dos descontos por item).
+- Seletor de forma de pagamento em chips (`PAYMENT_METHOD_LABELS` — Dinheiro, PIX, Boleto, Cartão de Crédito, Cartão de Débito, A Prazo).
+- Campo de observações gerais (`orders.notes`, opcional).
+- Botão **"Salvar pedido"** → `orderService.createOrder(...)`:
+  1. Calcula `total_net = max(0, total_gross − discount_total)`.
+  2. Persiste `orders` + todos os `order_items` numa única transação (`database.write` + `database.batch(...)` — **atenção**: `database.batch()` só pode ser chamado de dentro de um `database.write()` nesta versão do WatermelonDB, ao contrário de `collection.create()`).
+  3. Zera o rascunho (`reset()`) e navega para `OrderDetail` do pedido recém-criado, **substituindo** (`navigation.replace`, via `getParent()`) a entrada `NewOrder` no histórico — voltar não retorna ao fluxo de criação.
+
+### `OrderListScreen` — Listagem
+- Lista reativa ordenada por `created_at` desc. Filtro por status (chips: Todos/Pendente/Concluído/Cancelado) e busca por nome do cliente via `Q.on('clients', Q.where('name', Q.like(...)))` — filtra pela tabela relacionada direto na query, sem carregar tudo em memória.
+- Cada card observa reativamente seu próprio cliente e contagem de itens (`withObservables(['order'], ({ order }) => ({ client: order.client.observe(), itemCount: order.items.observeCount() }))` — padrão comum do WatermelonDB para listas onde cada linha depende de uma relação).
+- Exibe: ID resumido (8 primeiros caracteres do `id`), nome do cliente, data/hora (`toLocaleString('pt-BR')`), contagem de itens, status (badge colorido) e `total_net` formatado em BRL.
+- FAB "+" → `NewOrder` (novo fluxo de criação).
+
+### `OrderDetailScreen` — Detalhe
+- Carrega a `Order` por id (`database.get('orders').find(orderId)`) e observa reativamente cliente + itens.
+- Mostra todos os itens (com `product_name_snapshot`, não o nome atual do produto — protege o histórico), totais (`total_gross`/`discount_total`/`total_net`), forma de pagamento e observações.
+- Ações (`orderService.ts`):
+  - "Marcar como concluído" (só se `pending`) → `setOrderStatus(id, 'completed')`.
+  - "Cancelar pedido" (se não já `cancelled`) → confirmação (`Alert.alert`) → `setOrderStatus(id, 'cancelled')`.
+  - "Excluir pedido" → confirmação → `deleteOrder(id)`, que também marca todos os `order_items` associados como excluídos (`markAsDeleted`, em lote) antes do próprio pedido — evita itens órfãos.
+
+### Cálculo de totais (`src/types/orderDraft.ts` + `src/services/orderService.ts`)
 
 ```ts
-// services/orderCalculationService.ts (referência)
-function calculateItemTotal(unitPrice: number, quantity: number): number {
-  return unitPrice * quantity; // centavos
+// src/types/orderDraft.ts
+function cartItemLineTotal(item: CartItem): number {
+  return item.unitPrice * item.quantity; // centavos, sem desconto
 }
 
-function calculateOrderTotal(items: { unitPrice: number; quantity: number }[], discount: number): number {
-  const itemsTotal = items.reduce((acc, i) => acc + calculateItemTotal(i.unitPrice, i.quantity), 0);
-  return itemsTotal - discount;
+function cartItemSubtotal(item: CartItem): number {
+  return Math.max(0, cartItemLineTotal(item) - item.discountValue); // líquido do desconto do item
 }
+
+// src/services/orderService.ts — createOrder()
+const totalGross = items.reduce((acc, item) => acc + cartItemSubtotal(item), 0);
+const totalNet = Math.max(0, totalGross - discountTotal); // discountTotal = desconto geral do pedido
 ```
+
+> 🚧 **Fora do escopo desta fase:** geração de PDF (Fase 6 — `pdfService`/`templates/`) e inclusão de `orders`/`order_items` no módulo de Backup (mencionado como pendente em [docs/06](./06-changelog-tarefas.md), depende deste módulo existir — agora existe, mas a integração com `backupService.ts` ainda não foi feita).
 
 ---
 

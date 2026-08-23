@@ -13,9 +13,11 @@ export default class OrderItem extends Model {
 
   @field('order_id') declare orderId: string;
   @field('product_id') declare productId: string;
-  @field('quantity') declare quantity: number;
+  @field('product_name_snapshot') declare productNameSnapshot: string;
   @field('unit_price') declare unitPrice: number;
-  @field('total_price') declare totalPrice: number;
+  @field('quantity') declare quantity: number;
+  @field('discount_value') declare discountValue: number;
+  @field('subtotal') declare subtotal: number;
 
   @relation('orders', 'order_id') declare order: Relation<Order>;
   @relation('products', 'product_id') declare product: Relation<Product>;

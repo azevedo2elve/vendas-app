@@ -98,14 +98,18 @@ export default class Product extends Model {
 
 ## 🧾 Tabela `orders`
 
+> 🔁 Redesenhada na **Fase 5** (schema v2 — ver [Migrations](#-migrations) abaixo). Antes da Fase 5 essa tabela existia só como esqueleto (Fase 2), sem nenhuma tela usando os campos antigos (`total_amount`/`discount`).
+
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
 | `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente |
 | `client_id` | `string` (indexado, FK → `clients.id`) | `string` | ✔️ | Cliente da ordem |
-| `total_amount` | `number` | `number` | ✔️ | Total da ordem em centavos (soma dos itens − `discount`) |
-| `discount` | `number` | `number` | ✔️ | Desconto total aplicado à ordem, em centavos |
-| `payment_method` | `string` | `'dinheiro' \| 'pix' \| 'cartao' \| 'boleto' \| 'outro'` | ✔️ | Forma de pagamento combinada com o cliente |
-| `status` | `string` (indexado) | `'draft' \| 'confirmed' \| 'cancelled'` | ✔️ | Estado da ordem |
+| `status` | `string` (indexado) | `'pending' \| 'completed' \| 'cancelled'` | ✔️ | Estado da ordem (nasce `pending`) |
+| `total_gross` | `number` | `number` | ✔️ | Soma dos `order_items.subtotal` (já líquido dos descontos por item, antes do desconto geral do pedido), em centavos |
+| `discount_total` | `number` | `number` | ✔️ | Desconto geral do pedido (aplicado no fechamento, Passo 3), em centavos |
+| `total_net` | `number` | `number` | ✔️ | `total_gross − discount_total` (nunca negativo) |
+| `payment_method` | `string` | `'dinheiro' \| 'pix' \| 'boleto' \| 'cartao_credito' \| 'cartao_debito' \| 'a_prazo'` | ✔️ | Forma de pagamento combinada com o cliente |
+| `notes` | `string` | `string` | ⛔ | Observações gerais do pedido (opcional) |
 | `created_at` | `number` | `Date` | ✔️ | Gerenciado automaticamente |
 
 ### Model (`src/database/models/Order.ts`)
@@ -125,10 +129,12 @@ export default class Order extends Model {
   } as const;
 
   @field('client_id') declare clientId: string;
-  @field('total_amount') declare totalAmount: number;
-  @field('discount') declare discount: number;
-  @field('payment_method') declare paymentMethod: PaymentMethod;
   @field('status') declare status: OrderStatus;
+  @field('total_gross') declare totalGross: number;
+  @field('discount_total') declare discountTotal: number;
+  @field('total_net') declare totalNet: number;
+  @field('payment_method') declare paymentMethod: PaymentMethod;
+  @field('notes') declare notes?: string;
 
   @readonly @date('created_at') declare createdAt: Date;
 
@@ -146,9 +152,11 @@ export default class Order extends Model {
 | `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente |
 | `order_id` | `string` (indexado, FK → `orders.id`) | `string` | ✔️ | Ordem à qual o item pertence |
 | `product_id` | `string` (indexado, FK → `products.id`) | `string` | ✔️ | Produto vendido |
+| `product_name_snapshot` | `string` | `string` | ✔️ | Nome do produto no momento da venda — protege o histórico se o produto for renomeado depois |
+| `unit_price` | `number` | `number` | ✔️ | Preço unitário no momento da venda, em centavos (snapshot) |
 | `quantity` | `number` | `number` | ✔️ | Quantidade vendida |
-| `unit_price` | `number` | `number` | ✔️ | Preço unitário no momento da venda, em centavos |
-| `total_price` | `number` | `number` | ✔️ | `unit_price × quantity` (o desconto do pedido é aplicado a nível de `orders.discount`, não por item) |
+| `discount_value` | `number` | `number` | ✔️ | Desconto aplicado a este item, em centavos |
+| `subtotal` | `number` | `number` | ✔️ | `max(0, unit_price × quantity − discount_value)` |
 
 ### Model (`src/database/models/OrderItem.ts`)
 
@@ -167,9 +175,11 @@ export default class OrderItem extends Model {
 
   @field('order_id') declare orderId: string;
   @field('product_id') declare productId: string;
-  @field('quantity') declare quantity: number;
+  @field('product_name_snapshot') declare productNameSnapshot: string;
   @field('unit_price') declare unitPrice: number;
-  @field('total_price') declare totalPrice: number;
+  @field('quantity') declare quantity: number;
+  @field('discount_value') declare discountValue: number;
+  @field('subtotal') declare subtotal: number;
 
   @relation('orders', 'order_id') declare order: Relation<Order>;
   @relation('products', 'product_id') declare product: Relation<Product>;
@@ -215,7 +225,7 @@ export default class LicenseControl extends Model {
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: 'clients',
@@ -241,10 +251,12 @@ export default appSchema({
       name: 'orders',
       columns: [
         { name: 'client_id', type: 'string', isIndexed: true },
-        { name: 'total_amount', type: 'number' },
-        { name: 'discount', type: 'number' },
-        { name: 'payment_method', type: 'string' },
         { name: 'status', type: 'string', isIndexed: true },
+        { name: 'total_gross', type: 'number' },
+        { name: 'discount_total', type: 'number' },
+        { name: 'total_net', type: 'number' },
+        { name: 'payment_method', type: 'string' },
+        { name: 'notes', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -253,9 +265,11 @@ export default appSchema({
       columns: [
         { name: 'order_id', type: 'string', isIndexed: true },
         { name: 'product_id', type: 'string', isIndexed: true },
-        { name: 'quantity', type: 'number' },
+        { name: 'product_name_snapshot', type: 'string' },
         { name: 'unit_price', type: 'number' },
-        { name: 'total_price', type: 'number' },
+        { name: 'quantity', type: 'number' },
+        { name: 'discount_value', type: 'number' },
+        { name: 'subtotal', type: 'number' },
       ],
     }),
     tableSchema({
@@ -271,15 +285,54 @@ export default appSchema({
 });
 ```
 
-> 📝 Este schema é intencionalmente enxuto (sem `order_number`, `updated_at`, soft delete ou snapshots de preço/nome). Esses campos podem ser adicionados em fases futuras — quando isso acontecer, siga o processo de migrations abaixo e atualize esta tabela.
+> 📝 Este schema ainda é enxuto (sem `order_number`, `updated_at` ou soft delete em `orders`/`order_items`). `order_items` já tem snapshot de nome/preço (`product_name_snapshot`, `unit_price`), adicionado na Fase 5.
 
 ## 🔁 Migrations
 
 Toda alteração de schema (nova coluna, nova tabela) deve:
-1. Incrementar `version` em `schema.ts` (atualmente `1`).
-2. Adicionar um passo correspondente em `src/database/migrations.ts` (ainda não criado — só é necessário a partir da primeira alteração pós-v1) usando `schemaMigrations`/`addColumns`/`createTable` do WatermelonDB, e passá-lo como `migrations` para o `SQLiteAdapter` em `src/database/index.ts`.
+1. Incrementar `version` em `schema.ts`.
+2. Adicionar um passo correspondente em `src/database/migrations.ts` usando `schemaMigrations`/`addColumns`/`createTable` do WatermelonDB, passado como `migrations` para o `SQLiteAdapter` em `src/database/index.ts`.
 3. **Nunca** alterar uma migration já publicada — sempre adicionar uma nova.
 4. Atualizar esta tabela em `docs/03-banco-de-dados.md` refletindo o novo estado do schema (ver regra em `CLAUDE.md`).
+
+### Histórico de migrations
+
+| Versão | O que mudou | Migration |
+|---|---|---|
+| 1 | Schema inicial (Fase 2): `clients`, `products`, `orders`, `order_items`, `license_control`. | — (schema inicial, sem migration) |
+| 2 | Fase 5 (Ordem de Venda): `orders` ganhou `total_gross`/`discount_total`/`total_net`/`notes` (substituindo `total_amount`/`discount`, que ficam órfãos no SQLite mas não são mais lidos pelo app); `order_items` ganhou `product_name_snapshot`/`discount_value`/`subtotal` (substituindo `total_price`). Não havia nenhuma tela usando os campos antigos ainda, então não foi preciso migrar dados existentes — só `addColumns`. | `src/database/migrations.ts` |
+
+```ts
+// src/database/migrations.ts
+import { addColumns, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations';
+
+export default schemaMigrations({
+  migrations: [
+    {
+      toVersion: 2,
+      steps: [
+        addColumns({
+          table: 'orders',
+          columns: [
+            { name: 'total_gross', type: 'number' },
+            { name: 'discount_total', type: 'number' },
+            { name: 'total_net', type: 'number' },
+            { name: 'notes', type: 'string', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'order_items',
+          columns: [
+            { name: 'product_name_snapshot', type: 'string' },
+            { name: 'discount_value', type: 'number' },
+            { name: 'subtotal', type: 'number' },
+          ],
+        }),
+      ],
+    },
+  ],
+});
+```
 
 ## 📎 Documentos relacionados
 

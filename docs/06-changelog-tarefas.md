@@ -24,10 +24,10 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟡 Em andamento (schema v1 + models prontos; `migrations.ts` só entra na 1ª alteração pós-v1) |
 | **Fase 3** | Módulo Clientes (CRUD + busca indexada) | 🟢 Concluído |
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
-| **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | ⚪ Não iniciado |
+| **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | ⚪ Não iniciado |
 | **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (`licenseService` + `useLicenseGuard` + `LicenseBlockedScreen` prontos; acesso somente-leitura em `expired` depende das Fases 3/4/8) |
-| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (Clientes + Produtos prontos; `orders`/`order_items` entram quando a Fase 5 existir; acesso mesmo com licença `expired` ainda não implementado) |
+| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (Clientes + Produtos prontos; falta incluir `orders`/`order_items` agora que a Fase 5 existe; acesso mesmo com licença `expired` ainda não implementado) |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
@@ -101,12 +101,21 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 5 — Módulo Ordem de Venda
 
+### 2026-08-23 — Fluxo completo de Ordem de Venda
+- **Tipo:** feature / schema
+- **Resumo:** Branch `feature/modulo-ordem-venda` (chamada de "Fase 4" na conversa que originou a tarefa, mas corresponde à Fase 5 deste roadmap — Clientes/Produtos já ocupavam as Fases 3/4). Redesenhadas as tabelas `orders`/`order_items` (schema **v1 → v2**, com migration em `src/database/migrations.ts` — ver [docs/03](./03-banco-de-dados.md#-migrations)): `orders` ganhou `total_gross`/`discount_total`/`total_net`/`notes`; `order_items` ganhou `product_name_snapshot`/`discount_value`/`subtotal`. `OrderStatus` virou `'pending'|'completed'|'cancelled'`; `PaymentMethod` virou `dinheiro`/`pix`/`boleto`/`cartao_credito`/`cartao_debito`/`a_prazo`.
+  - Implementado o fluxo de criação em 3 etapas como um `Stack.Navigator` **aninhado** (`OrderDraftNavigator`, rota `NewOrder` do stack raiz), com estado compartilhado via Context (`useOrderDraft`, não Redux/Zustand — escopo pequeno o suficiente): `OrderSelectClientScreen` → `OrderItemsScreen` (catálogo + carrinho com `QuantityStepper`/`DiscountInput` novos) → `OrderReviewScreen` (desconto geral, forma de pagamento, observações, `orderService.createOrder()`).
+  - `OrderListScreen` (reativa, filtro por status + busca por cliente via `Q.on`) e `OrderDetailScreen` (detalhe + marcar concluído/cancelar/excluir) completam o módulo.
+  - `src/services/orderService.ts`: `createOrder`, `setOrderStatus`, `deleteOrder` (exclui os `order_items` associados antes do pedido, evitando itens órfãos).
+- **Docs afetados:** `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] `NewOrderScreen` (seleção de cliente).
-- [ ] `OrderCartScreen` (carrinho com quantidade/desconto por item).
-- [ ] `OrderSummaryScreen` (resumo, totais, confirmação e persistência).
-- [ ] `OrderHistoryScreen` (histórico de ordens confirmadas).
-- [ ] `services/orderCalculationService.ts` com testes unitários dos cálculos.
+- [x] `OrderSelectClientScreen` (seleção de cliente) — nome final diferente do planejado (`NewOrderScreen`), mesma função.
+- [x] `OrderItemsScreen` (carrinho com quantidade/desconto por item, R$ ou %) — nome final diferente do planejado (`OrderCartScreen`).
+- [x] `OrderReviewScreen` (resumo, desconto geral, forma de pagamento, observações, confirmação e persistência) — nome final diferente do planejado (`OrderSummaryScreen`).
+- [x] `OrderListScreen` + `OrderDetailScreen` (listagem com filtro/busca + detalhe com cancelamento/exclusão) — substituiu o `OrderHistoryScreen` planejado, com escopo maior (inclui detalhe e ações de status).
+- [x] Cálculo de totais centralizado em `src/types/orderDraft.ts` (helpers puros) + `src/services/orderService.ts` — sem testes automatizados ainda (pendente, junto com o restante da suíte de testes — Fase 9).
+- [ ] Incluir `orders`/`order_items` no módulo de Backup — o módulo de Ordem de Venda agora existe, mas essa integração com `backupService.ts` (Fase 8) ainda não foi feita.
 
 ---
 
@@ -166,7 +175,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".
 - [x] Importação com validação Zod e prévia (contagem de novos/duplicados) antes de confirmar.
 - [ ] `BackupScreen` acessível mesmo com licença `expired` — depende da distinção de acesso ainda não implementada no `RootNavigator` (ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
-- [ ] Incluir `orders`/`order_items` no backup — depende da Fase 5 (Ordem de Venda) existir.
+- [ ] Incluir `orders`/`order_items` no backup — o módulo de Ordem de Venda (Fase 5) já existe agora; falta integrar em `backupService.ts`.
 
 ---
 
