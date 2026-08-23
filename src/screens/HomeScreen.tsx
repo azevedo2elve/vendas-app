@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { database } from '@/database';
 import LicenseControl from '@/database/models/LicenseControl';
 import { LoadingView } from '@/components/LoadingView';
 import { testSupabaseFetch } from '@/services/licenseService';
+import type { RootStackParamList } from '@/navigation/types';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 type DiagnosticsState = {
   clients: number;
@@ -23,7 +27,7 @@ async function loadDiagnostics(): Promise<DiagnosticsState> {
   return { clients, products, orders, license: licenses[0] };
 }
 
-export function HomeScreen() {
+export function HomeScreen({ navigation }: Props) {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsState | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -58,6 +62,22 @@ export function HomeScreen() {
         <Text style={styles.row}>
           Último acesso: {diagnostics.license.lastOpenedAt.toLocaleString('pt-BR')}
         </Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Módulos</Text>
+        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('ClientList')}>
+          <Text style={styles.navButtonText}>Clientes</Text>
+          <Text style={styles.navButtonChevron}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('ProductList')}>
+          <Text style={styles.navButtonText}>Produtos</Text>
+          <Text style={styles.navButtonChevron}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('Backup')}>
+          <Text style={styles.navButtonText}>Backup (exportar/importar)</Text>
+          <Text style={styles.navButtonChevron}>›</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
@@ -124,6 +144,23 @@ const styles = StyleSheet.create({
   row: {
     fontSize: 13,
     color: '#475569',
+  },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  navButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  navButtonChevron: {
+    fontSize: 18,
+    color: '#94A3B8',
   },
   button: {
     marginTop: 4,
