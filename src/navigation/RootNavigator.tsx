@@ -9,6 +9,9 @@ import { ClientFormScreen } from '@/screens/clients/ClientFormScreen';
 import { ProductListScreen } from '@/screens/products/ProductListScreen';
 import { ProductFormScreen } from '@/screens/products/ProductFormScreen';
 import { BackupScreen } from '@/screens/backup/BackupScreen';
+import { OrderListScreen } from '@/screens/orders/OrderListScreen';
+import { OrderDetailScreen } from '@/screens/orders/OrderDetailScreen';
+import { OrderDraftNavigator } from './OrderDraftNavigator';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,6 +36,9 @@ export function RootNavigator() {
         <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: 'Produtos' }} />
         <Stack.Screen name="ProductForm" component={ProductFormScreen} options={{ title: 'Produto' }} />
         <Stack.Screen name="Backup" component={BackupScreen} options={{ title: 'Backup' }} />
+        <Stack.Screen name="OrderList" component={OrderListScreen} options={{ title: 'Ordens de Venda' }} />
+        <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Pedido' }} />
+        <Stack.Screen name="NewOrder" component={OrderDraftNavigator} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
