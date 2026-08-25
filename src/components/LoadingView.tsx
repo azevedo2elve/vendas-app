@@ -1,4 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { colors, spacing } from '@/theme';
 
 type LoadingViewProps = {
   message?: string;
@@ -7,7 +8,7 @@ type LoadingViewProps = {
 export function LoadingView({ message = 'Carregando...' }: LoadingViewProps) {
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#2563EB" />
+      <ActivityIndicator size="large" color={colors.accent} />
       <Text style={styles.message}>{message}</Text>
     </View>
   );
@@ -18,11 +19,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    backgroundColor: '#FFFFFF',
+    gap: spacing.sm,
+    backgroundColor: colors.background,
   },
   message: {
     fontSize: 14,
-    color: '#475569',
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 });

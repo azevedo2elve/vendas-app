@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'clients',
@@ -55,6 +55,25 @@ export default appSchema({
         { name: 'license_expires_at', type: 'number' },
         { name: 'license_status', type: 'string' },
         { name: 'last_opened_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'company_settings',
+      columns: [
+        { name: 'razao_social', type: 'string' },
+        { name: 'nome_fantasia', type: 'string', isOptional: true },
+        { name: 'document', type: 'string' },
+        { name: 'ie', type: 'string', isOptional: true },
+        { name: 'phone', type: 'string' },
+        { name: 'email', type: 'string', isOptional: true },
+        { name: 'address_street', type: 'string', isOptional: true },
+        { name: 'address_number', type: 'string', isOptional: true },
+        { name: 'address_district', type: 'string', isOptional: true },
+        { name: 'address_city', type: 'string', isOptional: true },
+        { name: 'address_state', type: 'string', isOptional: true },
+        { name: 'address_zip', type: 'string', isOptional: true },
+        { name: 'pix_key', type: 'string', isOptional: true },
+        { name: 'updated_at', type: 'number' },
       ],
     }),
   ],

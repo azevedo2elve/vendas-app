@@ -7,11 +7,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { database } from '@/database';
 import Order from '@/database/models/Order';
 import Client from '@/database/models/Client';
+import { Badge } from '@/components/Badge';
+import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
 import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
-import { ORDER_STATUS_LABELS, type OrderStatus } from '@/types/database';
+import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, type OrderStatus } from '@/types/database';
+import { colors, radii, shadows, spacing } from '@/theme';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderList'>;
@@ -42,12 +45,10 @@ type OrderRowProps = { order: Order; onPress: () => void };
 
 function OrderRowBase({ order, client, itemCount, onPress }: OrderRowProps & { client: Client; itemCount: number }) {
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardId}>#{order.id.slice(0, 8).toUpperCase()}</Text>
-        <View style={[styles.statusBadge, styles[`status_${order.status}`]]}>
-          <Text style={styles.statusText}>{ORDER_STATUS_LABELS[order.status]}</Text>
-        </View>
+        <Badge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONE[order.status]} />
       </View>
       <Text style={styles.cardClient}>{client?.name ?? '—'}</Text>
       <View style={styles.cardFooter}>
@@ -79,39 +80,37 @@ type ListProps = Props & {
 function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter, onStatusChange }: ListProps) {
   return (
     <View style={styles.container}>
-      <View style={styles.filters}>
-        <SearchBar placeholder="Buscar por nome do cliente" onDebouncedChange={onSearchChange} />
-        <View style={styles.statusChips}>
-          {STATUS_FILTERS.map((filter) => (
-            <TouchableOpacity
-              key={filter.label}
-              style={[styles.statusChip, statusFilter === filter.value ? styles.statusChipSelected : null]}
-              onPress={() => onStatusChange(filter.value)}
-            >
-              <Text
-                style={[
-                  styles.statusChipText,
-                  statusFilter === filter.value ? styles.statusChipTextSelected : null,
-                ]}
-              >
-                {filter.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+      <View style={styles.content}>
+        <View style={styles.filters}>
+          <SearchBar placeholder="Buscar por nome do cliente" onDebouncedChange={onSearchChange} />
+          <View style={styles.statusChips}>
+            {STATUS_FILTERS.map((filter) => (
+              <Chip
+                key={filter.label}
+                label={filter.label}
+                selected={statusFilter === filter.value}
+                onPress={() => onStatusChange(filter.value)}
+              />
+            ))}
+          </View>
         </View>
-      </View>
 
-      <FlatList
-        data={orders}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={orders.length === 0 ? styles.emptyContent : styles.listContent}
-        renderItem={({ item }) => (
-          <OrderRow order={item} onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })} />
-        )}
-        ListEmptyComponent={
-          <EmptyState title="Nenhuma ordem de venda encontrada" message="Toque no botão + para criar a primeira." />
-        }
-      />
+        <FlatList
+          data={orders}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={orders.length === 0 ? styles.emptyContent : styles.listContent}
+          renderItem={({ item }) => (
+            <OrderRow order={item} onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })} />
+          )}
+          ListEmptyComponent={
+            <EmptyState
+              icon="receipt-outline"
+              title="Nenhuma ordem de venda encontrada"
+              message="Toque no botão + para criar a primeira."
+            />
+          }
+        />
+      </View>
 
       <Fab accessibilityLabel="Nova ordem de venda" onPress={() => navigation.navigate('NewOrder')} />
     </View>
@@ -147,53 +146,40 @@ export function OrderListScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
+  },
+  content: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
   },
   filters: {
-    padding: 16,
-    paddingBottom: 8,
-    gap: 10,
+    padding: spacing.lg,
+    paddingBottom: spacing.xs,
+    gap: spacing.sm,
   },
   statusChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  statusChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
-  },
-  statusChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  statusChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  statusChipTextSelected: {
-    color: '#FFFFFF',
+    gap: spacing.xs,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 96,
-    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 100,
+    gap: spacing.sm,
   },
   emptyContent: {
     flexGrow: 1,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
     gap: 6,
+    ...shadows.card,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -202,32 +188,13 @@ const styles = StyleSheet.create({
   },
   cardId: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  statusBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-  },
-  status_pending: {
-    backgroundColor: '#FEF3C7',
-  },
-  status_completed: {
-    backgroundColor: '#DCFCE7',
-  },
-  status_cancelled: {
-    backgroundColor: '#FEE2E2',
-  },
-  statusText: {
-    fontSize: 11,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.textDisabled,
   },
   cardClient: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   cardFooter: {
     flexDirection: 'row',
@@ -236,11 +203,11 @@ const styles = StyleSheet.create({
   },
   cardMeta: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.textMuted,
   },
   cardTotal: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#16A34A',
+    fontWeight: '800',
+    color: colors.success,
   },
 });

@@ -7,6 +7,14 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_REST_URL && SUPABASE_ANON_KEY);
 }
 
+// Número de WhatsApp do suporte (com DDI/DDD, só dígitos ou com máscara — normalizado por
+// utils/whatsapp.ts) para o atalho "Enviar ID por WhatsApp" da tela de Configurações.
+export const SUPPORT_WHATSAPP_PHONE = process.env.EXPO_PUBLIC_SUPPORT_WHATSAPP_PHONE;
+
+export function isSupportPhoneConfigured(): boolean {
+  return Boolean(SUPPORT_WHATSAPP_PHONE);
+}
+
 export function supabaseHeaders(): Record<string, string> {
   return {
     apikey: SUPABASE_ANON_KEY ?? '',

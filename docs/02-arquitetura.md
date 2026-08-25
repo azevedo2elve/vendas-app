@@ -18,8 +18,42 @@
 | Validação | **Zod** | Schemas de validação integrados ao React Hook Form via `@hookform/resolvers/zod` |
 | Persistência reativa em UI | **`@nozbe/watermelondb/react`** (`withObservables`) | Conecta queries observáveis do WatermelonDB a props de componente nas telas de listagem |
 | Arquivos (backup) | **expo-file-system** (API nova: `File`/`Directory`/`Paths`, não a legada `FileSystem.*`) | Escreve o JSON de backup e abre o seletor nativo de arquivos para importar — sem depender de `expo-document-picker`, redundante com `File.pickFileAsync` |
+| Ícones | **@expo/vector-icons** (`Ionicons`) | Biblioteca de ícones mantida pela Expo, sem configuração nativa adicional — substituiu os emojis/glifos de texto usados como placeholder de ícone nas primeiras fases |
+| Área de transferência | **expo-clipboard** | Copiar o ID do dispositivo na tela de Configurações (`Clipboard.setStringAsync`) |
 
 > ⚠️ Nota de versão: o `package.json` atual do projeto está em **Expo ~57 / React Native 0.86 / React 19**. O `CLAUDE.md` referencia "Expo SDK 51+" como piso mínimo de compatibilidade das APIs usadas (expo-print, expo-sharing, netinfo) — a stack real instalada é mais recente. Sempre confira `package.json` como fonte da verdade da versão exata em uso.
+
+## 🎨 Design System (`src/theme/`)
+
+Fase 10 introduziu um design system centralizado, substituindo os valores de cor/espaçamento hardcoded que estavam espalhados (copiados e colados) em cada `StyleSheet.create` das telas:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `src/theme/colors.ts` | Paleta única (`colors.*`) — navy/slate (primária), azul royal (`accent`, ações), verde esmeralda (`success`, valores monetários), âmbar (`warning`), vermelho (`danger`), superfícies/bordas/texto |
+| `src/theme/spacing.ts` | Escala de espaçamento (`spacing.xxs`…`spacing.huge`) e raios de borda (`radii.sm`…`radii.pill`) |
+| `src/theme/typography.ts` | Presets de texto (`typography.h1`, `typography.body`, `typography.money`, etc.) |
+| `src/theme/shadows.ts` | Sombras padronizadas (`shadows.card`/`raised`/`floating`), com `Platform.select` para `elevation` (Android) vs. `shadow*` (iOS) |
+| `src/theme/layout.ts` | Larguras máximas de conteúdo (`CONTENT_MAX_WIDTH`, `WIDE_CONTENT_MAX_WIDTH`) usadas para centralizar telas em tablets grandes, evitando cards esticados de ponta a ponta |
+| `src/theme/index.ts` | Barrel export — importar sempre via `import { colors, spacing, radii, ... } from '@/theme'` |
+
+Não há um `ThemeProvider`/Context — os tokens são objetos estáticos importados diretamente nos `StyleSheet.create` de cada tela/componente (suficiente para um único tema claro; um `ThemeProvider` só se justificaria se o app ganhasse dark mode ou temas por cliente).
+
+### Componentes de UI reutilizáveis (`src/components/`)
+
+Além dos componentes de formulário já existentes (`MaskedInput`, `DiscountInput`, `SearchBar`, `Fab`, `PrimaryButton`, `QuantityStepper`, `LoadingView`, `EmptyState`), a Fase 10 adicionou:
+
+| Componente | Uso |
+|---|---|
+| `Card` | Container de superfície padrão (fundo branco, borda sutil, cantos arredondados) — substitui os `styles.card` duplicados em cada tela |
+| `Badge` | Etiqueta de status colorida (`tone`: `success`/`warning`/`danger`/`neutral`/`info`/`accent`) — usada para status de pedido (`ORDER_STATUS_TONE` em `types/database.ts`) |
+| `Chip` | Pílula selecionável (filtros de status, forma de pagamento, unidade de produto) — substitui os `TouchableOpacity` de chip duplicados |
+| `Avatar` | Círculo com iniciais do nome do cliente, cor determinada por hash do nome (determinística, sem estado) |
+| `StatCard` | Card de métrica do dashboard (ícone + valor + label) |
+| `SectionHeader` | Título de seção com ação opcional à direita (ex: "Ver todos") |
+| `Toast` (`ToastProvider`/`useToast`) | Sistema de notificação flutuante (sucesso/erro/info), montado uma vez em `App.tsx` acima do `RootNavigator` — usado para confirmações como "Cliente salvo com sucesso!" |
+| `OrderProgressBar` | Indicador de progresso do fluxo de 3 etapas de Nova Venda (Cliente → Itens → Fechamento) |
+
+> A centralização de conteúdo com largura máxima em telas largas (tablet) é feita hoje com um wrapper `View` local (`maxWidth` + `alignSelf: 'center'`) direto no `StyleSheet` de cada tela, não por um componente `ScreenContainer` compartilhado — os valores de `maxWidth` variam por tipo de tela (formulário estreito vs. listagem larga) e a divergência de padding entre telas não justificou ainda a abstração.
 
 ## 🧱 Por que WatermelonDB?
 
@@ -56,21 +90,26 @@ src/
 │   ├── schema.ts         # Definição das tabelas e colunas (appSchema)
 │   ├── migrations.ts     # Migrations incrementais de schema
 │   └── models/            # Classes Model (Client, Product, Order, OrderItem, LicenseControl)
-├── components/       # Componentes reutilizáveis de UI (Button, Input, CartItem, EmptyState...)
+├── theme/            # Design system: cores, espaçamento, tipografia, sombras, layout (ver seção acima)
+├── components/       # Componentes reutilizáveis de UI (Card, Badge, Chip, Avatar, PrimaryButton, EmptyState, Toast...)
 ├── screens/          # Telas organizadas por fluxo
 │   ├── License/           # Tela de bloqueio/renovação de licença
-│   ├── Clients/            # Lista, cadastro e edição de clientes
-│   ├── Products/           # Lista, cadastro e edição de produtos
-│   └── Orders/             # Nova ordem, carrinho, resumo, histórico
+│   ├── clients/            # Lista, cadastro e edição de clientes
+│   ├── products/           # Lista, cadastro e edição de produtos
+│   ├── orders/             # Nova ordem (wizard 3 etapas + sucesso), carrinho, resumo, histórico
+│   ├── backup/             # Exportação/Importação JSON
+│   └── settings/           # Configurações: empresa/vendedor, dispositivo/licença, backup, dados
 ├── services/         # Lógica de negócio isolada da UI
 │   ├── licenseService.ts  # Validação/renovação de licença
-│   ├── pdfService.ts       # Geração do HTML/PDF da ordem de venda
-│   └── backupService.ts   # Exportação/Importação JSON
+│   ├── orderService.ts    # Criação/atualização/exclusão de ordens de venda
+│   ├── pdfService.ts       # Geração do HTML/PDF da ordem de venda + compartilhamento (expo-print/expo-sharing)
+│   ├── backupService.ts   # Exportação/Importação JSON
+│   └── settingsService.ts # Dados cadastrais da empresa (company_settings) + resumo de contagens do banco
 ├── hooks/            # Hooks customizados
 │   ├── useLicenseGuard.ts # Bloqueia navegação se licença inválida
-│   └── useWatermelonData.ts # Observa queries do WatermelonDB em componentes
-├── navigation/       # Stacks e rotas (RootNavigator, tipos de rota)
-├── templates/        # Template HTML para expo-print (Ordem de Venda A4)
+│   └── useOrderDraft.tsx  # Estado do carrinho/rascunho de ordem via Context, compartilhado entre as 3 telas do wizard
+├── navigation/       # Stacks e rotas (RootNavigator, OrderDraftNavigator, tipos de rota)
+├── templates/        # Template HTML para expo-print (Ordem de Venda A4) — orderTemplate.ts
 ├── types/            # Interfaces e definições TypeScript compartilhadas
 └── utils/            # Funções puras (máscaras, validadores, formatação) sem estado ou I/O
 ```

@@ -1,18 +1,32 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { useOrderDraft } from '@/hooks/useOrderDraft';
 import { createOrder } from '@/services/orderService';
+import { Card } from '@/components/Card';
+import { Chip } from '@/components/Chip';
 import { DiscountInput } from '@/components/DiscountInput';
+import { OrderProgressBar } from '@/components/OrderProgressBar';
 import { PrimaryButton } from '@/components/PrimaryButton';
-import type { OrderDraftStackParamList, RootStackParamList } from '@/navigation/types';
+import type { OrderDraftStackParamList } from '@/navigation/types';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@/types/database';
-import { cartItemLineTotal, cartItemSubtotal } from '@/types/orderDraft';
+import { cartItemSubtotal } from '@/types/orderDraft';
+import { colors, radii, spacing } from '@/theme';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<OrderDraftStackParamList, 'OrderReview'>;
 
 const PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[];
+
+const PAYMENT_ICONS: Record<PaymentMethod, keyof typeof Ionicons.glyphMap> = {
+  dinheiro: 'cash-outline',
+  pix: 'flash-outline',
+  boleto: 'barcode-outline',
+  cartao_credito: 'card-outline',
+  cartao_debito: 'card-outline',
+  a_prazo: 'time-outline',
+};
 
 export function OrderReviewScreen({ navigation }: Props) {
   const { clientId, clientName, items, totals, reset } = useOrderDraft();
@@ -30,9 +44,7 @@ export function OrderReviewScreen({ navigation }: Props) {
     try {
       const order = await createOrder({ clientId, items, discountTotal, paymentMethod, notes });
       reset();
-
-      const parentNavigation = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-      parentNavigation?.replace('OrderDetail', { orderId: order.id });
+      navigation.navigate('OrderSuccess', { orderId: order.id });
     } catch (error) {
       Alert.alert('Erro ao salvar pedido', String(error));
     } finally {
@@ -41,118 +53,139 @@ export function OrderReviewScreen({ navigation }: Props) {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Cliente</Text>
-        <Text style={styles.clientName}>{clientName}</Text>
-      </View>
+    <View style={styles.container}>
+      <OrderProgressBar step={3} />
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Itens ({totals.quantityTotal})</Text>
-        {items.map((item) => (
-          <View key={item.productId} style={styles.itemRow}>
-            <View style={styles.itemInfo}>
-              <Text style={styles.itemName}>{item.productName}</Text>
-              <Text style={styles.itemDetail}>
-                {item.quantity} × {formatCurrencyBRL(item.unitPrice)}
-                {item.discountValue > 0 ? ` − ${formatCurrencyBRL(item.discountValue)} desc.` : ''}
-              </Text>
-            </View>
-            <Text style={styles.itemSubtotal}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>Cliente</Text>
+          <View style={styles.clientRow}>
+            <Ionicons name="person-circle-outline" size={22} color={colors.accent} />
+            <Text style={styles.clientName}>{clientName}</Text>
           </View>
-        ))}
-      </View>
+        </Card>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Fechamento</Text>
-
-        <DiscountInput label="Desconto geral do pedido" baseAmount={totals.totalGross} valueCents={discountTotal} onChange={setDiscountTotal} />
-
-        <View>
-          <Text style={styles.label}>Forma de pagamento</Text>
-          <View style={styles.paymentChips}>
-            {PAYMENT_METHODS.map((method) => (
-              <TouchableOpacity
-                key={method}
-                style={[styles.paymentChip, paymentMethod === method ? styles.paymentChipSelected : null]}
-                onPress={() => setPaymentMethod(method)}
-              >
-                <Text
-                  style={[styles.paymentChipText, paymentMethod === method ? styles.paymentChipTextSelected : null]}
-                >
-                  {PAYMENT_METHOD_LABELS[method]}
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>Itens ({totals.quantityTotal})</Text>
+          {items.map((item) => (
+            <View key={item.productId} style={styles.itemRow}>
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName}>{item.productName}</Text>
+                <Text style={styles.itemDetail}>
+                  {item.quantity} × {formatCurrencyBRL(item.unitPrice)}
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+              </View>
+              <Text style={styles.itemSubtotal}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
+            </View>
+          ))}
+        </Card>
 
-        <View>
-          <Text style={styles.label}>Observações</Text>
-          <TextInput
-            style={styles.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Observações gerais do pedido (opcional)"
-            placeholderTextColor="#94A3B8"
-            multiline
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>Fechamento</Text>
+
+          <DiscountInput
+            label="Desconto geral do pedido"
+            baseAmount={totals.totalGross}
+            valueCents={discountTotal}
+            onChange={setDiscountTotal}
           />
-        </View>
 
-        <View style={styles.summary}>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Total dos itens</Text>
-            <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+          <View>
+            <Text style={styles.label}>Forma de pagamento</Text>
+            <View style={styles.paymentChips}>
+              {PAYMENT_METHODS.map((method) => (
+                <Chip
+                  key={method}
+                  label={PAYMENT_METHOD_LABELS[method]}
+                  icon={PAYMENT_ICONS[method]}
+                  selected={paymentMethod === method}
+                  onPress={() => setPaymentMethod(method)}
+                />
+              ))}
+            </View>
           </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Desconto geral</Text>
-            <Text style={styles.summaryValue}>-{formatCurrencyBRL(discountTotal)}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryTotalLabel}>Total líquido</Text>
-            <Text style={styles.summaryTotalValue}>{formatCurrencyBRL(totalNet)}</Text>
-          </View>
-        </View>
-      </View>
 
-      <PrimaryButton label="Salvar pedido" onPress={handleSave} loading={saving} disabled={!clientId || items.length === 0} />
-    </ScrollView>
+          <View>
+            <Text style={styles.label}>Observações</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Observações gerais do pedido (opcional)"
+              placeholderTextColor={colors.slate400}
+              multiline
+            />
+          </View>
+
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Total dos itens</Text>
+              <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Desconto geral</Text>
+              <Text style={styles.summaryValue}>-{formatCurrencyBRL(discountTotal)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryTotalLabel}>Total líquido</Text>
+              <Text style={styles.summaryTotalValue}>{formatCurrencyBRL(totalNet)}</Text>
+            </View>
+          </View>
+        </Card>
+
+        <PrimaryButton
+          label="Salvar pedido"
+          icon="checkmark-circle-outline"
+          onPress={handleSave}
+          loading={saving}
+          disabled={!clientId || items.length === 0}
+        />
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
+  },
+  scroll: {
+    flex: 1,
   },
   content: {
-    padding: 20,
-    gap: 16,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    gap: spacing.md,
   },
   cardTitle: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   clientName: {
-    fontSize: 15,
-    color: '#334155',
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.slate700,
   },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingBottom: 8,
+    borderBottomColor: colors.borderLight,
+    paddingBottom: spacing.xs,
   },
   itemInfo: {
     flex: 1,
@@ -161,65 +194,45 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0F172A',
+    color: colors.textPrimary,
   },
   itemDetail: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.textMuted,
   },
   itemSubtotal: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#334155',
-    marginBottom: 6,
+    color: colors.slate700,
+    marginBottom: spacing.xs,
   },
   paymentChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  paymentChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
-  },
-  paymentChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  paymentChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  paymentChipTextSelected: {
-    color: '#FFFFFF',
+    gap: spacing.xs,
   },
   notesInput: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
     fontSize: 14,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
     minHeight: 70,
     textAlignVertical: 'top',
   },
   summary: {
     gap: 4,
-    paddingTop: 4,
+    paddingTop: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.borderLight,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -227,21 +240,21 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 13,
-    color: '#475569',
+    color: colors.textSecondary,
   },
   summaryValue: {
     fontSize: 13,
-    color: '#0F172A',
+    color: colors.textPrimary,
     fontWeight: '600',
   },
   summaryTotalLabel: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: colors.textPrimary,
   },
   summaryTotalValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#16A34A',
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.success,
   },
 });

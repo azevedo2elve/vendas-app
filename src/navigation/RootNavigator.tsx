@@ -11,7 +11,9 @@ import { ProductFormScreen } from '@/screens/products/ProductFormScreen';
 import { BackupScreen } from '@/screens/backup/BackupScreen';
 import { OrderListScreen } from '@/screens/orders/OrderListScreen';
 import { OrderDetailScreen } from '@/screens/orders/OrderDetailScreen';
+import { SettingsScreen } from '@/screens/settings/SettingsScreen';
 import { OrderDraftNavigator } from './OrderDraftNavigator';
+import { colors } from '@/theme';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -29,8 +31,16 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Início' }} />
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.textPrimary,
+          headerTitleStyle: { fontWeight: '700', color: colors.textPrimary },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
+        <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="ClientList" component={ClientListScreen} options={{ title: 'Clientes' }} />
         <Stack.Screen name="ClientForm" component={ClientFormScreen} options={{ title: 'Cliente' }} />
         <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: 'Produtos' }} />
@@ -38,6 +48,7 @@ export function RootNavigator() {
         <Stack.Screen name="Backup" component={BackupScreen} options={{ title: 'Backup' }} />
         <Stack.Screen name="OrderList" component={OrderListScreen} options={{ title: 'Ordens de Venda' }} />
         <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Pedido' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Configurações' }} />
         <Stack.Screen name="NewOrder" component={OrderDraftNavigator} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>

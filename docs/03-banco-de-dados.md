@@ -15,6 +15,7 @@ Tabelas do sistema:
 | `orders` | Ordens de venda (cabeçalho) |
 | `order_items` | Itens de cada ordem (linhas do carrinho, relação N:1 com `orders` e `products`) |
 | `license_control` | Estado local único do dispositivo relativo à licença de uso |
+| `company_settings` | Dados cadastrais únicos da empresa/vendedor (tela de Configurações) |
 
 ```text
 clients (1) ──────< orders (N)
@@ -219,13 +220,61 @@ export default class LicenseControl extends Model {
 
 ---
 
+## 🏢 Tabela `company_settings`
+
+Tabela de **linha única** (mesmo padrão de `license_control`, criada sob demanda na primeira vez que a tela de Configurações é aberta — ver `getOrCreateCompanySettings()` em `src/services/settingsService.ts`). Guarda os dados cadastrais da empresa/vendedor exibidos no cabeçalho das ordens de venda em PDF (e reservados para um futuro módulo de emissão fiscal). Adicionada na **Fase 11** (schema v2 → v3).
+
+| Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
+|---|---|---|---|---|
+| `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente (apenas 1 registro deve existir) |
+| `razao_social` | `string` | `string` | ✔️ | Razão social ou nome completo do emissor |
+| `nome_fantasia` | `string` | `string` | ⛔ | Nome fantasia (opcional) |
+| `document` | `string` | `string` | ✔️ (pode ficar vazio até o 1º preenchimento) | CPF ou CNPJ do emissor, sem máscara — validado com `isValidCpfOuCnpj` só quando não vazio |
+| `ie` | `string` | `string` | ⛔ | Inscrição Estadual ou Municipal (texto livre, opcional) |
+| `phone` | `string` | `string` | ✔️ (idem `document`) | Telefone/WhatsApp de contato comercial |
+| `email` | `string` | `string` | ⛔ | E-mail comercial (opcional, validado por formato quando preenchido) |
+| `address_street` / `address_number` / `address_district` / `address_city` / `address_state` / `address_zip` | `string` | `string` | ⛔ | Endereço estruturado (ao contrário de `clients.address`, que é texto livre único) — colunas separadas para permitir reaproveitar cada campo isoladamente em templates futuros (PDF, NF-e) |
+| `pix_key` | `string` | `string` | ⛔ | Chave PIX padrão para cobrança, exibida no resumo/PDF (texto livre — não há validação de formato, já que uma chave PIX pode ser CPF/CNPJ/e-mail/telefone/aleatória) |
+| `updated_at` | `number` (timestamp) | `Date` | ✔️ | Atualizado manualmente a cada `saveCompanySettings()` (não usa `@readonly`, pois o campo é regravado a cada salvamento, diferente de `created_at` nas outras tabelas) |
+
+> 📝 Diferente de `clients.document`/`phone`, não há checagem de duplicidade aqui (é sempre 1 único registro) nem relação com outras tabelas — é um registro de configuração isolado, não uma entidade de negócio.
+
+### Model (`src/database/models/CompanySettings.ts`)
+
+```ts
+import { Model } from '@nozbe/watermelondb';
+import { field, date } from '@nozbe/watermelondb/decorators';
+
+export default class CompanySettings extends Model {
+  static table = 'company_settings';
+
+  @field('razao_social') declare razaoSocial: string;
+  @field('nome_fantasia') declare nomeFantasia?: string;
+  @field('document') declare document: string;
+  @field('ie') declare ie?: string;
+  @field('phone') declare phone: string;
+  @field('email') declare email?: string;
+  @field('address_street') declare addressStreet?: string;
+  @field('address_number') declare addressNumber?: string;
+  @field('address_district') declare addressDistrict?: string;
+  @field('address_city') declare addressCity?: string;
+  @field('address_state') declare addressState?: string;
+  @field('address_zip') declare addressZip?: string;
+  @field('pix_key') declare pixKey?: string;
+
+  @date('updated_at') declare updatedAt: Date;
+}
+```
+
+---
+
 ## 🗂️ Definição do schema (`src/database/schema.ts`)
 
 ```ts
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'clients',
@@ -281,11 +330,30 @@ export default appSchema({
         { name: 'last_opened_at', type: 'number' },
       ],
     }),
+    tableSchema({
+      name: 'company_settings',
+      columns: [
+        { name: 'razao_social', type: 'string' },
+        { name: 'nome_fantasia', type: 'string', isOptional: true },
+        { name: 'document', type: 'string' },
+        { name: 'ie', type: 'string', isOptional: true },
+        { name: 'phone', type: 'string' },
+        { name: 'email', type: 'string', isOptional: true },
+        { name: 'address_street', type: 'string', isOptional: true },
+        { name: 'address_number', type: 'string', isOptional: true },
+        { name: 'address_district', type: 'string', isOptional: true },
+        { name: 'address_city', type: 'string', isOptional: true },
+        { name: 'address_state', type: 'string', isOptional: true },
+        { name: 'address_zip', type: 'string', isOptional: true },
+        { name: 'pix_key', type: 'string', isOptional: true },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
   ],
 });
 ```
 
-> 📝 Este schema ainda é enxuto (sem `order_number`, `updated_at` ou soft delete em `orders`/`order_items`). `order_items` já tem snapshot de nome/preço (`product_name_snapshot`, `unit_price`), adicionado na Fase 5.
+> 📝 Este schema ainda é enxuto (sem `order_number`, `updated_at` ou soft delete em `orders`/`order_items`). `order_items` já tem snapshot de nome/preço (`product_name_snapshot`, `unit_price`), adicionado na Fase 5. `company_settings` é a exceção com `updated_at` — ali faz sentido, pois é regravado a cada salvamento do formulário, não um `created_at` imutável.
 
 ## 🔁 Migrations
 
@@ -301,13 +369,38 @@ Toda alteração de schema (nova coluna, nova tabela) deve:
 |---|---|---|
 | 1 | Schema inicial (Fase 2): `clients`, `products`, `orders`, `order_items`, `license_control`. | — (schema inicial, sem migration) |
 | 2 | Fase 5 (Ordem de Venda): `orders` ganhou `total_gross`/`discount_total`/`total_net`/`notes` (substituindo `total_amount`/`discount`, que ficam órfãos no SQLite mas não são mais lidos pelo app); `order_items` ganhou `product_name_snapshot`/`discount_value`/`subtotal` (substituindo `total_price`). Não havia nenhuma tela usando os campos antigos ainda, então não foi preciso migrar dados existentes — só `addColumns`. | `src/database/migrations.ts` |
+| 3 | Fase 11 (tela de Configurações): nova tabela `company_settings` (`createTable`) — dados cadastrais da empresa/vendedor. Não afeta nenhuma tabela existente. | `src/database/migrations.ts` |
 
 ```ts
 // src/database/migrations.ts
-import { addColumns, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations';
+import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations';
 
 export default schemaMigrations({
   migrations: [
+    {
+      toVersion: 3,
+      steps: [
+        createTable({
+          name: 'company_settings',
+          columns: [
+            { name: 'razao_social', type: 'string' },
+            { name: 'nome_fantasia', type: 'string', isOptional: true },
+            { name: 'document', type: 'string' },
+            { name: 'ie', type: 'string', isOptional: true },
+            { name: 'phone', type: 'string' },
+            { name: 'email', type: 'string', isOptional: true },
+            { name: 'address_street', type: 'string', isOptional: true },
+            { name: 'address_number', type: 'string', isOptional: true },
+            { name: 'address_district', type: 'string', isOptional: true },
+            { name: 'address_city', type: 'string', isOptional: true },
+            { name: 'address_state', type: 'string', isOptional: true },
+            { name: 'address_zip', type: 'string', isOptional: true },
+            { name: 'pix_key', type: 'string', isOptional: true },
+            { name: 'updated_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
     {
       toVersion: 2,
       steps: [
@@ -333,6 +426,8 @@ export default schemaMigrations({
   ],
 });
 ```
+
+> 📝 Migrations mais novas entram **no topo** do array `migrations` (mesma ordem usada no exemplo oficial do WatermelonDB) — `schemaMigrations` não depende da ordem para funcionar, mas manter a mais recente primeiro facilita a leitura do histórico.
 
 ## 📎 Documentos relacionados
 

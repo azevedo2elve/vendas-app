@@ -1,4 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radii } from '@/theme';
 
 type QuantityStepperProps = {
   value: number;
@@ -13,12 +15,18 @@ export function QuantityStepper({ value, onChange, min = 1 }: QuantityStepperPro
         style={styles.button}
         onPress={() => onChange(Math.max(min, value - 1))}
         accessibilityLabel="Diminuir quantidade"
+        activeOpacity={0.7}
       >
-        <Text style={styles.buttonText}>−</Text>
+        <Ionicons name="remove" size={18} color={colors.accent} />
       </TouchableOpacity>
       <Text style={styles.value}>{value}</Text>
-      <TouchableOpacity style={styles.button} onPress={() => onChange(value + 1)} accessibilityLabel="Aumentar quantidade">
-        <Text style={styles.buttonText}>+</Text>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => onChange(value + 1)}
+        accessibilityLabel="Aumentar quantidade"
+        activeOpacity={0.7}
+      >
+        <Ionicons name="add" size={18} color={colors.accent} />
       </TouchableOpacity>
     </View>
   );
@@ -31,23 +39,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   button: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EFF6FF',
+    width: 32,
+    height: 32,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2563EB',
-  },
   value: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
-    minWidth: 20,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    minWidth: 24,
     textAlign: 'center',
   },
 });

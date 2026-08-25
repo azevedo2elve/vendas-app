@@ -1,14 +1,23 @@
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import type { ComponentProps } from 'react';
+import { StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radii, shadows, spacing } from '@/theme';
 
 type FabProps = {
   onPress: () => void;
   accessibilityLabel: string;
+  icon?: ComponentProps<typeof Ionicons>['name'];
 };
 
-export function Fab({ onPress, accessibilityLabel }: FabProps) {
+export function Fab({ onPress, accessibilityLabel, icon = 'add' }: FabProps) {
   return (
-    <TouchableOpacity style={styles.fab} onPress={onPress} accessibilityLabel={accessibilityLabel}>
-      <Text style={styles.icon}>+</Text>
+    <TouchableOpacity
+      style={styles.fab}
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel}
+      activeOpacity={0.85}
+    >
+      <Ionicons name={icon} size={28} color={colors.white} />
     </TouchableOpacity>
   );
 }
@@ -16,24 +25,14 @@ export function Fab({ onPress, accessibilityLabel }: FabProps) {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#2563EB',
+    right: spacing.lg,
+    bottom: spacing.xl,
+    width: 60,
+    height: 60,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  icon: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '400',
-    lineHeight: 30,
+    ...shadows.floating,
   },
 });

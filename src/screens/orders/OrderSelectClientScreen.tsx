@@ -2,16 +2,19 @@ import { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Q } from '@nozbe/watermelondb';
 import { withObservables } from '@nozbe/watermelondb/react';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { database } from '@/database';
 import Client from '@/database/models/Client';
+import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
-import { SearchBar } from '@/components/SearchBar';
+import { OrderProgressBar } from '@/components/OrderProgressBar';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { SearchBar } from '@/components/SearchBar';
 import { useOrderDraft } from '@/hooks/useOrderDraft';
 import type { OrderDraftStackParamList, RootStackParamList } from '@/navigation/types';
+import { colors, radii, shadows, spacing } from '@/theme';
 import { maskCpfCnpj, maskPhone } from '@/utils/masks';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type Props = NativeStackScreenProps<OrderDraftStackParamList, 'OrderSelectClient'>;
 
@@ -46,31 +49,47 @@ function OrderSelectClientScreenBase({ navigation, clients, onSearchChange }: Li
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <SearchBar placeholder="Buscar por nome ou CPF/CNPJ" onDebouncedChange={onSearchChange} />
-      </View>
+      <OrderProgressBar step={1} />
 
-      <FlatList
-        data={clients}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={clients.length === 0 ? styles.emptyContent : styles.listContent}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => handleSelect(item)}>
-            <Text style={styles.cardTitle}>{item.name}</Text>
-            <Text style={styles.cardSubtitle}>{maskCpfCnpj(item.document)}</Text>
-            <Text style={styles.cardSubtitle}>{maskPhone(item.phone)}</Text>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={
-          <EmptyState
-            title="Nenhum cliente encontrado"
-            message="Cadastre um cliente para iniciar uma ordem de venda."
+      <View style={styles.content}>
+        <View style={styles.searchContainer}>
+          <Text style={styles.heading}>Selecione o cliente</Text>
+          <SearchBar placeholder="Buscar por nome ou CPF/CNPJ" onDebouncedChange={onSearchChange} />
+        </View>
+
+        <FlatList
+          data={clients}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={clients.length === 0 ? styles.emptyContent : styles.listContent}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.card} onPress={() => handleSelect(item)} activeOpacity={0.7}>
+              <Avatar name={item.name} />
+              <View style={styles.cardInfo}>
+                <Text style={styles.cardTitle}>{item.name}</Text>
+                <Text style={styles.cardSubtitle}>
+                  {maskCpfCnpj(item.document)} · {maskPhone(item.phone)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.slate300} />
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={
+            <EmptyState
+              icon="people-outline"
+              title="Nenhum cliente encontrado"
+              message="Cadastre um cliente para iniciar uma ordem de venda."
+            />
+          }
+        />
+
+        <View style={styles.footer}>
+          <PrimaryButton
+            label="Cadastrar novo cliente"
+            variant="outline"
+            icon="person-add-outline"
+            onPress={handleNewClient}
           />
-        }
-      />
-
-      <View style={styles.footer}>
-        <PrimaryButton label="Cadastrar novo cliente" variant="outline" onPress={handleNewClient} />
+        </View>
       </View>
     </View>
   );
@@ -99,41 +118,60 @@ export function OrderSelectClientScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
+  },
+  content: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   searchContainer: {
-    padding: 16,
-    paddingBottom: 8,
+    padding: spacing.lg,
+    paddingBottom: spacing.xs,
+    gap: spacing.sm,
+  },
+  heading: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
   },
   emptyContent: {
     flexGrow: 1,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border,
+    gap: spacing.sm,
+    ...shadows.card,
+  },
+  cardInfo: {
+    flex: 1,
     gap: 2,
   },
   cardTitle: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   cardSubtitle: {
-    fontSize: 13,
-    color: '#475569',
+    fontSize: 12.5,
+    color: colors.textMuted,
   },
   footer: {
-    padding: 16,
+    padding: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
 });

@@ -29,6 +29,11 @@ export function maskPhone(value: string): string {
   return digits.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d{1,4})$/, '$1-$2');
 }
 
+export function maskCep(value: string): string {
+  const digits = onlyDigits(value).slice(0, 8);
+  return digits.replace(/(\d{5})(\d{1,3})$/, '$1-$2');
+}
+
 export function formatCurrencyBRL(cents: number): string {
   const value = (Number.isFinite(cents) ? cents : 0) / 100;
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

@@ -25,10 +25,12 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 3** | Módulo Clientes (CRUD + busca indexada) | 🟢 Concluído |
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
-| **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | ⚪ Não iniciado |
+| **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
 | **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (`licenseService` + `useLicenseGuard` + `LicenseBlockedScreen` prontos; acesso somente-leitura em `expired` depende das Fases 3/4/8) |
 | **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (Clientes + Produtos prontos; falta incluir `orders`/`order_items` agora que a Fase 5 existe; acesso mesmo com licença `expired` ainda não implementado) |
-| **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado |
+| **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado (revisão visual das telas críticas antecipada pela Fase 10; faltam testes automatizados e build EAS) |
+| **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
+| **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -121,10 +123,15 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 6 — PDF e compartilhamento
 
+### 2026-08-24 — Implementação real do PDF, dentro do redesign da Fase 10
+- **Tipo:** feature
+- **Resumo:** `templates/orderTemplate.ts` e `services/pdfService.ts` (que só existiam como exemplo de referência em `docs/05`) foram implementados de fato, junto com o redesign visual — ver detalhes na entrada da Fase 10 abaixo.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
-- [ ] `templates/orderTemplate.ts` (HTML do PDF A4).
-- [ ] `services/pdfService.ts` (`expo-print` + `expo-sharing`).
-- [ ] Testar compartilhamento via WhatsApp e e-mail em dispositivo real (Android/iOS).
+- [x] `templates/orderTemplate.ts` (HTML do PDF A4).
+- [x] `services/pdfService.ts` (`expo-print` + `expo-sharing`).
+- [ ] Testar compartilhamento via WhatsApp e e-mail em dispositivo real (Android/iOS) — implementado e validado só via bundle/type-check nesta fase; sem acesso a device físico/tablet no ambiente de desenvolvimento.
 
 ---
 
@@ -182,9 +189,48 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 ## Fase 9 — Polimento e build
 
 ### Tarefas planejadas
-- [ ] Revisão de UX em telas críticas (carrinho, bloqueio de licença).
+- [x] Revisão de UX em telas críticas (carrinho, bloqueio de licença) — antecipada pelo redesign da Fase 10.
 - [ ] Configuração de build via EAS (`eas.json`).
 - [ ] Checklist final de conformidade com `docs/` antes do release.
+
+---
+
+## Fase 10 — Redesign visual comercial (design system, dashboard, PDF, tablet)
+
+### 2026-08-24 — Reformulação de UI/UX para apresentação comercial ao cliente
+- **Tipo:** feature / refactor
+- **Resumo:** Reformulação visual completa do app, focada em tablet, para demonstração comercial. Principais mudanças:
+  - **Design system novo** (`src/theme/`: `colors`, `spacing`/`radii`, `typography`, `shadows`, `layout`) substituindo os valores hardcoded duplicados em cada `StyleSheet.create` — paleta navy/slate + azul royal (`accent`) + verde esmeralda (`success`, valores monetários) + âmbar/vermelho (avisos/erros). Ver [docs/02-arquitetura.md](./02-arquitetura.md#-design-system-srctheme).
+  - **Biblioteca de ícones** `@expo/vector-icons` (`Ionicons`) adicionada — substitui emojis/glifos de texto usados como placeholder (ex: 💬 do WhatsApp, `+`/`−` de texto no stepper).
+  - **Novos componentes reutilizáveis:** `Card`, `Badge`, `Chip`, `Avatar`, `StatCard`, `SectionHeader`, `IconButton`, `Toast`/`ToastProvider`, `ScreenContainer`, `OrderProgressBar` — ver tabela em [docs/05-modulos-telas.md](./05-modulos-telas.md#-componentes-reutilizáveis). Componentes antigos (`PrimaryButton`, `Fab`, `EmptyState`, `SearchBar`, `QuantityStepper`, `MaskedInput`, `DiscountInput`, `LoadingView`) foram migrados para o novo design system, mantendo a mesma API pública (sem breaking changes nas telas que os usam).
+  - **`HomeScreen` virou um dashboard real** (era um painel de diagnóstico técnico): saudação dinâmica, indicadores de conectividade (`netinfo`) e licença, 3 `StatCard`s (vendido hoje / pedidos emitidos / clientes cadastrados), ação principal "Nova Venda" + atalhos secundários, lista dos últimos 5 pedidos. Ver [docs/05](./05-modulos-telas.md#-dashboard--homescreen-srcscreenshomescreentsx).
+  - **Fluxo de Nova Venda redesenhado:** `OrderSelectClientScreen` com `Avatar`; `OrderItemsScreen` com catálogo em cards (grade responsiva 1–2 colunas), barra flutuante inferior fixa (contagem + total + "Avançar") e modal de carrinho — descontos por item removidos desta etapa (movidos para desconto geral único em `OrderReviewScreen`, com `Chip`s de forma de pagamento); nova tela **`OrderSuccessScreen`** ao final, com ícone animado, resumo do pedido e botão "Compartilhar Ordem de Venda (PDF / WhatsApp)".
+  - **PDF real implementado** (`templates/orderTemplate.ts` + `services/pdfService.ts`, usando `expo-print`/`expo-sharing` já instalados desde a Fase 1, mas nunca implementados até então — Fase 6 estava com status "Não iniciado"): gera um HTML A4 com cabeçalho, dados do cliente, tabela de itens, totais e observações, convertido em PDF e compartilhado via menu nativo. Chamado a partir de `OrderSuccessScreen` e `OrderDetailScreen` (reemissão).
+  - **Telas de Clientes/Produtos/Ordens/Backup/Licença** todas migradas para os novos componentes (`Card`, `Badge`, `Chip`) e paleta — sem mudança de comportamento/regra de negócio, só visual.
+  - **Tablet:** `app.json` — `orientation` mudou de `"portrait"` fixo para `"default"` (aceita retrato e paisagem, comportamento recomendado para tablets usados em suporte de mesa). Telas centralizam conteúdo com largura máxima (`maxWidth` local por tela, ex.: 720/820/960px) para não esticar cards de ponta a ponta em telas grandes.
+  - **Feedback visual:** sistema de `Toast` (`ToastProvider`, montado em `App.tsx`) para confirmações ("Cliente salvo com sucesso!", "Produto excluído.", ida para o início após emitir pedido); `EmptyState` ganhou ícone ilustrativo por contexto (antes só texto).
+- **Escopo desta fase (por pedido explícito do usuário):** o foco foi frontend/UX — nenhuma regra de negócio, schema do WatermelonDB ou fluxo de licenciamento foi alterado. Onde não havia funcionalidade real (PDF), foi implementada de verdade em vez de mockada, por já existir dependência instalada e ser central à demo comercial (módulo #4 do `CLAUDE.md`).
+- **Validação:** `tsc --noEmit` sem erros e `expo export --platform android` (bundle Metro completo) sem erros. **Não foi possível validar visualmente em tablet físico/emulador** neste ambiente de desenvolvimento — recomenda-se um passo de QA visual em dispositivo real antes da apresentação ao cliente.
+- **Docs afetados:** `docs/01-visao-geral.md`, `docs/02-arquitetura.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+---
+
+## Fase 11 — Tela de Configurações
+
+### 2026-08-25 — `SettingsScreen`: dados da empresa, dispositivo/licença, backup e dados
+- **Tipo:** feature / schema
+- **Resumo:** Implementada a tela de Configurações (`src/screens/settings/SettingsScreen.tsx`), acessível via ícone de engrenagem no cabeçalho da `HomeScreen`. Três seções:
+  1. **Dados da Empresa/Vendedor** — formulário (React Hook Form + Zod) persistido numa nova tabela `company_settings` do WatermelonDB (schema **v2 → v3**, `createTable` — linha única, mesmo padrão de `license_control`; ver [docs/03](./03-banco-de-dados.md#-tabela-company_settings)), via novo `src/services/settingsService.ts`. Campos: razão social/nome, nome fantasia, CNPJ/CPF, IE/IM, telefone, e-mail, endereço estruturado (logradouro/número/bairro/cidade/UF/CEP — nova máscara `maskCep` em `utils/masks.ts`) e chave PIX.
+  2. **Sistema e Sobre** — ID do dispositivo (reaproveitado de `licenseService`, **não** gerado via `expo-application`/Android ID — precisa ser o mesmo valor já registrado no Supabase para o suporte conseguir liberar a licença) com botões "Copiar ID" (`expo-clipboard`, nova dependência) e "Enviar por WhatsApp" (novo 2º parâmetro `message` em `utils/whatsapp.ts#openWhatsApp`, novo `EXPO_PUBLIC_SUPPORT_WHATSAPP_PHONE` em `.env`/`services/api.ts`); status de conexão (`useNetInfo`) e de licença (nova leitura passiva `licenseService.getCurrentLicenseSnapshot()` + botão "Verificar Licença Agora" chamando `evaluateLicense()`); versão do app lida de `app.json` via novo `utils/appInfo.ts`.
+  3. **Dados, Backup e Armazenamento** — contadores ao vivo de Clientes/Produtos/Ordens (`settingsService.getDatabaseSummary()`); exportação de backup reaproveitando `backupService.exportBackup()` diretamente; importação delega para a `BackupScreen` já existente (evita duplicar o fluxo de prévia/confirmação); "Limpar Pedidos de Teste" (nova `orderService.clearAllOrders()`) protegido por um modal de confirmação customizado (zona de perigo).
+- **Decisões que divergiram do pedido original:** não foi usado `expo-application` (Android ID) nem `AsyncStorage`, como sugerido no pedido — ver justificativas nas seções 2 (ID do dispositivo) e 1 (persistência via WatermelonDB, não AsyncStorage, para manter `database/` como única fonte de verdade, consistente com a regra de arquitetura já documentada em [docs/02](./02-arquitetura.md#regra-de-dependência-entre-camadas)) do módulo em [docs/05](./05-modulos-telas.md#️-módulo-configurações).
+- **Validação:** `tsc --noEmit` e `expo export --platform android` (bundle Metro completo) sem erros. Sem acesso a dispositivo/emulador físico neste ambiente — recomenda-se testar a migração do schema (v2 → v3) e o fluxo de compartilhamento/WhatsApp num build real antes da entrega.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`, `.env.example`.
+
+### 2026-08-25 — Seções da tela de Configurações viram accordion recolhível
+- **Tipo:** fix / feature
+- **Resumo:** A pedido do usuário ("não ficar muito grande a tela"), as 3 seções de `SettingsScreen` passaram a ser recolhíveis. Novo componente `src/components/CollapsibleCard.tsx` (cabeçalho tocável com chevron animado). Comportamento de accordion de seção única: só uma seção fica expandida por vez (abrir uma recolhe a anterior); todas começam recolhidas ao entrar na tela.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
 ## 📎 Documentos relacionados
 

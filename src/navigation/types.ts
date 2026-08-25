@@ -8,10 +8,12 @@ export type RootStackParamList = {
   NewOrder: undefined;
   OrderList: undefined;
   OrderDetail: { orderId: string };
+  Settings: undefined;
 };
 
 export type OrderDraftStackParamList = {
   OrderSelectClient: undefined;
   OrderItems: undefined;
   OrderReview: undefined;
+  OrderSuccess: { orderId: string };
 };

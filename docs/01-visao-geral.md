@@ -45,9 +45,9 @@ Isso implica decisões de arquitetura específicas:
 
 3. Nova Ordem de Venda
    ├─ Seleciona (ou cadastra na hora) o Cliente
-   ├─ Adiciona Produtos ao carrinho
-   │    └─ Define quantidade e desconto por item
-   ├─ Revisa o Resumo (subtotal, descontos, total)
+   ├─ Adiciona Produtos ao carrinho (catálogo em cards + carrinho flutuante)
+   │    └─ Define a quantidade de cada item
+   ├─ Revisa o Resumo (subtotal, desconto geral, forma de pagamento, total)
    └─ Confirma → Ordem persistida no WatermelonDB
 
 4. Geração do documento
