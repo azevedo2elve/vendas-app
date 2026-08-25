@@ -2,15 +2,21 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { withObservables } from '@nozbe/watermelondb/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { database } from '@/database';
 import Order from '@/database/models/Order';
 import Client from '@/database/models/Client';
 import OrderItem from '@/database/models/OrderItem';
+import { Badge } from '@/components/Badge';
+import { Card } from '@/components/Card';
 import { LoadingView } from '@/components/LoadingView';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { useToast } from '@/components/Toast';
 import { deleteOrder, setOrderStatus } from '@/services/orderService';
+import { shareOrderPdf } from '@/services/pdfService';
 import type { RootStackParamList } from '@/navigation/types';
-import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/types/database';
+import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, PAYMENT_METHOD_LABELS } from '@/types/database';
+import { colors, radii, spacing } from '@/theme';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetail'>;
@@ -19,13 +25,27 @@ type DetailProps = { order: Order; client: Client; items: OrderItem[]; onBack: (
 
 function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
   const [updating, setUpdating] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const { showToast } = useToast();
 
   async function handleComplete() {
     setUpdating(true);
     try {
       await setOrderStatus(order.id, 'completed');
+      showToast('Pedido concluído!', 'success');
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleShare() {
+    setSharing(true);
+    try {
+      await shareOrderPdf(order, client, items);
+    } catch (error) {
+      Alert.alert('Não foi possível compartilhar', String(error instanceof Error ? error.message : error));
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -39,6 +59,7 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
           setUpdating(true);
           try {
             await setOrderStatus(order.id, 'cancelled');
+            showToast('Pedido cancelado.', 'info');
           } finally {
             setUpdating(false);
           }
@@ -63,20 +84,32 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.card}>
+      <Card style={styles.card}>
         <View style={styles.headerRow}>
           <Text style={styles.orderId}>#{order.id.slice(0, 8).toUpperCase()}</Text>
-          <View style={[styles.statusBadge, styles[`status_${order.status}`]]}>
-            <Text style={styles.statusText}>{ORDER_STATUS_LABELS[order.status]}</Text>
-          </View>
+          <Badge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONE[order.status]} />
         </View>
-        <Text style={styles.row}>Cliente: {client?.name ?? '—'}</Text>
-        <Text style={styles.row}>Data: {order.createdAt.toLocaleString('pt-BR')}</Text>
-        <Text style={styles.row}>Forma de pagamento: {PAYMENT_METHOD_LABELS[order.paymentMethod]}</Text>
-        {order.notes ? <Text style={styles.row}>Observações: {order.notes}</Text> : null}
-      </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="person-outline" size={16} color={colors.slate500} />
+          <Text style={styles.row}>{client?.name ?? '—'}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="calendar-outline" size={16} color={colors.slate500} />
+          <Text style={styles.row}>{order.createdAt.toLocaleString('pt-BR')}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="wallet-outline" size={16} color={colors.slate500} />
+          <Text style={styles.row}>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</Text>
+        </View>
+        {order.notes ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="chatbox-ellipses-outline" size={16} color={colors.slate500} />
+            <Text style={styles.row}>{order.notes}</Text>
+          </View>
+        ) : null}
+      </Card>
 
-      <View style={styles.card}>
+      <Card style={styles.card}>
         <Text style={styles.cardTitle}>Itens</Text>
         {items.map((item) => (
           <View key={item.id} style={styles.itemRow}>
@@ -105,15 +138,27 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
             <Text style={styles.summaryTotalValue}>{formatCurrencyBRL(order.totalNet)}</Text>
           </View>
         </View>
-      </View>
+      </Card>
 
+      <PrimaryButton
+        label="Compartilhar (PDF / WhatsApp)"
+        variant="success"
+        icon="share-social-outline"
+        onPress={handleShare}
+        loading={sharing}
+      />
       {order.status === 'pending' ? (
-        <PrimaryButton label="Marcar como concluído" onPress={handleComplete} loading={updating} />
+        <PrimaryButton
+          label="Marcar como concluído"
+          icon="checkmark-circle-outline"
+          onPress={handleComplete}
+          loading={updating}
+        />
       ) : null}
       {order.status !== 'cancelled' ? (
         <PrimaryButton label="Cancelar pedido" variant="outline" onPress={handleCancel} disabled={updating} />
       ) : null}
-      <PrimaryButton label="Excluir pedido" variant="danger" onPress={handleDelete} disabled={updating} />
+      <PrimaryButton label="Excluir pedido" variant="danger" icon="trash-outline" onPress={handleDelete} disabled={updating} />
     </ScrollView>
   );
 }
@@ -153,66 +198,52 @@ export function OrderDetailScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    gap: 16,
+    padding: spacing.lg,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    gap: spacing.xs,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   orderId: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  statusBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-  },
-  status_pending: {
-    backgroundColor: '#FEF3C7',
-  },
-  status_completed: {
-    backgroundColor: '#DCFCE7',
-  },
-  status_cancelled: {
-    backgroundColor: '#FEE2E2',
-  },
-  statusText: {
-    fontSize: 11,
     fontWeight: '700',
-    color: '#334155',
+    color: colors.textDisabled,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   row: {
-    fontSize: 13,
-    color: '#475569',
+    fontSize: 13.5,
+    color: colors.textSecondary,
   },
   cardTitle: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 4,
   },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingBottom: 8,
+    borderBottomColor: colors.borderLight,
+    paddingBottom: spacing.xs,
+    marginBottom: spacing.xs,
   },
   itemInfo: {
     flex: 1,
@@ -221,22 +252,22 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0F172A',
+    color: colors.textPrimary,
   },
   itemDetail: {
     fontSize: 12,
-    color: '#64748B',
+    color: colors.textMuted,
   },
   itemSubtotal: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   summary: {
     gap: 4,
-    paddingTop: 4,
+    paddingTop: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: colors.borderLight,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -244,21 +275,21 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 13,
-    color: '#475569',
+    color: colors.textSecondary,
   },
   summaryValue: {
     fontSize: 13,
-    color: '#0F172A',
+    color: colors.textPrimary,
     fontWeight: '600',
   },
   summaryTotalLabel: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: colors.textPrimary,
   },
   summaryTotalValue: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#16A34A',
+    fontWeight: '800',
+    color: colors.success,
   },
 });

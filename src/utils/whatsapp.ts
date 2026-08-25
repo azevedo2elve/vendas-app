@@ -1,8 +1,9 @@
 import { Linking } from 'react-native';
 import { onlyDigits } from './masks';
 
-export async function openWhatsApp(phone: string): Promise<void> {
+export async function openWhatsApp(phone: string, message?: string): Promise<void> {
   const digits = onlyDigits(phone);
   const withCountryCode = digits.startsWith('55') ? digits : `55${digits}`;
-  await Linking.openURL(`https://wa.me/${withCountryCode}`);
+  const query = message ? `?text=${encodeURIComponent(message)}` : '';
+  await Linking.openURL(`https://wa.me/${withCountryCode}${query}`);
 }

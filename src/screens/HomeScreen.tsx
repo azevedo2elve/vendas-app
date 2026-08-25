@@ -1,40 +1,96 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNetInfo } from '@react-native-community/netinfo';
+import { Ionicons } from '@expo/vector-icons';
+import { Q } from '@nozbe/watermelondb';
 import { database } from '@/database';
-import LicenseControl from '@/database/models/LicenseControl';
+import Client from '@/database/models/Client';
+import Order from '@/database/models/Order';
+import { Badge } from '@/components/Badge';
+import { Card } from '@/components/Card';
+import { EmptyState } from '@/components/EmptyState';
 import { LoadingView } from '@/components/LoadingView';
+import { SectionHeader } from '@/components/SectionHeader';
+import { StatCard } from '@/components/StatCard';
 import { testSupabaseFetch } from '@/services/licenseService';
 import type { RootStackParamList } from '@/navigation/types';
+import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
+import { colors, radii, shadows, spacing } from '@/theme';
+import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
-type DiagnosticsState = {
-  clients: number;
-  products: number;
-  orders: number;
-  license: LicenseControl;
+type RecentOrder = { order: Order; clientName: string };
+
+type DashboardData = {
+  clientsCount: number;
+  ordersCount: number;
+  totalToday: number;
+  recentOrders: RecentOrder[];
 };
 
-async function loadDiagnostics(): Promise<DiagnosticsState> {
-  const [clients, products, orders, licenses] = await Promise.all([
-    database.get('clients').query().fetchCount(),
-    database.get('products').query().fetchCount(),
-    database.get('orders').query().fetchCount(),
-    database.get<LicenseControl>('license_control').query().fetch(),
+async function loadDashboardData(): Promise<DashboardData> {
+  const ordersCollection = database.get<Order>('orders');
+  const clientsCollection = database.get<Client>('clients');
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [clientsCount, ordersCount, todayOrders, recentOrders] = await Promise.all([
+    clientsCollection.query().fetchCount(),
+    ordersCollection.query().fetchCount(),
+    ordersCollection
+      .query(Q.where('created_at', Q.gte(startOfDay.getTime())), Q.where('status', Q.notEq('cancelled')))
+      .fetch(),
+    ordersCollection.query(Q.sortBy('created_at', Q.desc), Q.take(5)).fetch(),
   ]);
 
-  return { clients, products, orders, license: licenses[0] };
+  const totalToday = todayOrders.reduce((acc, order) => acc + order.totalNet, 0);
+
+  const recentWithClients = await Promise.all(
+    recentOrders.map(async (order) => {
+      const client = await order.client.fetch();
+      return { order, clientName: client?.name ?? '—' };
+    })
+  );
+
+  return { clientsCount, ordersCount, totalToday, recentOrders: recentWithClients };
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
 }
 
 export function HomeScreen({ navigation }: Props) {
-  const [diagnostics, setDiagnostics] = useState<DiagnosticsState | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const insets = useSafeAreaInsets();
+  const netInfo = useNetInfo();
 
-  useEffect(() => {
-    loadDiagnostics().then(setDiagnostics);
+  const refresh = useCallback(async () => {
+    const dashboard = await loadDashboardData();
+    setData(dashboard);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }
 
   async function handleTestSupabase() {
     setTesting(true);
@@ -44,73 +100,178 @@ export function HomeScreen({ navigation }: Props) {
     setTesting(false);
   }
 
-  if (!diagnostics) {
-    return <LoadingView message="Verificando banco de dados local..." />;
+  if (!data) {
+    return <LoadingView message="Carregando painel..." />;
   }
 
+  const isOnline = netInfo.isConnected !== false;
+  const today = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Força de Vendas Offline</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Licença</Text>
-        <Text style={styles.row}>Status: {diagnostics.license.licenseStatus}</Text>
-        <Text style={styles.row}>ID do dispositivo: {diagnostics.license.deviceId}</Text>
-        <Text style={styles.row}>
-          Expira em: {diagnostics.license.licenseExpiresAt.toLocaleString('pt-BR')}
-        </Text>
-        <Text style={styles.row}>
-          Último acesso: {diagnostics.license.lastOpenedAt.toLocaleString('pt-BR')}
-        </Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.md }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
+    >
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.dateText}>{today}</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => navigation.navigate('Settings')}
+            accessibilityLabel="Configurações"
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.slate600} />
+          </TouchableOpacity>
+          <View style={styles.statusPills}>
+            <View style={[styles.statusPill, isOnline ? styles.statusPillOnline : styles.statusPillOffline]}>
+              <Ionicons
+                name={isOnline ? 'wifi' : 'cloud-offline-outline'}
+                size={13}
+                color={isOnline ? colors.success : colors.warningStrong}
+              />
+              <Text style={[styles.statusPillText, { color: isOnline ? colors.successStrong : colors.warningStrong }]}>
+                {isOnline ? 'Online' : 'Modo Offline Ativo'}
+              </Text>
+            </View>
+            <View style={[styles.statusPill, styles.statusPillLicense]}>
+              <Ionicons name="shield-checkmark" size={13} color={colors.accent} />
+              <Text style={[styles.statusPillText, { color: colors.accentDark }]}>Licença Válida</Text>
+            </View>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Módulos</Text>
-        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('ClientList')}>
-          <Text style={styles.navButtonText}>Clientes</Text>
-          <Text style={styles.navButtonChevron}>›</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('ProductList')}>
-          <Text style={styles.navButtonText}>Produtos</Text>
-          <Text style={styles.navButtonChevron}>›</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('OrderList')}>
-          <Text style={styles.navButtonText}>Ordens de Venda</Text>
-          <Text style={styles.navButtonChevron}>›</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('Backup')}>
-          <Text style={styles.navButtonText}>Backup (exportar/importar)</Text>
-          <Text style={styles.navButtonChevron}>›</Text>
-        </TouchableOpacity>
+      <View style={styles.statsRow}>
+        <StatCard label="Vendido hoje" value={formatCurrencyBRL(data.totalToday)} icon="cash-outline" tone="success" />
+        <StatCard label="Pedidos emitidos" value={String(data.ordersCount)} icon="receipt-outline" tone="accent" />
+        <StatCard label="Clientes cadastrados" value={String(data.clientsCount)} icon="people-outline" tone="neutral" />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Banco de dados local (WatermelonDB)</Text>
-        <Text style={styles.row}>Clientes cadastrados: {diagnostics.clients}</Text>
-        <Text style={styles.row}>Produtos cadastrados: {diagnostics.products}</Text>
-        <Text style={styles.row}>Ordens de venda: {diagnostics.orders}</Text>
+      <View style={styles.quickActions}>
+        <TouchableOpacity
+          style={styles.primaryAction}
+          onPress={() => navigation.navigate('NewOrder')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.primaryActionIcon}>
+            <Ionicons name="add" size={22} color={colors.white} />
+          </View>
+          <View style={styles.primaryActionTextWrap}>
+            <Text style={styles.primaryActionTitle}>Nova Venda</Text>
+            <Text style={styles.primaryActionSubtitle}>Iniciar uma ordem de venda</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={colors.white} />
+        </TouchableOpacity>
+
+        <View style={styles.secondaryActionsRow}>
+          <TouchableOpacity
+            style={styles.secondaryAction}
+            onPress={() => navigation.navigate('ClientForm', undefined)}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="person-add-outline" size={20} color={colors.accent} />
+            <Text style={styles.secondaryActionText}>Novo Cliente</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryAction}
+            onPress={() => navigation.navigate('ProductList')}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="grid-outline" size={20} color={colors.accent} />
+            <Text style={styles.secondaryActionText}>Catálogo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryAction}
+            onPress={() => navigation.navigate('Backup')}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="cloud-upload-outline" size={20} color={colors.accent} />
+            <Text style={styles.secondaryActionText}>Backup</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="Últimos pedidos" actionLabel="Ver todos" onAction={() => navigation.navigate('OrderList')} />
+
+        {data.recentOrders.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon="receipt-outline"
+              title="Nenhum pedido ainda"
+              message="Toque em 'Nova Venda' para emitir o primeiro pedido."
+            />
+          </Card>
+        ) : (
+          <View style={styles.recentList}>
+            {data.recentOrders.map(({ order, clientName }) => (
+              <TouchableOpacity
+                key={order.id}
+                style={styles.recentCard}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('OrderDetail', { orderId: order.id })}
+              >
+                <View style={styles.recentInfo}>
+                  <Text style={styles.recentClient} numberOfLines={1}>
+                    {clientName}
+                  </Text>
+                  <Text style={styles.recentMeta}>
+                    {order.createdAt.toLocaleDateString('pt-BR')} · #{order.id.slice(0, 6).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.recentRight}>
+                  <Text style={styles.recentValue}>{formatCurrencyBRL(order.totalNet)}</Text>
+                  <Badge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONE[order.status]} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.moduleLink}
+          onPress={() => navigation.navigate('ClientList')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="people-outline" size={18} color={colors.slate600} />
+          <Text style={styles.moduleLinkText}>Gerenciar clientes</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.slate300} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moduleLink}
+          onPress={() => navigation.navigate('OrderList')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="document-text-outline" size={18} color={colors.slate600} />
+          <Text style={styles.moduleLinkText}>Todas as ordens de venda</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.slate300} />
+        </TouchableOpacity>
       </View>
 
       {__DEV__ ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Debug — Supabase (só em dev)</Text>
-          <Text style={styles.row}>
-            Consulta a tabela `licenses` por este device_id, sem alterar a licença local.
-          </Text>
-          <TouchableOpacity style={styles.button} onPress={handleTestSupabase} disabled={testing}>
+        <Card style={styles.debugCard}>
+          <Text style={styles.debugTitle}>Debug — Supabase (dev)</Text>
+          <TouchableOpacity style={styles.debugButton} onPress={handleTestSupabase} disabled={testing}>
             {testing ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.white} />
             ) : (
-              <Text style={styles.buttonText}>Testar fetch no Supabase</Text>
+              <Text style={styles.debugButtonText}>Testar fetch no Supabase</Text>
             )}
           </TouchableOpacity>
           {testResult ? (
-            <Text style={[styles.row, testResult.ok ? styles.resultOk : styles.resultError]}>
+            <Text style={[styles.debugResult, { color: testResult.ok ? colors.success : colors.danger }]}>
               {testResult.ok ? '✓ ' : '✗ '}
               {testResult.message}
             </Text>
           ) : null}
-        </View>
+        </Card>
       ) : null}
     </ScrollView>
   );
@@ -119,71 +280,211 @@ export function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    gap: 16,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.lg,
+    width: '100%',
+    maxWidth: 960,
+    alignSelf: 'center',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 8,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+  greeting: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textTransform: 'capitalize',
   },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  row: {
+  dateText: {
     fontSize: 13,
-    color: '#475569',
+    color: colors.textMuted,
+    marginTop: 2,
+    textTransform: 'capitalize',
   },
-  navButton: {
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  settingsButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    backgroundColor: colors.slate100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusPills: {
+    gap: 6,
+    alignItems: 'flex-end',
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+  },
+  statusPillOnline: {
+    backgroundColor: colors.successBgSoft,
+  },
+  statusPillOffline: {
+    backgroundColor: colors.warningBg,
+  },
+  statusPillLicense: {
+    backgroundColor: colors.accentLight,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  quickActions: {
+    gap: spacing.sm,
+  },
+  primaryAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+    ...shadows.raised,
+  },
+  primaryActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionTextWrap: {
+    flex: 1,
+  },
+  primaryActionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.white,
+  },
+  primaryActionSubtitle: {
+    fontSize: 12.5,
+    color: colors.accentSoft,
+    marginTop: 1,
+  },
+  secondaryActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  secondaryAction: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    ...shadows.card,
+  },
+  secondaryActionText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.slate700,
+  },
+  section: {
+    gap: spacing.xs,
+  },
+  recentList: {
+    gap: spacing.xs,
+  },
+  recentCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    ...shadows.card,
   },
-  navButtonText: {
+  recentInfo: {
+    flex: 1,
+    gap: 2,
+    marginRight: spacing.sm,
+  },
+  recentClient: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  recentMeta: {
+    fontSize: 11.5,
+    color: colors.textMuted,
+  },
+  recentRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  recentValue: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: colors.success,
+  },
+  moduleLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  moduleLinkText: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: '#0F172A',
+    color: colors.textPrimary,
   },
-  navButtonChevron: {
-    fontSize: 18,
-    color: '#94A3B8',
+  debugCard: {
+    gap: spacing.sm,
+    borderStyle: 'dashed',
   },
-  button: {
-    marginTop: 4,
-    backgroundColor: '#2563EB',
+  debugTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  debugButton: {
+    backgroundColor: colors.navy800,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  debugButtonText: {
+    color: colors.white,
+    fontSize: 13,
     fontWeight: '600',
   },
-  resultOk: {
-    color: '#16A34A',
-    fontWeight: '600',
-  },
-  resultError: {
-    color: '#DC2626',
+  debugResult: {
+    fontSize: 12,
     fontWeight: '600',
   },
 });

@@ -4,11 +4,29 @@
 
 | Módulo | Telas principais | Depende de |
 |---|---|---|
+| Dashboard | `HomeScreen` | `orders`/`clients` (WatermelonDB, agregados), `licenseService`, `netinfo` |
 | Licença | `LicenseBlockedScreen` | `licenseService` |
 | Clientes | `ClientListScreen`, `ClientFormScreen` | `clients` (WatermelonDB) |
 | Produtos | `ProductListScreen`, `ProductFormScreen` | `products` (WatermelonDB) |
-| Ordem de Venda | `NewOrderScreen`, `OrderCartScreen`, `OrderSummaryScreen`, `OrderHistoryScreen` | `orders`, `order_items`, `pdfService` |
+| Ordem de Venda | `OrderSelectClientScreen`, `OrderItemsScreen`, `OrderReviewScreen`, `OrderSuccessScreen`, `OrderListScreen`, `OrderDetailScreen` | `orders`, `order_items`, `pdfService` |
 | Backup | `BackupScreen` | `backupService` |
+| Configurações | `SettingsScreen` | `settingsService`, `licenseService`, `backupService`, `orderService`, `company_settings`/`license_control` (WatermelonDB) |
+
+---
+
+## 🏠 Dashboard — `HomeScreen` (`src/screens/HomeScreen.tsx`)
+
+Redesenhada na Fase 10 como uma tela comercial de verdade (era um painel de diagnóstico técnico até então). `headerShown: false` no `RootNavigator` — a tela desenha seu próprio cabeçalho (respeitando `useSafeAreaInsets`).
+
+- **Cabeçalho:** saudação dinâmica por horário (`getGreeting()` — "Bom dia"/"Boa tarde"/"Boa noite"), data por extenso, e dois indicadores de status:
+  - **Conectividade**, via `useNetInfo()` (`@react-native-community/netinfo`) — "Online" ou "Modo Offline Ativo", refletindo o estado real do dispositivo (não é decorativo).
+  - **Licença**, estático "Licença Válida" — a tela só é alcançável quando `useLicenseGuard` já validou `status === 'active'` no `RootNavigator`, então não há necessidade de checar de novo aqui.
+- **Cards de resumo** (`StatCard`, 3 no total): "Vendido hoje" (soma de `total_net` das ordens não-canceladas criadas desde `00:00` do dia atual), "Pedidos emitidos" (contagem total de ordens, todos os tempos) e "Clientes cadastrados" (contagem total).
+- **Ações rápidas:** um botão grande em destaque "Nova Venda" → `NewOrder`, e uma linha de 3 atalhos secundários: "Novo Cliente" (→ `ClientForm`), "Catálogo" (→ `ProductList`), "Backup" (→ `Backup`).
+- **Últimos pedidos:** até 5 ordens mais recentes (`Q.sortBy('created_at', Q.desc), Q.take(5)`), cada uma com nome do cliente (resolvido via `order.client.fetch()` — busca pontual, não observável, porque a tela já se atualiza sozinha em cada foco), valor e `Badge` de status. `EmptyState` quando não há nenhum pedido ainda.
+- **Atualização dos dados:** `useFocusEffect` (não um observable `withObservables`) — a cada vez que a tela ganha foco (ex: voltando de uma Nova Venda), os agregados são recalculados. Também suporta pull-to-refresh (`RefreshControl`). Optou-se por essa abordagem em vez de queries observáveis porque os dados exibidos são **agregados** (somas/contagens), que o `withObservables` não resolve tão diretamente quanto uma lista simples.
+- **Atalhos de módulo:** dois links de lista ("Gerenciar clientes", "Todas as ordens de venda") abaixo da seção de últimos pedidos, para quem quer ir direto às listagens completas.
+- **Debug Supabase:** preservado, mas só renderiza em `__DEV__` — mesmo comportamento de antes, movido para o fim da tela.
 
 ---
 
@@ -17,7 +35,7 @@
 ### `ClientListScreen` (`src/screens/clients/ClientListScreen.tsx`)
 - Lista reativa via `withObservables` (`@nozbe/watermelondb/react`) observando `clients`, ordenada por nome (`Q.sortBy('name', Q.asc)`).
 - Busca em tempo real (por `name` **ou** `document`, `Q.or` + `Q.like`) com debounce de 300ms — componente reutilizável [`SearchBar`](../src/components/SearchBar.tsx).
-- Card por cliente: nome, documento formatado (`maskCpfCnpj`), telefone formatado (`maskPhone`), endereço (se houver) e um botão 💬 que abre o WhatsApp do cliente (`utils/whatsapp.ts`, via `https://wa.me/55...`).
+- Card por cliente: `Avatar` com iniciais do nome (cor determinística por hash), nome, documento formatado (`maskCpfCnpj`), telefone formatado (`maskPhone`), endereço (se houver) e um botão de ícone (`Ionicons name="logo-whatsapp"`, antes um emoji 💬 de placeholder) que abre o WhatsApp do cliente (`utils/whatsapp.ts`, via `https://wa.me/55...`).
 - Toque no card → `ClientFormScreen` em modo edição. [`Fab`](../src/components/Fab.tsx) (botão flutuante "+") → `ClientFormScreen` em modo criação.
 - [`EmptyState`](../src/components/EmptyState.tsx) quando não há clientes cadastrados/nenhum resultado de busca.
 
@@ -75,15 +93,25 @@ const productSchema = z.object({
 
 ---
 
-## 🧩 Componentes reutilizáveis criados nesta fase
+## 🧩 Componentes reutilizáveis
 
 | Componente | Arquivo | Uso |
 |---|---|---|
 | `MaskedInput` | `src/components/MaskedInput.tsx` | Input com label + erro, com máscara opcional (`cpfCnpj`, `phone`, `currency`) |
-| `SearchBar` | `src/components/SearchBar.tsx` | Busca com debounce de 300ms embutido |
-| `Fab` | `src/components/Fab.tsx` | Botão flutuante "+" para criar novo registro |
-| `EmptyState` | `src/components/EmptyState.tsx` | Placeholder para listas vazias |
-| `PrimaryButton` | `src/components/PrimaryButton.tsx` | Botão de ação (variantes `primary`/`danger`/`outline`), com estado de loading |
+| `DiscountInput` | `src/components/DiscountInput.tsx` | Alterna entre desconto em R$ e em % (sempre entrega centavos) — usado hoje só no desconto geral do pedido (`OrderReviewScreen`) |
+| `SearchBar` | `src/components/SearchBar.tsx` | Busca com debounce de 300ms embutido, ícone de lupa |
+| `Fab` | `src/components/Fab.tsx` | Botão flutuante para criar novo registro |
+| `EmptyState` | `src/components/EmptyState.tsx` | Placeholder ilustrado (ícone + título + mensagem) para listas vazias |
+| `PrimaryButton` | `src/components/PrimaryButton.tsx` | Botão de ação (variantes `primary`/`success`/`danger`/`outline`, ícone opcional), com estado de loading |
+| `Card` | `src/components/Card.tsx` | Container de superfície padrão (ver [docs/02-arquitetura.md](./02-arquitetura.md#-design-system-srctheme)) |
+| `Badge` | `src/components/Badge.tsx` | Etiqueta de status colorida |
+| `Chip` | `src/components/Chip.tsx` | Pílula selecionável (filtros, forma de pagamento, unidade) |
+| `Avatar` | `src/components/Avatar.tsx` | Iniciais do cliente em círculo colorido |
+| `StatCard` | `src/components/StatCard.tsx` | Card de métrica do dashboard |
+| `SectionHeader` | `src/components/SectionHeader.tsx` | Título de seção + ação opcional |
+| `Toast` (`ToastProvider`/`useToast`) | `src/components/Toast.tsx` | Notificação flutuante de confirmação |
+| `OrderProgressBar` | `src/components/OrderProgressBar.tsx` | Indicador de progresso do wizard de Nova Venda (3 etapas) |
+| `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade |
 
 Utilitários: `src/utils/masks.ts` (formatação), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 
@@ -91,7 +119,7 @@ Utilitários: `src/utils/masks.ts` (formatação), `src/utils/validators.ts` (d�
 
 ## 🛒 Módulo Ordem de Venda
 
-Implementado na Fase 5, branch `feature/modulo-ordem-venda`. Fluxo guiado de 3 etapas (`OrderDraftNavigator`, um `Stack.Navigator` **aninhado**, registrado como a rota `NewOrder` do stack raiz) + listagem/detalhe fora do fluxo de criação.
+Implementado na Fase 5 (branch `feature/modulo-ordem-venda`) e redesenhado visualmente na Fase 10. Fluxo guiado de **4** telas (`OrderDraftNavigator`, um `Stack.Navigator` **aninhado**, registrado como a rota `NewOrder` do stack raiz) + listagem/detalhe fora do fluxo de criação. As 3 primeiras etapas mostram um indicador de progresso (`OrderProgressBar`) no topo; a 4ª (`OrderSuccess`) é a tela terminal do fluxo, sem botão de voltar nativo.
 
 ### Estado do rascunho (`useOrderDraft`, `src/hooks/useOrderDraft.tsx`)
 
@@ -103,21 +131,27 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Botão "Cadastrar novo cliente": usa `navigation.getParent()` para navegar até a rota `ClientForm` do stack **raiz** (fora do fluxo aninhado) — ao voltar, o cliente novo já aparece na lista (reativa) para ser selecionado.
 
 ### 2. `OrderItemsScreen` — Catálogo e carrinho
-- Uma única `FlatList` reativa do catálogo de produtos (busca por nome/SKU) — o carrinho fica no `ListHeaderComponent` (evita o warning de `VirtualizedList` aninhada de duas listas separadas).
-- Toque num produto → adiciona ao carrinho (ou soma +1 na quantidade se já estiver lá).
-- Cada item do carrinho: [`QuantityStepper`](../src/components/QuantityStepper.tsx) (+/-) e [`DiscountInput`](../src/components/DiscountInput.tsx) (alterna R$/%, mas sempre entrega o valor em **centavos** pro estado do carrinho — o modo % é só conveniência de digitação, calculado contra o valor bruto do item).
-- Resumo em tempo real: **Total de itens** (soma das quantidades), **Subtotal** (soma de `unit_price × quantity`, sem descontos), **Total de descontos** (soma dos descontos por item) e **Total geral** (soma dos subtotais líquidos por item — vira `orders.total_gross` no Passo 3).
-- Botão "Continuar" desabilitado com carrinho vazio.
+- Catálogo de produtos em cards (nome, SKU, unidade, preço em destaque), em `FlatList` com `numColumns` responsivo (`useWindowDimensions` — 2 colunas a partir de 760px de largura, 1 coluna abaixo disso, comum em tablets em retrato vs. paisagem). Busca por nome/SKU no cabeçalho da lista.
+- Produto **fora** do carrinho: card mostra botão "+ Adicionar". Produto **já no** carrinho: card troca para [`QuantityStepper`](../src/components/QuantityStepper.tsx) (+/-) + botão de lixeira (remove o item inteiro, independente da quantidade).
+- **Barra flutuante inferior fixa** (`bottomBar`): contagem total de itens, total geral (`totals.totalGross`) e botão "Avançar" (desabilitado com carrinho vazio) → `OrderReview`. Tocar na área de resumo abre um **modal de carrinho** (`Modal` nativo, slide de baixo para cima) listando cada item com stepper e remoção individual — forma rápida de revisar/ajustar sem sair da tela de catálogo.
+- **Mudança de escopo vs. versão anterior:** o desconto por item (`DiscountInput` por linha do carrinho) foi removido desta tela na Fase 10 — o carrinho aqui só lida com quantidade. Todo desconto agora é aplicado uma única vez, como desconto geral do pedido, na etapa seguinte (`OrderReviewScreen`). `CartItem.discountValue` (`src/types/orderDraft.ts`) continua existindo no tipo e é somado no cálculo de subtotal, mas nenhuma tela hoje o define como diferente de `0` — decisão deliberada para simplificar o fluxo visual (catálogo rápido → fechamento com desconto único), não uma remoção de capacidade do modelo de dados.
+- Resumo mostrado na barra flutuante e no modal: quantidade total e total geral (soma de `unit_price × quantity` por item, sem desconto — vira `orders.total_gross` no Passo 3).
 
 ### 3. `OrderReviewScreen` — Resumo e fechamento
-- Mostra cliente e itens tabulados (somente leitura).
-- `DiscountInput` para o **desconto geral do pedido** (`orders.discount_total`, aplicado sobre `total_gross` — depois dos descontos por item).
-- Seletor de forma de pagamento em chips (`PAYMENT_METHOD_LABELS` — Dinheiro, PIX, Boleto, Cartão de Crédito, Cartão de Débito, A Prazo).
+- Mostra cliente e itens tabulados (somente leitura, sem coluna de desconto por item — ver mudança de escopo acima).
+- `DiscountInput` para o **desconto geral do pedido** (`orders.discount_total`, aplicado sobre `total_gross`).
+- Seletor de forma de pagamento em `Chip`s com ícone (`PAYMENT_METHOD_LABELS` — Dinheiro, PIX, Boleto, Cartão de Crédito, Cartão de Débito, A Prazo).
 - Campo de observações gerais (`orders.notes`, opcional).
 - Botão **"Salvar pedido"** → `orderService.createOrder(...)`:
   1. Calcula `total_net = max(0, total_gross − discount_total)`.
   2. Persiste `orders` + todos os `order_items` numa única transação (`database.write` + `database.batch(...)` — **atenção**: `database.batch()` só pode ser chamado de dentro de um `database.write()` nesta versão do WatermelonDB, ao contrário de `collection.create()`).
-  3. Zera o rascunho (`reset()`) e navega para `OrderDetail` do pedido recém-criado, **substituindo** (`navigation.replace`, via `getParent()`) a entrada `NewOrder` no histórico — voltar não retorna ao fluxo de criação.
+  3. Zera o rascunho (`reset()`) e navega para `OrderSuccess` (dentro do próprio `OrderDraftNavigator`, não mais direto para `OrderDetail` do stack raiz — ver abaixo).
+
+### 4. `OrderSuccessScreen` — Confirmação
+- Tela terminal do wizard (`headerBackVisible: false`, `gestureEnabled: false` — o vendedor não deve conseguir "voltar" para um pedido já salvo). Recebe `orderId` via params e recarrega `Order`/`Client`/`OrderItem[]` direto do WatermelonDB (não reaproveita o contexto do rascunho, que já foi zerado).
+- Ícone de sucesso animado (`Animated.spring`), resumo do pedido (cliente, quantidade de itens, total líquido) num `Card`.
+- Botão principal verde **"Compartilhar Ordem de Venda (PDF / WhatsApp)"** → `pdfService.shareOrderPdf(...)` (ver seção de PDF abaixo).
+- Botão secundário **"Voltar para o Início"** → `parentNavigation.reset({ index: 0, routes: [{ name: 'Home' }] })` (via `getParent()`), limpando todo o histórico do wizard — evita que o botão "voltar" do sistema retorne para uma tela do fluxo de criação já concluído. Dispara um `Toast` de confirmação ao voltar.
 
 ### `OrderListScreen` — Listagem
 - Lista reativa ordenada por `created_at` desc. Filtro por status (chips: Todos/Pendente/Concluído/Cancelado) e busca por nome do cliente via `Q.on('clients', Q.where('name', Q.like(...)))` — filtra pela tabela relacionada direto na query, sem carregar tudo em memória.
@@ -128,6 +162,7 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 ### `OrderDetailScreen` — Detalhe
 - Carrega a `Order` por id (`database.get('orders').find(orderId)`) e observa reativamente cliente + itens.
 - Mostra todos os itens (com `product_name_snapshot`, não o nome atual do produto — protege o histórico), totais (`total_gross`/`discount_total`/`total_net`), forma de pagamento e observações.
+- Botão **"Compartilhar (PDF / WhatsApp)"** → `pdfService.shareOrderPdf(order, client, items)` — mesmo mecanismo usado em `OrderSuccessScreen`, disponível aqui para reemitir o PDF de qualquer pedido já salvo (não só no momento da criação).
 - Ações (`orderService.ts`):
   - "Marcar como concluído" (só se `pending`) → `setOrderStatus(id, 'completed')`.
   - "Cancelar pedido" (se não já `cancelled`) → confirmação (`Alert.alert`) → `setOrderStatus(id, 'cancelled')`.
@@ -150,13 +185,13 @@ const totalGross = items.reduce((acc, item) => acc + cartItemSubtotal(item), 0);
 const totalNet = Math.max(0, totalGross - discountTotal); // discountTotal = desconto geral do pedido
 ```
 
-> 🚧 **Fora do escopo desta fase:** geração de PDF (Fase 6 — `pdfService`/`templates/`) e inclusão de `orders`/`order_items` no módulo de Backup (mencionado como pendente em [docs/06](./06-changelog-tarefas.md), depende deste módulo existir — agora existe, mas a integração com `backupService.ts` ainda não foi feita).
+> 🚧 **Ainda fora de escopo:** inclusão de `orders`/`order_items` no módulo de Backup (mencionado como pendente em [docs/06](./06-changelog-tarefas.md), depende deste módulo existir — agora existe, mas a integração com `backupService.ts` ainda não foi feita). A geração de PDF (Fase 6), que estava pendente aqui, **foi implementada na Fase 10** — ver seção seguinte.
 
 ---
 
 ## 🧾 Template do PDF (A4) — `templates/orderTemplate.ts`
 
-O PDF é gerado a partir de uma string HTML renderizada pelo `expo-print` (`Print.printToFileAsync`). Estrutura recomendada:
+Implementado na Fase 10. O PDF é gerado a partir de uma string HTML (CSS inline, sem dependências externas) renderizada pelo `expo-print` (`Print.printToFileAsync`). Estrutura real:
 
 ```text
 ┌─────────────────────────────────────────────┐
@@ -185,29 +220,34 @@ O PDF é gerado a partir de uma string HTML renderizada pelo `expo-print` (`Prin
 
 > O número exibido no cabeçalho (`#A1B2C3D4`) é derivado do `id` (WatermelonDB) da ordem — o schema v1 não tem uma coluna `order_number` sequencial dedicada (ver [docs/03-banco-de-dados.md](./03-banco-de-dados.md#-tabela-orders)). Uma numeração sequencial amigável pode ser adicionada em uma migration futura, se necessário.
 
-### Exemplo de função geradora (referência)
+### Função geradora real (`src/services/pdfService.ts`)
 
 ```ts
-// services/pdfService.ts
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { buildOrderHtml } from '@/templates/orderTemplate';
 
-export async function generateAndShareOrderPdf(order: OrderWithItems): Promise<void> {
-  const html = buildOrderHtml(order);
+export async function shareOrderPdf(order: Order, client: Client, items: OrderItem[]): Promise<void> {
+  const html = buildOrderHtml(order, client, items);
   const { uri } = await Print.printToFileAsync({ html, base64: false });
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: `Ordem de Venda ${order.id.slice(0, 8).toUpperCase()}`,
-    });
-  }
+  const canShare = await Sharing.isAvailableAsync();
+  if (!canShare) throw new Error('O compartilhamento não está disponível neste dispositivo.');
+
+  await Sharing.shareAsync(uri, {
+    mimeType: 'application/pdf',
+    dialogTitle: `Ordem de venda #${order.id.slice(0, 8).toUpperCase()}`,
+    UTI: 'com.adobe.pdf',
+  });
 }
 ```
 
-- O compartilhamento usa o menu **nativo** do sistema — não há integração direta com a API do WhatsApp Business; o usuário escolhe o app de destino (WhatsApp, e-mail, Drive, etc.) no menu do sistema operacional.
-- Aviso explícito no rodapé do PDF: *"Documento gerado pelo app — não possui valor fiscal (não é NF-e/NFC-e)"*, reforçando o item "Fora de escopo" da Visão Geral.
+- `buildOrderHtml` recebe os **models** do WatermelonDB diretamente (`Order`, `Client`, `OrderItem[]`) — não um DTO intermediário — porque `OrderSuccessScreen` e `OrderDetailScreen` já têm essas instâncias em mãos (a segunda via `withObservables`, a primeira via fetch pontual por `orderId`).
+- Todo texto interpolado no HTML passa por um `escapeHtml()` local antes de entrar no template — nome do cliente, endereço, observações e nome de produto podem conter caracteres digitados livremente pelo usuário (`<`, `&`, etc.), e o HTML é montado por concatenação de string, não por um template engine com escaping automático.
+- Chamada a partir de dois pontos da UI: `OrderSuccessScreen` (botão verde "Compartilhar Ordem de Venda (PDF / WhatsApp)", logo após salvar) e `OrderDetailScreen` (botão "Compartilhar (PDF / WhatsApp)", para reemitir um pedido já existente a qualquer momento).
+- O compartilhamento usa o menu **nativo** do sistema (`expo-sharing`) — não há integração direta com a API do WhatsApp Business; o usuário escolhe o app de destino (WhatsApp, e-mail, Drive, etc.) no menu do sistema operacional.
+- Aviso explícito no rodapé do PDF: *"Documento gerado offline pelo aplicativo Força de Vendas — sem validade fiscal."*, reforçando o item "Fora de escopo" da Visão Geral.
+- Sem testes automatizados ainda (pendente, Fase 9).
 
 ---
 
@@ -234,6 +274,33 @@ export async function generateAndShareOrderPdf(order: OrderWithItems): Promise<v
 ```
 
 > 🚧 **Escopo desta fase:** só `clients` e `products` — `orders`/`order_items` entram no backup quando o módulo de Ordem de Venda existir (Fase 5). **Também não está** disponível com licença `expired`/`blocked` ainda: o `RootNavigator` bloqueia toda a navegação (inclusive Backup) quando a licença não está `active` — a exceção "backup sempre acessível" descrita em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active) ainda não foi implementada (fica para quando essa distinção de acesso for construída).
+
+## ⚙️ Módulo Configurações
+
+Implementado na Fase 11. `SettingsScreen` (`src/screens/settings/SettingsScreen.tsx`) é acessível pelo ícone de engrenagem no cabeçalho da `HomeScreen` (`navigation.navigate('Settings')`) e, como todo o resto do `RootNavigator`, só é alcançável com a licença `active` (mesma restrição já documentada para `Backup` — ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)). Três seções, cada uma em um `CollapsibleCard` (`src/components/CollapsibleCard.tsx`, novo componente reutilizável — `Card` com um cabeçalho tocável: ícone, título, subtítulo opcional e um chevron animado que gira 180° ao expandir/recolher):
+
+- **Accordion de seção única:** as três seções começam recolhidas (`expandedSection: 'company' | 'system' | 'data' | null`, inicial `null`) — abrir uma fecha automaticamente a que estava aberta antes (só uma seção expandida por vez), mantendo a tela curta mesmo com o formulário extenso da Seção 1. Pedido explícito do usuário para não deixar a tela de Configurações "muito grande".
+
+### 1. Dados da Empresa / Vendedor
+- Formulário React Hook Form + Zod, persistido na tabela `company_settings` (WatermelonDB — ver [docs/03](./03-banco-de-dados.md#-tabela-company_settings)) via `settingsService.getOrCreateCompanySettings()`/`saveCompanySettings()`.
+- Campos: Razão Social/Nome (obrigatório), Nome Fantasia, CNPJ/CPF (`MaskedInput mask="cpfCnpj"`, validado com `isValidCpfOuCnpj` só quando preenchido — diferente do cadastro de Clientes, aqui o campo pode ficar vazio até o vendedor preencher), I.E./I.M., Telefone/WhatsApp (obrigatório), E-mail comercial (validado por formato quando preenchido), endereço estruturado (Logradouro/Número/Bairro/Cidade/UF/CEP — `MaskedInput mask="cep"`, máscara nova em `utils/masks.ts`), Chave PIX (texto livre, sem validação de formato).
+- Botão "Salvar Dados da Empresa" → `Toast` de sucesso ("Dados da empresa salvos com sucesso!").
+- Ao entrar na tela, os campos são carregados automaticamente (registro único, criado sob demanda na primeira visita).
+
+### 2. Sistema e Sobre
+- **ID do Dispositivo:** reaproveita o `device_id` já gerado por `licenseService` (UUID v4, o mesmo registrado na tabela `licenses` do Supabase) — **não** usa `expo-application`/Android ID. Foi uma decisão deliberada: o ID mostrado precisa ser exatamente o mesmo que o suporte consulta no Supabase para liberar a licença; um identificador nativo diferente (Android ID) quebraria esse fluxo, já que não seria o valor cadastrado remotamente. Exibido em `fontFamily: 'monospace'` (`Platform`-neutro o suficiente: `'monospace'` resolve tanto no Android quanto no iOS via Courier/fonte mono padrão do sistema).
+  - Botão **"Copiar ID"** → `Clipboard.setStringAsync()` (`expo-clipboard`) + `Toast` de confirmação + label do botão muda para "ID copiado!" por 2s.
+  - Botão **"Enviar por WhatsApp"** → `utils/whatsapp.ts` (`openWhatsApp`, que ganhou um 2º parâmetro opcional `message` nesta fase) abre o WhatsApp do número de suporte (`EXPO_PUBLIC_SUPPORT_WHATSAPP_PHONE`, novo em `.env`/`services/api.ts`) com uma mensagem pré-preenchida contendo o ID. Fica desabilitado (com aviso abaixo) se a variável não estiver configurada — mesmo padrão de "feature opcional degradando graciosamente" já usado para `isSupabaseConfigured()`.
+- **Status da conexão:** `Badge` com `dot`, "Online"/"Modo Offline", via `useNetInfo()` — mesmo hook/lógica já usado na `HomeScreen`.
+- **Status da licença:** mostra a data de validade atual e um `Badge` de status (`LICENSE_STATUS_LABELS`/`LICENSE_STATUS_TONE`, novos em `types/database.ts`, mesmo padrão de `ORDER_STATUS_LABELS`/`TONE`). O snapshot inicial vem de `licenseService.getCurrentLicenseSnapshot()` — uma leitura **passiva** do registro local (nova função, sem checar o Supabase nem alterar nada), para não disparar uma renovação/verificação remota só de abrir a tela. Botão **"Verificar Licença Agora"** chama `evaluateLicense()` (a mesma função usada no boot do app pelo `useLicenseGuard`) e atualiza a exibição com o resultado.
+  > 🚧 **Limitação conhecida:** se a verificação manual retornar `blocked`/`expired`, a tela de Configurações só atualiza o `Badge` local — não força a navegação de volta para `LicenseBlockedScreen` (isso exigiria propagar o resultado até o estado do `useLicenseGuard`, que vive no `RootNavigator`, acima da pilha de navegação). O novo status já fica persistido no WatermelonDB por `evaluateLicense()`, então é aplicado corretamente na próxima abertura do app — só não é reforçado instantaneamente na sessão atual.
+- **Versão do aplicativo:** `v${APP_VERSION}`, lida de `app.json` em tempo de build via `utils/appInfo.ts` (import direto do JSON, `resolveJsonModule` já habilitado no `tsconfig` base do Expo) — não depende de `expo-constants` (não instalado; evitado para não adicionar uma dependência só para isso).
+
+### 3. Dados, Backup e Armazenamento
+- **Resumo do banco local:** contadores de Clientes/Produtos/Ordens de Venda (`settingsService.getDatabaseSummary()`), atualizados a cada vez que a tela ganha foco (`useFocusEffect`, mesmo padrão da `HomeScreen`) — assim os números refletem mudanças feitas em outras telas (ex: voltar de uma Nova Venda).
+- **Exportar Backup (JSON):** botão chama `backupService.exportBackup()` diretamente (a mesma função usada pelo botão "Compartilhar backup" da `BackupScreen`) — abre o menu nativo de compartilhamento.
+- **Importar/Restaurar Backup:** em vez de duplicar o fluxo de seleção de arquivo + prévia + confirmação já implementado em `BackupScreen` (não é uma ação de um toque só — precisa de uma tela própria para mostrar a prévia de registros novos/duplicados antes de confirmar), o botão navega para a tela `Backup` já existente (`navigation.navigate('Backup')`). Decisão deliberada para não duplicar ~80 linhas de lógica de preview/confirmação entre duas telas.
+- **Zona de perigo — "Limpar Pedidos de Teste":** remove todas as `orders`/`order_items` (não toca em `clients`/`products`), via nova função `orderService.clearAllOrders()` (soft-delete em lote, mesmo padrão de `deleteOrder`). Protegido por um modal de confirmação customizado (não o `Alert.alert` nativo usado nas outras exclusões do app) — ícone de aviso, contagem de quantos pedidos serão removidos, texto explícito "não pode ser desfeita", botões "Cancelar"/"Sim, limpar tudo". Justificativa para o modal customizado em vez do `Alert` padrão: esta é uma ação destrutiva em massa (todos os pedidos, não um registro isolado), então merece um passo de confirmação visualmente mais explícito que os `Alert.alert` de exclusão individual já usados em `ClientFormScreen`/`ProductFormScreen`/`OrderDetailScreen`.
 
 ## 📎 Documentos relacionados
 

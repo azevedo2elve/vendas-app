@@ -71,3 +71,20 @@ export async function deleteOrder(orderId: string): Promise<void> {
     );
   });
 }
+
+// Usado pela tela de Configurações ("Limpar pedidos de teste") — remove todas as ordens e seus
+// itens, sem tocar em clients/products. Não reversível (soft-delete do WatermelonDB, mas o app
+// não expõe uma tela de "lixeira" para desfazer).
+export async function clearAllOrders(): Promise<number> {
+  const orders = await database.get<Order>('orders').query().fetch();
+  const items = await database.get<OrderItem>('order_items').query().fetch();
+
+  await database.write(async () => {
+    await database.batch(
+      ...items.map((item) => item.prepareMarkAsDeleted()),
+      ...orders.map((order) => order.prepareMarkAsDeleted())
+    );
+  });
+
+  return orders.length;
+}

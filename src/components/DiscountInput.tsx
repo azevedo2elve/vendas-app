@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MaskedInput } from './MaskedInput';
+import { colors, radii, spacing } from '@/theme';
 
 type DiscountMode = 'amount' | 'percent';
 
@@ -50,12 +51,14 @@ export function DiscountInput({ label = 'Desconto', baseAmount, valueCents, onCh
           <TouchableOpacity
             style={[styles.toggleButton, mode === 'amount' ? styles.toggleButtonActive : null]}
             onPress={() => switchMode('amount')}
+            activeOpacity={0.7}
           >
             <Text style={[styles.toggleText, mode === 'amount' ? styles.toggleTextActive : null]}>R$</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleButton, mode === 'percent' ? styles.toggleButtonActive : null]}
             onPress={() => switchMode('percent')}
+            activeOpacity={0.7}
           >
             <Text style={[styles.toggleText, mode === 'percent' ? styles.toggleTextActive : null]}>%</Text>
           </TouchableOpacity>
@@ -71,7 +74,7 @@ export function DiscountInput({ label = 'Desconto', baseAmount, valueCents, onCh
           value={percentText}
           onChangeText={handlePercentChange}
           placeholder="0"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={colors.slate400}
         />
       )}
     </View>
@@ -80,7 +83,7 @@ export function DiscountInput({ label = 'Desconto', baseAmount, valueCents, onCh
 
 const styles = StyleSheet.create({
   container: {
-    gap: 4,
+    gap: 6,
   },
   headerRow: {
     flexDirection: 'row',
@@ -90,39 +93,39 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.slate700,
   },
   toggle: {
     flexDirection: 'row',
-    borderRadius: 6,
+    borderRadius: radii.sm,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: colors.border,
   },
   toggleButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    backgroundColor: '#FFFFFF',
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surface,
   },
   toggleButtonActive: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.accent,
   },
   toggleText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#334155',
+    fontWeight: '700',
+    color: colors.slate700,
   },
   toggleTextActive: {
-    color: '#FFFFFF',
+    color: colors.white,
   },
   percentInput: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 13,
     fontSize: 15,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
   },
 });

@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Card } from '@/components/Card';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { useToast } from '@/components/Toast';
+import { colors, radii, spacing } from '@/theme';
 import {
   exportBackup,
   importBackup,
@@ -18,6 +22,7 @@ export function BackupScreen() {
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<BackupPreview | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const { showToast } = useToast();
 
   async function handleExport() {
     setExporting(true);
@@ -78,6 +83,7 @@ export function BackupScreen() {
         type: 'success',
         message: `Importação concluída: ${result.clientsImported} cliente(s) e ${result.productsImported} produto(s) adicionados.`,
       });
+      showToast('Importação concluída com sucesso!', 'success');
       setPreview(null);
     } catch (error) {
       setFeedback({ type: 'error', message: `Não foi possível importar o backup: ${String(error)}` });
@@ -88,12 +94,17 @@ export function BackupScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Exportar backup</Text>
+      <Card style={styles.card}>
+        <View style={styles.cardTitleRow}>
+          <View style={[styles.iconWrap, { backgroundColor: colors.accentLight }]}>
+            <Ionicons name="cloud-upload-outline" size={20} color={colors.accent} />
+          </View>
+          <Text style={styles.cardTitle}>Exportar backup</Text>
+        </View>
         <Text style={styles.description}>
           Gera um arquivo JSON com todos os Clientes e Produtos cadastrados.
         </Text>
-        <PrimaryButton label="Compartilhar backup" onPress={handleExport} loading={exporting} />
+        <PrimaryButton label="Compartilhar backup" icon="share-outline" onPress={handleExport} loading={exporting} />
         <Text style={styles.description}>
           Se o menu de compartilhamento não tiver uma opção para salvar direto no aparelho (comum em
           emuladores), use o botão abaixo para escolher uma pasta (ex: Downloads) e salvar ali.
@@ -101,18 +112,30 @@ export function BackupScreen() {
         <PrimaryButton
           label="Salvar no dispositivo"
           variant="outline"
+          icon="save-outline"
           onPress={handleSaveToDevice}
           loading={savingToDevice}
         />
-      </View>
+      </Card>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Importar backup</Text>
+      <Card style={styles.card}>
+        <View style={styles.cardTitleRow}>
+          <View style={[styles.iconWrap, { backgroundColor: colors.successBgSoft }]}>
+            <Ionicons name="cloud-download-outline" size={20} color={colors.success} />
+          </View>
+          <Text style={styles.cardTitle}>Importar backup</Text>
+        </View>
         <Text style={styles.description}>
           Restaura Clientes e Produtos a partir de um arquivo de backup exportado anteriormente. Registros já
           existentes (mesmo CPF/CNPJ ou SKU) são ignorados — não duplica dados.
         </Text>
-        <PrimaryButton label="Escolher arquivo de backup" variant="outline" onPress={handlePickFile} loading={picking} />
+        <PrimaryButton
+          label="Escolher arquivo de backup"
+          variant="outline"
+          icon="folder-open-outline"
+          onPress={handlePickFile}
+          loading={picking}
+        />
 
         {preview ? (
           <View style={styles.previewBox}>
@@ -142,12 +165,24 @@ export function BackupScreen() {
             </View>
           </View>
         ) : null}
-      </View>
+      </Card>
 
       {feedback ? (
-        <Text style={[styles.feedback, feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError]}>
-          {feedback.message}
-        </Text>
+        <View style={[styles.feedbackBox, feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError]}>
+          <Ionicons
+            name={feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
+            size={18}
+            color={feedback.type === 'success' ? colors.successStrong : colors.dangerStrong}
+          />
+          <Text
+            style={[
+              styles.feedbackText,
+              { color: feedback.type === 'success' ? colors.successStrong : colors.dangerStrong },
+            ]}
+          >
+            {feedback.message}
+          </Text>
+        </View>
       ) : null}
     </ScrollView>
   );
@@ -156,62 +191,80 @@ export function BackupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    gap: 16,
+    padding: spacing.lg,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    gap: spacing.sm,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textPrimary,
   },
   description: {
     fontSize: 13,
-    color: '#475569',
-    lineHeight: 18,
+    color: colors.textSecondary,
+    lineHeight: 19,
   },
   previewBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: colors.slate50,
+    borderRadius: radii.md,
+    padding: spacing.sm,
     gap: 6,
   },
   previewTitle: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   previewRow: {
     fontSize: 13,
-    color: '#334155',
+    color: colors.slate700,
   },
   previewActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.xs,
     marginTop: 4,
   },
   previewActionButton: {
     flex: 1,
   },
-  feedback: {
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: 'center',
+  feedbackBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    padding: spacing.sm,
   },
   feedbackSuccess: {
-    color: '#16A34A',
+    backgroundColor: colors.successBgSoft,
   },
   feedbackError: {
-    color: '#DC2626',
+    backgroundColor: colors.dangerBgSoft,
+  },
+  feedbackText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
 });

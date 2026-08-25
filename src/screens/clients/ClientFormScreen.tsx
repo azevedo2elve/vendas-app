@@ -10,7 +10,9 @@ import Client from '@/database/models/Client';
 import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { LoadingView } from '@/components/LoadingView';
+import { useToast } from '@/components/Toast';
 import type { RootStackParamList } from '@/navigation/types';
+import { colors, spacing } from '@/theme';
 import { onlyDigits } from '@/utils/masks';
 import { isValidCpfOuCnpj } from '@/utils/validators';
 
@@ -35,6 +37,7 @@ export function ClientFormScreen({ navigation, route }: Props) {
   const isEditing = Boolean(clientId);
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
 
   const {
     control,
@@ -104,6 +107,7 @@ export function ClientFormScreen({ navigation, route }: Props) {
         }
       });
 
+      showToast('Cliente salvo com sucesso!', 'success');
       navigation.goBack();
     } finally {
       setSaving(false);
@@ -122,6 +126,7 @@ export function ClientFormScreen({ navigation, route }: Props) {
           await database.write(async () => {
             await client.markAsDeleted();
           });
+          showToast('Cliente excluído.', 'info');
           navigation.goBack();
         },
       },
@@ -193,10 +198,16 @@ export function ClientFormScreen({ navigation, route }: Props) {
         )}
       />
 
-      <PrimaryButton label="Salvar" onPress={handleSubmit(onSubmit)} loading={saving} />
+      <PrimaryButton label="Salvar" icon="checkmark-circle-outline" onPress={handleSubmit(onSubmit)} loading={saving} />
 
       {isEditing ? (
-        <PrimaryButton label="Excluir cliente" variant="danger" onPress={handleDelete} style={styles.deleteButton} />
+        <PrimaryButton
+          label="Excluir cliente"
+          variant="danger"
+          icon="trash-outline"
+          onPress={handleDelete}
+          style={styles.deleteButton}
+        />
       ) : null}
     </ScrollView>
   );
@@ -205,11 +216,14 @@ export function ClientFormScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    gap: 16,
+    padding: spacing.lg,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   deleteButton: {
     marginTop: 4,

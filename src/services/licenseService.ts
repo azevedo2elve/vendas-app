@@ -119,6 +119,19 @@ export async function testSupabaseFetch(): Promise<{ ok: boolean; deviceId: stri
   }
 }
 
+// Leitura passiva do estado local da licença, sem checar o Supabase nem alterar nada — usada
+// pela tela de Configurações para exibir o status atual antes do usuário pedir uma verificação
+// explícita (botão "Verificar Licença Agora", que chama evaluateLicense()). Ao contrário de
+// evaluateLicense(), nunca marca a licença como 'blocked'/'expired' como efeito colateral.
+export async function getCurrentLicenseSnapshot(): Promise<{
+  status: LicenseStatus;
+  expiresAt: Date;
+  deviceId: string;
+}> {
+  const license = await getOrCreateLicense();
+  return { status: license.licenseStatus, expiresAt: license.licenseExpiresAt, deviceId: license.deviceId };
+}
+
 export async function evaluateLicense(): Promise<LicenseCheckResult> {
   const license = await getOrCreateLicense();
   const now = Date.now();

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { LicenseCheckResult } from '@/services/licenseService';
+import { colors, radii, spacing } from '@/theme';
 
 type LicenseBlockedScreenProps = {
   status: Exclude<LicenseCheckResult['status'], 'active'>;
@@ -36,21 +38,31 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
 
   return (
     <View style={styles.container}>
+      <View style={styles.iconCircle}>
+        <Ionicons name={status === 'blocked' ? 'lock-closed' : 'time-outline'} size={40} color={colors.danger} />
+      </View>
+
       <Text style={styles.title}>{status === 'blocked' ? 'Acesso bloqueado' : 'Licença expirada'}</Text>
       <Text style={styles.message}>{message}</Text>
 
-      <TouchableOpacity style={styles.button} onPress={handleRetry} disabled={retrying}>
+      <TouchableOpacity style={styles.button} onPress={handleRetry} disabled={retrying} activeOpacity={0.8}>
         {retrying ? (
-          <ActivityIndicator color="#FFFFFF" />
+          <ActivityIndicator color={colors.white} />
         ) : (
-          <Text style={styles.buttonText}>Tentar novamente</Text>
+          <View style={styles.buttonContent}>
+            <Ionicons name="refresh" size={18} color={colors.white} />
+            <Text style={styles.buttonText}>Tentar novamente</Text>
+          </View>
         )}
       </TouchableOpacity>
 
       {deviceId ? (
-        <Text style={styles.deviceId} selectable>
-          ID do dispositivo: {deviceId}
-        </Text>
+        <View style={styles.deviceIdBox}>
+          <Text style={styles.deviceIdLabel}>ID do dispositivo</Text>
+          <Text style={styles.deviceId} selectable>
+            {deviceId}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -61,40 +73,70 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    gap: 16,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  iconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: radii.pill,
+    backgroundColor: colors.dangerBgSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontSize: 21,
+    fontWeight: '800',
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   message: {
     fontSize: 14,
-    color: '#475569',
+    color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
+    maxWidth: 380,
   },
   button: {
-    marginTop: 8,
-    backgroundColor: '#2563EB',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 8,
-    minWidth: 200,
+    marginTop: spacing.xs,
+    backgroundColor: colors.accent,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: radii.md,
+    minWidth: 220,
     alignItems: 'center',
   },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   buttonText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  deviceIdBox: {
+    marginTop: spacing.xl,
+    alignItems: 'center',
+    backgroundColor: colors.slate50,
+    borderRadius: radii.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  deviceIdLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textDisabled,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
   },
   deviceId: {
-    marginTop: 24,
-    fontSize: 11,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: colors.textMuted,
     textAlign: 'center',
   },
 });

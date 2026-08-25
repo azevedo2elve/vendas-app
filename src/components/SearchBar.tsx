@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, TextInput } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radii, spacing } from '@/theme';
 
 type SearchBarProps = {
   placeholder?: string;
@@ -16,28 +18,39 @@ export function SearchBar({ placeholder, onDebouncedChange, debounceMs = 300 }: 
   }, [value, debounceMs, onDebouncedChange]);
 
   return (
-    <TextInput
-      style={styles.input}
-      placeholder={placeholder}
-      placeholderTextColor="#94A3B8"
-      value={value}
-      onChangeText={setValue}
-      autoCorrect={false}
-      autoCapitalize="none"
-      clearButtonMode="while-editing"
-    />
+    <View style={styles.container}>
+      <Ionicons name="search" size={18} color={colors.slate400} style={styles.icon} />
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor={colors.slate400}
+        value={value}
+        onChangeText={setValue}
+        autoCorrect={false}
+        autoCapitalize="none"
+        clearButtonMode="while-editing"
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  input: {
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  icon: {
+    marginRight: spacing.xs,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 12,
     fontSize: 15,
-    color: '#0F172A',
-    backgroundColor: '#FFFFFF',
+    color: colors.textPrimary,
   },
 });

@@ -18,3 +18,21 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   completed: 'Concluído',
   cancelled: 'Cancelado',
 };
+
+export const ORDER_STATUS_TONE: Record<OrderStatus, 'warning' | 'success' | 'danger'> = {
+  pending: 'warning',
+  completed: 'success',
+  cancelled: 'danger',
+};
+
+export const LICENSE_STATUS_LABELS: Record<LicenseStatus, string> = {
+  active: 'Ativa',
+  expired: 'Expirada',
+  blocked: 'Bloqueada',
+};
+
+export const LICENSE_STATUS_TONE: Record<LicenseStatus, 'success' | 'warning' | 'danger'> = {
+  active: 'success',
+  expired: 'warning',
+  blocked: 'danger',
+};

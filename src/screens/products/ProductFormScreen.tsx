@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -7,10 +7,13 @@ import { Q } from '@nozbe/watermelondb';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { database } from '@/database';
 import Product from '@/database/models/Product';
+import { Chip } from '@/components/Chip';
 import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { LoadingView } from '@/components/LoadingView';
+import { useToast } from '@/components/Toast';
 import type { RootStackParamList } from '@/navigation/types';
+import { colors, spacing } from '@/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProductForm'>;
 
@@ -37,6 +40,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
   const isEditing = Boolean(productId);
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
 
   const {
     control,
@@ -108,6 +112,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
         }
       });
 
+      showToast('Produto salvo com sucesso!', 'success');
       navigation.goBack();
     } finally {
       setSaving(false);
@@ -126,6 +131,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
           await database.write(async () => {
             await product.markAsDeleted();
           });
+          showToast('Produto excluído.', 'info');
           navigation.goBack();
         },
       },
@@ -189,15 +195,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
             <Text style={styles.unitLabel}>Unidade de medida</Text>
             <View style={styles.unitChips}>
               {UNITS.map((unit) => (
-                <TouchableOpacity
-                  key={unit}
-                  style={[styles.unitChip, field.value === unit ? styles.unitChipSelected : null]}
-                  onPress={() => field.onChange(unit)}
-                >
-                  <Text style={[styles.unitChipText, field.value === unit ? styles.unitChipTextSelected : null]}>
-                    {unit}
-                  </Text>
-                </TouchableOpacity>
+                <Chip key={unit} label={unit} selected={field.value === unit} onPress={() => field.onChange(unit)} />
               ))}
             </View>
             {errors.unit ? <Text style={styles.errorText}>{errors.unit.message}</Text> : null}
@@ -205,12 +203,13 @@ export function ProductFormScreen({ navigation, route }: Props) {
         )}
       />
 
-      <PrimaryButton label="Salvar" onPress={handleSubmit(onSubmit)} loading={saving} />
+      <PrimaryButton label="Salvar" icon="checkmark-circle-outline" onPress={handleSubmit(onSubmit)} loading={saving} />
 
       {isEditing ? (
         <PrimaryButton
           label="Excluir produto"
           variant="danger"
+          icon="trash-outline"
           onPress={handleDelete}
           style={styles.deleteButton}
         />
@@ -222,48 +221,31 @@ export function ProductFormScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    gap: 16,
+    padding: spacing.lg,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   unitContainer: {
-    gap: 6,
+    gap: spacing.xs,
   },
   unitLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#334155',
+    color: colors.slate700,
   },
   unitChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  unitChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
-  },
-  unitChipSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  unitChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  unitChipTextSelected: {
-    color: '#FFFFFF',
+    gap: spacing.xs,
   },
   errorText: {
     fontSize: 12,
-    color: '#DC2626',
+    color: colors.danger,
   },
   deleteButton: {
     marginTop: 4,
