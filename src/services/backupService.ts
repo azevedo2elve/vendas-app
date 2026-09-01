@@ -5,6 +5,9 @@ import { database } from '@/database';
 import Client from '@/database/models/Client';
 import Product from '@/database/models/Product';
 import Category from '@/database/models/Category';
+import Order from '@/database/models/Order';
+import OrderItem from '@/database/models/OrderItem';
+import type { OrderStatus, PaymentMethod } from '@/types/database';
 
 const BACKUP_APP_VERSION = '1.0.0';
 
@@ -33,24 +36,81 @@ const backupProductSchema = z.object({
   unit: z.string(),
 });
 
+const backupOrderItemSchema = z.object({
+  product_name_snapshot: z.string(),
+  unit_price: z.number(),
+  quantity: z.number(),
+  discount_value: z.number(),
+  subtotal: z.number(),
+});
+
+const backupOrderSchema = z.object({
+  // Cliente referenciado por CPF/CNPJ, não por id — mesmo raciocínio de categoria/produto.
+  client_document: z.string(),
+  status: z.string(),
+  total_gross: z.number(),
+  discount_total: z.number(),
+  total_net: z.number(),
+  payment_method: z.string(),
+  notes: z.string().optional(),
+  order_number: z.number(),
+  delivery_date: z.string().nullable().optional(),
+  // Só informativo — o WatermelonDB grava `created_at` como a data da importação, não dá pra
+  // restaurar a data original (campo `@readonly`, sempre "agora" na criação do registro).
+  created_at: z.string(),
+  items: z.array(backupOrderItemSchema),
+});
+
 const backupSchema = z.object({
   exported_at: z.string(),
   app_version: z.string(),
   clients: z.array(backupClientSchema),
   categories: z.array(backupCategorySchema),
   products: z.array(backupProductSchema),
+  orders: z.array(backupOrderSchema),
 });
 
 export type BackupData = z.infer<typeof backupSchema>;
 
 async function buildBackupData(): Promise<BackupData> {
-  const [clients, categories, products] = await Promise.all([
+  const [clients, categories, products, orders] = await Promise.all([
     database.get<Client>('clients').query().fetch(),
     database.get<Category>('categories').query().fetch(),
     database.get<Product>('products').query().fetch(),
+    database.get<Order>('orders').query().fetch(),
   ]);
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
+  const clientDocumentById = new Map(clients.map((client) => [client.id, client.document]));
+
+  // Pedidos de clientes já excluídos (soft-delete) não têm como ser referenciados por documento
+  // no backup — ficam de fora, mesma lógica de "não dá pra restaurar o que não sabemos a quem
+  // pertence".
+  const exportableOrders = orders.filter((order) => clientDocumentById.has(order.clientId));
+  const ordersWithItems = await Promise.all(
+    exportableOrders.map(async (order) => {
+      const items = await order.items.fetch();
+      return {
+        client_document: clientDocumentById.get(order.clientId) as string,
+        status: order.status,
+        total_gross: order.totalGross,
+        discount_total: order.discountTotal,
+        total_net: order.totalNet,
+        payment_method: order.paymentMethod,
+        notes: order.notes,
+        order_number: order.orderNumber,
+        delivery_date: order.deliveryDate ? order.deliveryDate.toISOString() : null,
+        created_at: order.createdAt.toISOString(),
+        items: items.map((item) => ({
+          product_name_snapshot: item.productNameSnapshot,
+          unit_price: item.unitPrice,
+          quantity: item.quantity,
+          discount_value: item.discountValue,
+          subtotal: item.subtotal,
+        })),
+      };
+    })
+  );
 
   return {
     exported_at: new Date().toISOString(),
@@ -73,6 +133,7 @@ async function buildBackupData(): Promise<BackupData> {
       price: product.price,
       unit: product.unit,
     })),
+    orders: ordersWithItems,
   };
 }
 
@@ -80,6 +141,7 @@ export type ExportResult = {
   file: File;
   clientsCount: number;
   productsCount: number;
+  ordersCount: number;
 };
 
 function backupFileName(exportedAt: string): string {
@@ -106,11 +168,11 @@ export async function exportBackup(): Promise<ExportResult> {
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(file.uri, {
       mimeType: 'application/json',
-      dialogTitle: 'Exportar backup de Clientes e Produtos',
+      dialogTitle: 'Exportar backup de Clientes, Produtos e Ordens de Venda',
     });
   }
 
-  return { file, clientsCount: data.clients.length, productsCount: data.products.length };
+  return { file, clientsCount: data.clients.length, productsCount: data.products.length, ordersCount: data.orders.length };
 }
 
 // Abre o seletor de pastas do próprio sistema (Storage Access Framework no Android) e grava o
@@ -125,7 +187,7 @@ export async function saveBackupToDevice(): Promise<ExportResult | null> {
   }
 
   const { file, data } = await writeBackupFile(directory);
-  return { file, clientsCount: data.clients.length, productsCount: data.products.length };
+  return { file, clientsCount: data.clients.length, productsCount: data.products.length, ordersCount: data.orders.length };
 }
 
 export type BackupPreview = {
@@ -136,6 +198,8 @@ export type BackupPreview = {
   duplicateCategories: number;
   newProducts: number;
   duplicateProducts: number;
+  newOrders: number;
+  skippedOrders: number;
 };
 
 class InvalidBackupFileError extends Error {}
@@ -144,20 +208,35 @@ function normalizeName(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function orderKey(clientDocument: string, orderNumber: number): string {
+  return `${clientDocument}::${orderNumber}`;
+}
+
 async function existingBackupKeys(): Promise<{
   documents: Set<string>;
   categoryNames: Set<string>;
   productNames: Set<string>;
+  orderKeys: Set<string>;
 }> {
-  const [clients, categories, products] = await Promise.all([
+  const [clients, categories, products, orders] = await Promise.all([
     database.get<Client>('clients').query().fetch(),
     database.get<Category>('categories').query().fetch(),
     database.get<Product>('products').query().fetch(),
+    database.get<Order>('orders').query().fetch(),
   ]);
+
+  const clientDocumentById = new Map(clients.map((client) => [client.id, client.document]));
+  const orderKeys = new Set<string>();
+  for (const order of orders) {
+    const document = clientDocumentById.get(order.clientId);
+    if (document) orderKeys.add(orderKey(document, order.orderNumber));
+  }
+
   return {
     documents: new Set(clients.map((client) => client.document)),
     categoryNames: new Set(categories.map((category) => normalizeName(category.name))),
     productNames: new Set(products.map((product) => normalizeName(product.name))),
+    orderKeys,
   };
 }
 
@@ -176,10 +255,18 @@ export async function pickAndPreviewBackupFile(): Promise<BackupPreview | null> 
     throw new InvalidBackupFileError('Arquivo inválido: não é um backup reconhecível do app.');
   }
 
-  const { documents, categoryNames, productNames } = await existingBackupKeys();
+  const { documents, categoryNames, productNames, orderKeys } = await existingBackupKeys();
   const newClients = parsed.clients.filter((client) => !documents.has(client.document)).length;
   const newCategories = parsed.categories.filter((category) => !categoryNames.has(normalizeName(category.name))).length;
   const newProducts = parsed.products.filter((product) => !productNames.has(normalizeName(product.name))).length;
+
+  // Um pedido só é "novo" se o cliente dele existir (já localmente, ou vindo junto no mesmo
+  // backup) E a combinação cliente+número do pedido ainda não existir localmente.
+  const backupDocuments = new Set(parsed.clients.map((client) => client.document));
+  const newOrders = parsed.orders.filter((order) => {
+    const clientResolvable = documents.has(order.client_document) || backupDocuments.has(order.client_document);
+    return clientResolvable && !orderKeys.has(orderKey(order.client_document, order.order_number));
+  }).length;
 
   return {
     data: parsed,
@@ -189,22 +276,28 @@ export async function pickAndPreviewBackupFile(): Promise<BackupPreview | null> 
     duplicateCategories: parsed.categories.length - newCategories,
     newProducts,
     duplicateProducts: parsed.products.length - newProducts,
+    newOrders,
+    skippedOrders: parsed.orders.length - newOrders,
   };
 }
 
 export type ImportResult = {
   clientsImported: number;
   productsImported: number;
+  ordersImported: number;
 };
 
 // Importa apenas os registros que ainda não existem localmente, para não duplicar dados ao
 // importar o mesmo backup mais de uma vez: clientes por `document`, categorias e produtos por
-// `name` (case-insensitive, já que produtos não têm mais um SKU único desde a Fase 12).
+// `name` (case-insensitive, já que produtos não têm mais um SKU único desde a Fase 12), e
+// pedidos pela combinação cliente+número do pedido (`order_number` é sequencial por cliente,
+// não um id global — ver docs/03).
 export async function importBackup(data: BackupData): Promise<ImportResult> {
-  const [existingClients, existingCategories, existingProducts] = await Promise.all([
+  const [existingClients, existingCategories, existingProducts, existingOrders] = await Promise.all([
     database.get<Client>('clients').query().fetch(),
     database.get<Category>('categories').query().fetch(),
     database.get<Product>('products').query().fetch(),
+    database.get<Order>('orders').query().fetch(),
   ]);
 
   const documents = new Set(existingClients.map((client) => client.document));
@@ -216,24 +309,30 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
   const clientCollection = database.get<Client>('clients');
   const categoryCollection = database.get<Category>('categories');
   const productCollection = database.get<Product>('products');
+  const orderCollection = database.get<Order>('orders');
+  const orderItemCollection = database.get<OrderItem>('order_items');
 
-  const preparedClients = clientsToImport.map((client) =>
-    clientCollection.prepareCreate((record) => {
-      record.name = client.name;
-      record.document = client.document;
-      record.phone = client.phone;
-      record.addressStreet = client.address_street;
-      record.addressNumber = client.address_number;
-      record.addressComplement = client.address_complement;
-      record.addressCity = client.address_city;
-      record.addressState = client.address_state;
-      record.addressZip = client.address_zip;
-    })
-  );
-
-  // Categorias novas são preparadas primeiro para que seus ids (gerados localmente pelo
+  // Clientes novos são preparados primeiro para que seus ids (gerados localmente pelo
   // WatermelonDB assim que `prepareCreate` roda, antes mesmo do `batch` persistir) já possam
-  // ser referenciados pelos produtos abaixo, dentro do mesmo `batch`.
+  // ser referenciados pelos pedidos abaixo, dentro do mesmo `batch`.
+  const clientDocumentToId = new Map(existingClients.map((client) => [client.document, client.id]));
+  const preparedClients = clientsToImport.map((client) => {
+    const record = clientCollection.prepareCreate((newClient) => {
+      newClient.name = client.name;
+      newClient.document = client.document;
+      newClient.phone = client.phone;
+      newClient.addressStreet = client.address_street;
+      newClient.addressNumber = client.address_number;
+      newClient.addressComplement = client.address_complement;
+      newClient.addressCity = client.address_city;
+      newClient.addressState = client.address_state;
+      newClient.addressZip = client.address_zip;
+    });
+    clientDocumentToId.set(client.document, record.id);
+    return record;
+  });
+
+  // Mesma lógica para categorias, referenciadas pelos produtos logo abaixo.
   const categoryNameToId = new Map(existingCategories.map((category) => [normalizeName(category.name), category.id]));
   const categoryNamesToCreate = new Set(
     data.categories
@@ -248,21 +347,80 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
     return record;
   });
 
+  // E para produtos, referenciados pelos itens de pedido logo abaixo.
+  const productNameToId = new Map(existingProducts.map((product) => [normalizeName(product.name), product.id]));
   const preparedProducts = productsToImport.map((product) => {
     const categoryId = product.category_name ? categoryNameToId.get(normalizeName(product.category_name)) : undefined;
-    return productCollection.prepareCreate((record) => {
-      record.name = product.name;
-      record.categoryId = categoryId;
-      record.price = product.price;
-      record.unit = product.unit;
+    const record = productCollection.prepareCreate((newProduct) => {
+      newProduct.name = product.name;
+      newProduct.categoryId = categoryId;
+      newProduct.price = product.price;
+      newProduct.unit = product.unit;
     });
+    productNameToId.set(normalizeName(product.name), record.id);
+    return record;
+  });
+
+  const existingClientDocumentById = new Map(existingClients.map((client) => [client.id, client.document]));
+  const existingOrderKeys = new Set<string>();
+  for (const order of existingOrders) {
+    const document = existingClientDocumentById.get(order.clientId);
+    if (document) existingOrderKeys.add(orderKey(document, order.orderNumber));
+  }
+
+  const ordersToImport = data.orders.filter((order) => {
+    const clientId = clientDocumentToId.get(order.client_document);
+    return clientId && !existingOrderKeys.has(orderKey(order.client_document, order.order_number));
+  });
+
+  const preparedOrders: OrderItem[] = [];
+  const preparedOrderHeaders = ordersToImport.map((order) => {
+    const clientId = clientDocumentToId.get(order.client_document) as string;
+    const preparedOrder = orderCollection.prepareCreate((record) => {
+      record.clientId = clientId;
+      record.status = order.status as OrderStatus;
+      record.totalGross = order.total_gross;
+      record.discountTotal = order.discount_total;
+      record.totalNet = order.total_net;
+      record.paymentMethod = order.payment_method as PaymentMethod;
+      record.notes = order.notes;
+      record.orderNumber = order.order_number;
+      record.deliveryDate = order.delivery_date ? new Date(order.delivery_date) : null;
+      // `created_at` não pode ser definido aqui (@readonly) — nasce com a data da importação.
+    });
+
+    for (const item of order.items) {
+      preparedOrders.push(
+        orderItemCollection.prepareCreate((record) => {
+          record.orderId = preparedOrder.id;
+          record.productId = productNameToId.get(normalizeName(item.product_name_snapshot)) ?? '';
+          record.productNameSnapshot = item.product_name_snapshot;
+          record.unitPrice = item.unit_price;
+          record.quantity = item.quantity;
+          record.discountValue = item.discount_value;
+          record.subtotal = item.subtotal;
+        })
+      );
+    }
+
+    return preparedOrder;
   });
 
   // database.batch() só pode ser chamado de dentro de um Writer (database.write) — diferente de
   // collection.create(), que já se auto-encapsula. prepareCreate() acima não precisa disso.
   await database.write(async () => {
-    await database.batch(...preparedClients, ...preparedCategories, ...preparedProducts);
+    await database.batch(
+      ...preparedClients,
+      ...preparedCategories,
+      ...preparedProducts,
+      ...preparedOrderHeaders,
+      ...preparedOrders
+    );
   });
 
-  return { clientsImported: preparedClients.length, productsImported: preparedProducts.length };
+  return {
+    clientsImported: preparedClients.length,
+    productsImported: preparedProducts.length,
+    ordersImported: preparedOrderHeaders.length,
+  };
 }
