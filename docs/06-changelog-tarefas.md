@@ -256,6 +256,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Validação:** `tsc --noEmit` sem erros e `expo export --platform android` (bundle Metro completo, 1455 módulos) sem erros. **Não foi possível testar em dispositivo/emulador físico** neste ambiente — recomenda-se validar a migração do schema (v3 → v4) partindo de uma instalação com dados reais (produtos com `sku` preenchido) e o fluxo completo de criar categoria → cadastrar produto → filtrar catálogo → exportar/importar backup, antes do release.
 - **Docs afetados:** `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Fix: model `Category` não estava registrado no banco
+- **Tipo:** fix
+- **Resumo:** `database.get('categories')` retornava `null` (`TypeError: Cannot read property 'query' of null` ao abrir o Catálogo) porque o novo model `Category` foi criado mas nunca adicionado a `modelClasses` em `src/database/index.ts` nem exportado em `src/database/models/index.ts` — passo que existe pra todo model desde a Fase 2, mas ficou de fora na implementação inicial desta fase.
+- **Docs afetados:** nenhum (correção pontual, não muda nenhuma regra/schema já documentado).
+
 ### Tarefas planejadas
 - [x] Schema v3 → v4: tabela `categories` (`createTable`) + `products.category_id` (`addColumns`, opcional).
 - [x] `src/database/models/Category.ts` (novo) e `Product.ts` sem `sku`, com `categoryId`/relação `category`.
