@@ -26,7 +26,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
-| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (acesso somente-leitura em `expired`/`blocked` implementado em 2026-09-01; falta só cobertura de testes automatizados) |
+| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (renovação proativa, escalonamento pra `blocked` e aviso de vencimento implementados em 2026-09-01; falta só cobertura de testes automatizados) |
 | **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟢 Concluído |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | 🟡 Em andamento (`eas.json` criado em 2026-09-01; faltam testes automatizados e checklist final de release) |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
@@ -177,6 +177,15 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] Validação/renovação remota real via Supabase (`fetchLicenseFromSupabase`), substituindo o endpoint placeholder.
 - [ ] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementação manual feita, cobertura de testes ainda pendente (Fase 9).
 - [x] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — implementado em 2026-09-01 (ver entrada acima).
+
+### 2026-09-01 — Renovação proativa, tolerância de 1 dia para `blocked` e aviso de vencimento próximo
+- **Tipo:** feature
+- **Resumo:** Pedido explícito do usuário: (1) validar a licença já no dia do vencimento, não só depois de vencer de fato; (2) se, mesmo assim, continuar sem renovar, bloquear o app (não deixar o modo somente-leitura durar pra sempre); (3) um aviso não-bloqueante avisando com antecedência (5/2/1 dia, 2/1 hora) que a licença vai vencer, com botão de validar na hora.
+  - `useLicenseGuard.ts` ganhou um `setInterval` de 15 min reavaliando a licença (`evaluateLicense()`) enquanto o app fica aberto — antes só rodava uma vez, na abertura. Também passou a expor `expiresAt`.
+  - `licenseService.ts` (`evaluateLicense()`): no próprio dia calendário do vencimento (mesmo antes da hora exata vencer), tenta renovar em segundo plano, silenciosamente, se online — se conseguir, a licença já chega renovada sem o vendedor perceber nada. Depois que vence de fato, se ainda não conseguir renovar e **já virou o dia seguinte** (1 dia de tolerância excedido), o status vira `blocked` (novo `reason: 'grace_period_exceeded'`) em vez de continuar em `expired` somente-leitura indefinidamente — decisão confirmada com o usuário antes de implementar, já que mudava o comportamento da Fase 7/8 anterior.
+  - Novo componente `src/components/LicenseExpiryBanner.tsx`: faixa dispensável (✕) no topo do app, mostrada só quando `status === 'active'` e o vencimento está dentro de um dos 5 limiares (5d/2d/1d/2h/1h) — mostra sempre o mais apertado já cruzado, com data/hora exata do vencimento e um botão "Validar agora" (mesma função de retry usada na `ReadOnlyBanner`). Contagem regressiva só local (sem rede); quem reavalia de verdade é o `setInterval` do `useLicenseGuard`.
+  - `LicenseBlockedScreen.tsx`: nova mensagem para `grace_period_exceeded`; e um aviso inline *"Ainda não foi possível validar sua licença..."* aparece se o botão "Tentar novamente" for usado e a tela continuar montada depois (sinal de que a tentativa falhou, já que se tivesse dado certo o `RootNavigator` já teria trocado de tela).
+- **Docs afetados:** `docs/04-sistema-licenca.md` (árvore de decisão, diagrama de estados, nova seção do `LicenseExpiryBanner`), `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
 ---
 

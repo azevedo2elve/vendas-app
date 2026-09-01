@@ -6,6 +6,7 @@ import { useLicenseGuard } from '@/hooks/useLicenseGuard';
 import { LicenseAccessProvider } from '@/hooks/useLicenseAccess';
 import { LoadingView } from '@/components/LoadingView';
 import { ReadOnlyBanner } from '@/components/ReadOnlyBanner';
+import { LicenseExpiryBanner } from '@/components/LicenseExpiryBanner';
 import { LicenseBlockedScreen } from '@/screens/License/LicenseBlockedScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { ClientListScreen } from '@/screens/clients/ClientListScreen';
@@ -24,7 +25,7 @@ import type { RootStackParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
-  const { checking, status, reason, deviceId, retry } = useLicenseGuard();
+  const { checking, status, reason, deviceId, expiresAt, retry } = useLicenseGuard();
   const [retrying, setRetrying] = useState(false);
 
   if (checking || status === null) {
@@ -54,6 +55,9 @@ export function RootNavigator() {
     <LicenseAccessProvider readOnly={readOnly}>
       <View style={{ flex: 1 }}>
         {readOnly ? <ReadOnlyBanner onRetry={handleRetry} retrying={retrying} /> : null}
+        {!readOnly && expiresAt ? (
+          <LicenseExpiryBanner expiresAt={expiresAt} onValidateNow={handleRetry} validating={retrying} />
+        ) : null}
         <NavigationContainer>
           <Stack.Navigator
             screenOptions={{

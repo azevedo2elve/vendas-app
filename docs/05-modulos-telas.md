@@ -5,7 +5,7 @@
 | Módulo | Telas principais | Depende de |
 |---|---|---|
 | Dashboard | `HomeScreen` | `orders`/`clients` (WatermelonDB, agregados), `licenseService`, `netinfo` |
-| Licença | `LicenseBlockedScreen` | `licenseService` |
+| Licença | `LicenseBlockedScreen`, `ReadOnlyBanner`, `LicenseExpiryBanner` | `licenseService`, `useLicenseGuard`, `useLicenseAccess` |
 | Clientes | `ClientListScreen`, `ClientFormScreen` | `clients` (WatermelonDB) |
 | Produtos | `ProductListScreen`, `ProductFormScreen`, `CategoryListScreen` | `products`, `categories` (WatermelonDB) |
 | Ordem de Venda | `OrderSelectClientScreen`, `OrderItemsScreen`, `OrderReviewScreen`, `OrderSuccessScreen`, `OrderListScreen`, `OrderDetailScreen` | `orders`, `order_items`, `pdfService` |
@@ -22,6 +22,8 @@ Regra completa em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando
 - `useLicenseAccess()` — hook cru, só `{ readOnly }`, usado dentro de telas de formulário/detalhe pra desabilitar (`disabled={readOnly}`) os botões que escrevem dado (Salvar, Excluir, Compartilhar PDF, Concluir/Cancelar pedido, etc.), mantendo a tela navegável/visível.
 - `useReadOnlyGuard()` — `{ readOnly, guard }`, usado nos **pontos de entrada de criação** (FABs, botão "Nova Venda"): `guard(acao)` só executa `acao` se não estiver em somente-leitura; senão mostra um `Alert` e não navega.
 - Quando `blocked` (não `expired`), nada disso se aplica — o app inteiro fica só com `LicenseBlockedScreen`, que ganhou seu próprio botão de exportar backup direto (ver docs/04).
+- **`expired` não é mais permanente (2026-09-01):** só dura o próprio dia do vencimento — virou o dia seguinte sem conseguir renovar, o `RootNavigator` escala sozinho pra `blocked` (ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)). Isso acontece via a reavaliação periódica de 15 min do `useLicenseGuard`, não só na abertura do app.
+- **`LicenseExpiryBanner` (2026-09-01):** quando `status === 'active'` e o vencimento está próximo (5/2/1 dia, 2/1 hora antes), uma faixa não-bloqueante e dispensável aparece no mesmo lugar da `ReadOnlyBanner` (mutuamente exclusivas — uma é só pra quando ainda não venceu, a outra só pra depois que já venceu). Ver seção própria em [docs/04](./04-sistema-licenca.md#-aviso-de-vencimento-próximo-componentslicenseexpirybannertsx).
 
 ---
 
@@ -145,6 +147,7 @@ const productSchema = z.object({
 | `OrderProgressBar` | `src/components/OrderProgressBar.tsx` | Indicador de progresso do wizard de Nova Venda (3 etapas) |
 | `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade |
 | `ReadOnlyBanner` | `src/components/ReadOnlyBanner.tsx` | Faixa fixa acima da navegação, mostrada em toda a app quando a licença está `expired` (Fases 7/8) |
+| `LicenseExpiryBanner` | `src/components/LicenseExpiryBanner.tsx` | Faixa dispensável (✕) acima da navegação, avisando vencimento próximo da licença — 5/2/1 dia, 2/1 hora antes (2026-09-01) |
 
 Utilitários: `src/utils/masks.ts` (formatação — inclui `maskDateBR`/`parseDateBR`, Fase 13, usados pelo `mask="date"` do `MaskedInput`), `src/utils/address.ts` (Fase 13 — formata o endereço estruturado do cliente para exibição/PDF), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 

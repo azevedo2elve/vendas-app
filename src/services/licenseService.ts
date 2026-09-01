@@ -10,8 +10,9 @@ const TRIAL_PERIOD_MS = 15 * 24 * 60 * 60 * 1000;
 
 export type LicenseCheckResult = {
   status: LicenseStatus;
-  reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered';
+  reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered' | 'grace_period_exceeded';
   deviceId: string;
+  expiresAt: Date;
 };
 
 type RemoteLicenseRecord = {
@@ -95,6 +96,46 @@ async function persistStatus(license: LicenseControl, status: LicenseStatus, now
   });
 }
 
+function startOfDay(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// "Hoje" (dia do dispositivo) é o mesmo dia calendário do vencimento — usado para disparar uma
+// tentativa de renovação proativa antes da licença realmente vencer.
+function isExpirationDay(expiresAt: Date, now: Date): boolean {
+  return startOfDay(now) === startOfDay(expiresAt);
+}
+
+// Já passou pelo menos um dia completo desde o vencimento (não é mais "o dia que venceu", é o
+// dia seguinte em diante) — usado para escalar de `expired` (somente leitura) para `blocked`.
+function isPastGraceDay(expiresAt: Date, now: Date): boolean {
+  return startOfDay(now) > startOfDay(expiresAt);
+}
+
+async function isOnline(): Promise<boolean> {
+  const netState = await NetInfo.fetch();
+  return netState.isConnected === true && netState.isInternetReachable !== false;
+}
+
+// Tentativa silenciosa de renovação no próprio dia do vencimento, enquanto a licença ainda está
+// `active` — se der certo, o usuário nunca percebe nada (a licença já chega renovada antes de
+// vencer de verdade); se falhar (offline, servidor indisponível), não afeta a experiência agora,
+// só o lembrete de vencimento próximo (ver ReadOnlyBanner/LicenseExpiryBanner) continua visível.
+async function tryRenewSilently(license: LicenseControl, now: number): Promise<Date | null> {
+  if (!isSupabaseConfigured()) return null;
+  if (!(await isOnline())) return null;
+
+  try {
+    const { expiresAt } = await fetchLicenseFromSupabase(license.deviceId);
+    await persistActive(license, expiresAt, now);
+    return new Date(expiresAt);
+  } catch {
+    return null;
+  }
+}
+
 // Só para testes manuais (ex: botão de debug na HomeScreen) — consulta o Supabase mas
 // NÃO persiste nada localmente, ao contrário de evaluateLicense().
 export async function testSupabaseFetch(): Promise<{ ok: boolean; deviceId: string; message: string }> {
@@ -135,43 +176,60 @@ export async function getCurrentLicenseSnapshot(): Promise<{
 export async function evaluateLicense(): Promise<LicenseCheckResult> {
   const license = await getOrCreateLicense();
   const now = Date.now();
+  const nowDate = new Date(now);
 
   // Anti-fraude de relógio: NÃO atualiza last_opened_at aqui. Se atualizássemos com um
   // "agora" potencialmente fraudado, o usuário poderia voltar o relógio, ser bloqueado,
   // e depois avançar o relógio de novo para "limpar" o rastro do último uso legítimo.
   if (now < license.lastOpenedAt.getTime()) {
     await persistStatus(license, 'blocked');
-    return { status: 'blocked', reason: 'clock_tampered', deviceId: license.deviceId };
+    return { status: 'blocked', reason: 'clock_tampered', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
   }
 
   if (now < license.licenseExpiresAt.getTime()) {
+    // No próprio dia do vencimento, tenta renovar em segundo plano antes de realmente vencer —
+    // se conseguir, a licença já chega estendida sem o vendedor perceber nada.
+    if (isExpirationDay(license.licenseExpiresAt, nowDate)) {
+      const renewedExpiresAt = await tryRenewSilently(license, now);
+      if (renewedExpiresAt) {
+        return { status: 'active', deviceId: license.deviceId, expiresAt: renewedExpiresAt };
+      }
+    }
     await persistActive(license, license.licenseExpiresAt.getTime(), now);
-    return { status: 'active', deviceId: license.deviceId };
+    return { status: 'active', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
   }
 
-  const netState = await NetInfo.fetch();
-  const isOnline = netState.isConnected === true && netState.isInternetReachable !== false;
+  // A partir daqui, a licença já venceu (agora >= license_expires_at). Se já passou pelo menos
+  // um dia inteiro sem conseguir renovar (não é mais "o dia que venceu"), qualquer desfecho que
+  // não seja uma renovação bem-sucedida vira `blocked` (não mais `expired` somente-leitura) —
+  // ver docs/04-sistema-licenca.md.
+  const graceExceeded = isPastGraceDay(license.licenseExpiresAt, nowDate);
 
-  if (!isOnline || !isSupabaseConfigured()) {
-    await persistStatus(license, 'expired', now);
-    return { status: 'expired', reason: 'offline', deviceId: license.deviceId };
+  if (!(await isOnline()) || !isSupabaseConfigured()) {
+    const status = graceExceeded ? 'blocked' : 'expired';
+    const reason = graceExceeded ? 'grace_period_exceeded' : 'offline';
+    await persistStatus(license, status, now);
+    return { status, reason, deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
   }
 
   try {
     const { expiresAt } = await fetchLicenseFromSupabase(license.deviceId);
     await persistActive(license, expiresAt, now);
-    return { status: 'active', deviceId: license.deviceId };
+    return { status: 'active', deviceId: license.deviceId, expiresAt: new Date(expiresAt) };
   } catch (error) {
     if (error instanceof DeviceNotRegisteredError) {
       await persistStatus(license, 'blocked', now);
-      return { status: 'blocked', reason: 'not_registered', deviceId: license.deviceId };
+      return { status: 'blocked', reason: 'not_registered', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
     }
     if (error instanceof LicenseRenewalRejectedError) {
       await persistStatus(license, 'blocked', now);
-      return { status: 'blocked', reason: 'server_rejected', deviceId: license.deviceId };
+      return { status: 'blocked', reason: 'server_rejected', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
     }
-    // Falha de rede/timeout apesar do NetInfo reportar conexão: trata como expirado offline.
-    await persistStatus(license, 'expired', now);
-    return { status: 'expired', reason: 'offline', deviceId: license.deviceId };
+    // Falha de rede/timeout apesar do NetInfo reportar conexão: trata como expirado offline
+    // (ou bloqueado, se já excedeu a tolerância de 1 dia).
+    const status = graceExceeded ? 'blocked' : 'expired';
+    const reason = graceExceeded ? 'grace_period_exceeded' : 'offline';
+    await persistStatus(license, status, now);
+    return { status, reason, deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
   }
 }
