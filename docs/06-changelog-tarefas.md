@@ -21,7 +21,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 |---|---|---|
 | **Fase 0** | Estruturação inicial e documentação | 🟢 Concluído |
 | **Fase 1** | Setup do projeto (Expo, TypeScript, navegação base) | 🟢 Concluído |
-| **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟡 Em andamento (schema v1 + models prontos; `migrations.ts` só entra na 1ª alteração pós-v1) |
+| **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟢 Concluído (`migrations.ts` existe e está em uso desde a Fase 5, hoje na v5 — status estava desatualizado, corrigido em 2026-09-01) |
 | **Fase 3** | Módulo Clientes (CRUD + busca indexada) | 🟢 Concluído |
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
@@ -66,11 +66,16 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 2 — Banco de dados local
 
+### 2026-09-01 — Auditoria: status da fase estava desatualizado (sem mudança de código)
+- **Tipo:** docs
+- **Resumo:** Revisão pedida pelo usuário: conferir se a Fase 2 (banco de dados local) foi implementada corretamente e se a documentação reflete o estado real. Validado item a item — `src/database/schema.ts` (v5, 7 tabelas), `src/database/migrations.ts` (histórico v2→v5 completo, sem gaps), os 7 models (`Client`, `Category`, `Product`, `Order`, `OrderItem`, `LicenseControl`, `CompanySettings`, todos com campos batendo exatamente com as colunas do schema) e o registro de todos em `modelClasses` (`src/database/index.ts`) — tudo correto, sem nenhuma alteração de código necessária. O único problema era a tabela de fases e a checklist abaixo, que ainda diziam "`migrations.ts` não criado" — desatualizado desde a Fase 5 (2026-08-23), quando esse arquivo foi criado e vem sendo usado normalmente a cada schema novo (v3 na Fase 11, v4 na Fase 12, v5 na Fase 13). Também comparado o bloco de código do schema em [docs/03](./03-banco-de-dados.md#-definição-do-schema-srcdatabaseschemats) contra o arquivo real via `diff` — idêntico.
+- **Docs afetados:** `docs/06-changelog-tarefas.md` (esta entrada + status/checklist abaixo).
+
 ### Tarefas planejadas
 - [x] Instalar `@nozbe/watermelondb` e adapter SQLite.
 - [x] Implementar `src/database/schema.ts` conforme [docs/03-banco-de-dados.md](./03-banco-de-dados.md).
-- [x] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl`.
-- [ ] Configurar `src/database/migrations.ts` — não criado ainda; schema está na v1 inicial, migrations só são necessárias a partir da 1ª alteração de schema.
+- [x] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl` — ganharam mais 2 desde então (`Category`, Fase 12; `CompanySettings`, Fase 11).
+- [x] Configurar `src/database/migrations.ts` — criado na Fase 5 (schema v1 → v2); checkbox estava desatualizada, o arquivo existe e está em uso normal desde então.
 - [x] Dados reativos nas listagens — decidido usar `withObservables` (`@nozbe/watermelondb/react`) direto nas telas de lista (Fase 3/4), em vez de um hook `useWatermelonData` customizado. `withObservables` já é a forma idiomática do WatermelonDB de conectar uma query observável a props de componente; um hook próprio seria uma camada redundante por cima disso sem necessidade concreta ainda.
 
 ---
