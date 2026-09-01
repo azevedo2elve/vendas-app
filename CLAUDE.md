@@ -19,10 +19,11 @@ Aplicativo mobile focado em força de vendas para microempreendedores. O app ope
 
 ### 1. Sistema de Licença Offline com Renovação no Vencimento
 - **Campos Locais:** `device_id` (UUID), `license_expires_at` (ISO timestamp), `license_status` ('active' | 'expired' | 'blocked'), `last_opened_at` (ISO timestamp).
-- **Modo Offline:** Enquanto `agora < license_expires_at` e `agora >= last_opened_at`, o app funciona 100% offline sem fazer chamadas de rede.
-- **Chegada do Vencimento:** Quando `agora >= license_expires_at`, o app deve validar a renovação:
-  - **Com internet:** Faz fetch na API de licença, atualiza o novo `license_expires_at` e segue operando.
-  - **Sem internet (ou status bloqueado):** Bloqueia a emissão de pedidos e apresenta tela de bloqueio com aviso e botão de retry.
+- **Validação contínua (atualizado 2026-09-01):** o app tenta validar a licença com o servidor sempre que possível — na abertura e a cada 5 minutos enquanto fica aberto — mesmo com `agora` bem antes de `license_expires_at`. Sem internet, isso nunca gera erro nem bloqueia por si só: o app segue funcionando 100% offline normalmente enquanto `license_expires_at` for hoje ou uma data futura.
+- **Chegada do Vencimento:** Quando `agora >= license_expires_at`:
+  - **Com internet:** Faz fetch na API de licença; se validar, atualiza o novo `license_expires_at` e segue operando; se a validação vier negativa (dispositivo não cadastrado ou licença recusada), bloqueia.
+  - **Sem internet, ainda no mesmo dia do vencimento:** segue em modo somente leitura (não bloqueia).
+  - **Sem internet, e já passou pelo menos 1 dia inteiro desde o vencimento:** bloqueia a emissão de pedidos e apresenta tela de bloqueio com aviso e botão de retry.
 - **Anti-fraude de relógio:** Se a data atual for menor que `last_opened_at`, bloqueia imediatamente.
 
 ### 2. Módulos do Sistema

@@ -17,7 +17,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { StatCard } from '@/components/StatCard';
 import { testSupabaseFetch } from '@/services/licenseService';
 import { getOrCreateCompanySettings, resolveDisplayName } from '@/services/settingsService';
-import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
+import { useLicenseAccess, useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -70,6 +70,22 @@ async function loadDashboardData(): Promise<DashboardData> {
   };
 }
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+// 5 estados possíveis: "Licença Válida", "Licença Inválida" (modo somente-leitura), e a
+// contagem regressiva nos últimos dias antes do vencimento (5/2/1 dia) — pedido explícito do
+// usuário. Sem contagem em horas aqui (isso fica só no LicenseExpiryBanner).
+function licenseStatusLabel(readOnly: boolean, expiresAt: Date | null): string {
+  if (readOnly) return 'Licença Inválida';
+  if (!expiresAt) return 'Licença Válida';
+
+  const remainingMs = expiresAt.getTime() - Date.now();
+  if (remainingMs <= ONE_DAY_MS) return 'Faltam 1 dia - validade';
+  if (remainingMs <= 2 * ONE_DAY_MS) return 'Faltam 2 dias - validade';
+  if (remainingMs <= 5 * ONE_DAY_MS) return 'Faltam 5 dias - validade';
+  return 'Licença Válida';
+}
+
 export function HomeScreen({ navigation }: Props) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,6 +94,7 @@ export function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
   const { readOnly, guard } = useReadOnlyGuard();
+  const { expiresAt } = useLicenseAccess();
 
   const refresh = useCallback(async () => {
     const dashboard = await loadDashboardData();
@@ -139,7 +156,7 @@ export function HomeScreen({ navigation }: Props) {
                 color={isOnline ? colors.success : colors.warningStrong}
               />
               <Text style={[styles.statusPillText, { color: isOnline ? colors.successStrong : colors.warningStrong }]}>
-                {isOnline ? 'Online' : 'Modo Offline Ativo'}
+                {isOnline ? 'Online' : 'Offline'}
               </Text>
             </View>
             <View style={[styles.statusPill, readOnly ? styles.statusPillOffline : styles.statusPillLicense]}>
@@ -149,7 +166,7 @@ export function HomeScreen({ navigation }: Props) {
                 color={readOnly ? colors.warningStrong : colors.accent}
               />
               <Text style={[styles.statusPillText, { color: readOnly ? colors.warningStrong : colors.accentDark }]}>
-                {readOnly ? 'Somente leitura' : 'Licença Válida'}
+                {licenseStatusLabel(readOnly, expiresAt)}
               </Text>
             </View>
           </View>
