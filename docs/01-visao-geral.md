@@ -18,7 +18,7 @@ O app resolve um problema muito concreto: vendedor visita cliente, monta o pedid
 
 ## 🔑 Princípio central: Offline-first
 
-Diferente de apps que são "online com cache", este app é **offline por padrão** e só toca a rede em um único cenário: a validação/renovação da licença de uso quando ela vence (ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md)). Todo o restante — cadastro de clientes, produtos, montagem de pedidos, geração de PDF — funciona sem qualquer chamada de rede.
+Diferente de apps que são "online com cache", este app é **offline por padrão** e só toca a rede para um único fim: validar/renovar a licença de uso (ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md)). Todo o restante — cadastro de clientes, produtos, montagem de pedidos, geração de PDF — funciona sem qualquer chamada de rede. **Atualizado em 2026-09-01:** essa checagem de licença deixou de acontecer só no vencimento — agora tenta validar sempre que possível (na abertura do app e a cada 5 minutos), mesmo com a licença longe de vencer, pra renovar proativamente. Continua **tolerante à ausência de internet**: sem conexão, o app segue funcionando normalmente até o dia seguinte ao do vencimento — só bloqueia depois disso.
 
 Isso implica decisões de arquitetura específicas:
 - Banco local (WatermelonDB) como única fonte de verdade em tempo de uso — não há sincronização com backend nos módulos de negócio.

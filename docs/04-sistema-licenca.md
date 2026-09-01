@@ -27,18 +27,18 @@ Esse período de trial é uma decisão de implementação (não estava especific
 
 > ⚠️ **Por que o bootstrap não consulta o Supabase:** o `device_id` é um UUID v4 gerado aleatoriamente no próprio dispositivo na primeira execução — ele não pode, por definição, já existir na tabela `licenses` do Supabase nesse exato momento (ninguém o conhece antes do app gerá-lo). Por isso a validação remota só entra em ação mais tarde, quando `agora >= license_expires_at` (fim do trial) — ver árvore de decisão abaixo. Para o vendedor ter uma licença de verdade (não o trial), alguém do time de suporte precisa cadastrar o `device_id` exibido em [HomeScreen](../src/screens/HomeScreen.tsx) (ou na [tela de bloqueio](../src/screens/License/LicenseBlockedScreen.tsx)) na tabela `licenses` do Supabase.
 
-## 🧠 Regra de decisão (executada na abertura do app, e a cada 15 min enquanto ele fica aberto)
+## 🧠 Regra de decisão (executada na abertura do app, e a cada 5 min enquanto ele fica aberto)
 
 A lógica vive em `services/licenseService.ts` (função `evaluateLicense()`) e é consumida pelo hook `hooks/useLicenseGuard.ts`, que roda antes de liberar a navegação para qualquer tela de negócio (ver `navigation/RootNavigator.tsx`).
 
-> 🔁 **Reavaliação periódica (2026-09-01):** `useLicenseGuard` chama `evaluateLicense()` de novo a cada 15 minutos enquanto o app permanece aberto (`setInterval`, não só na abertura) — antes disso, a licença só era checada uma vez por sessão. Isso é o que permite: (a) tentar renovar **proativamente** no próprio dia do vencimento, antes da hora exata vencer; (b) reagir à virada de dia após o vencimento (escala pra `blocked` depois de 1 dia de tolerância, ver abaixo); e (c) manter o aviso de vencimento próximo (`LicenseExpiryBanner`) atualizado sem precisar fechar/reabrir o app. 15 minutos é um equilíbrio entre reagir rápido e não bater no Supabase toda hora.
+> 🔁 **Validação contínua, não só no vencimento (2026-09-01):** `evaluateLicense()` sempre tenta contatar o Supabase primeiro, quando há internet — mesmo com a licença longe de vencer (dias, meses) — em vez de só tentar quando `agora >= license_expires_at`. E `useLicenseGuard` chama `evaluateLicense()` de novo a cada **5 minutos** enquanto o app permanece aberto (`setInterval`, não só na abertura). Isso é uma mudança deliberada em relação ao princípio original ("100% offline até vencer" — ver `CLAUDE.md`): agora o app aproveita qualquer internet disponível pra manter a licença sempre renovada/confirmada, mas **sem exigi-la** — sem conexão, tudo continua funcionando normalmente (sem nenhum erro visível) até passar 1 dia inteiro do vencimento.
 
 ### Detalhe da checagem de conectividade e do erro de renovação
 
 - **Online** = `NetInfo.fetch()` retorna `isConnected === true` **e** `isInternetReachable !== false` (trata o estado "ainda não determinado" (`null`) como tentativa válida, em vez de bloquear precocemente).
-- Se o Supabase não estiver configurado (`EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` ausentes) o app nem tenta a chamada — trata como se estivesse offline (`expired`/`offline`, com retry).
-- Se o fetch ao Supabase falhar por **erro de rede/timeout** (ex: `TypeError` antes de obter resposta), o resultado é tratado como **`expired`/offline** — não como `blocked` — pois não houve uma recusa explícita do servidor.
-- Se o Supabase **responder** com erro HTTP (ex: `401`/`403` por chave inválida, RLS negando a linha), o resultado é `blocked` com `reason: 'server_rejected'`.
+- Se o Supabase não estiver configurado (`EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` ausentes) ou não há internet, o app nem tenta a chamada — cai direto no tratamento local por data (passo 3 abaixo), **sem mostrar nenhum erro**.
+- Se o fetch ao Supabase falhar por **erro de rede/timeout** (ex: `TypeError` antes de obter resposta), mesmo com o `NetInfo` dizendo que há conexão, o resultado é tratado como se estivesse offline — cai no mesmo tratamento local por data, não em `blocked`, pois não houve uma recusa explícita do servidor.
+- Se o Supabase **responder** com erro HTTP (ex: `401`/`403` por chave inválida, RLS negando a linha), o resultado é `blocked` com `reason: 'server_rejected'` — **imediato**, independente de quantos dias faltam pro vencimento.
 - Se o Supabase responder OK mas com **array vazio** (nenhuma linha para esse `device_id`), o resultado é `blocked` com `reason: 'not_registered'` — dispositivo não cadastrado no sistema de licenças.
 - Se a linha encontrada tiver `license_status` diferente de `'active'` (ex: `'blocked'` ou `'expired'` definidos manualmente no Supabase), o resultado também é `blocked` com `reason: 'server_rejected'`.
 - Em qualquer resultado, o `device_id` do dispositivo é retornado por `evaluateLicense()` e exibido na tela (para poder ser repassado ao suporte).
@@ -55,100 +55,96 @@ dia_vencimento = dia calendário de license_expires_at
        → Motivo: relógio do dispositivo foi voltado manualmente
                  para burlar a expiração da licença.
 
-2. LICENÇA AINDA VÁLIDA
-   SENÃO SE agora < license_expires_at:
-       → SE hoje === dia_vencimento (é HOJE que a licença vence):           [2026-09-01]
-            → Tenta renovar em segundo plano, silenciosamente, SE online
-              e Supabase configurado (não bloqueia a UI se falhar — só o
-              aviso de vencimento próximo continua visível, ver banner
-              abaixo)
-            → SE conseguir: license_expires_at é estendida, segue 'active'
-              sem o vendedor perceber nada
-       → App funciona 100% OFFLINE pro resto (sem chamadas de rede fora
-         da tentativa proativa acima)
-       → Atualiza last_opened_at = agora
-       → Libera navegação normalmente
+2. SEMPRE TENTA VALIDAR COM O SERVIDOR PRIMEIRO (2026-09-01)
+   SE Supabase configurado E há internet:
+       → GET {SUPABASE_REST_URL}/licenses?device_id=eq.{deviceId}
+            &select=device_id,license_expires_at,license_status
+         headers: apikey / Authorization: Bearer <anon key>
 
-3. LICENÇA VENCIDA → precisa validar renovação
-   SENÃO (agora >= license_expires_at):
-       → graca_excedida = hoje > dia_vencimento                             [2026-09-01]
-         (já passou pelo menos 1 dia INTEIRO desde o vencimento — não é
-         mais "o dia que venceu")
-       → Verifica conectividade (NetInfo) e se o Supabase está configurado
+       → SE encontrou uma linha E license_status === 'active':
+            → Atualiza license_expires_at (valor retornado pelo Supabase)
+            → license_status = 'active'
+            → Atualiza last_opened_at = agora
+            → Libera navegação — FIM
 
-       SE HÁ INTERNET E SUPABASE CONFIGURADO:
-           → GET {SUPABASE_REST_URL}/licenses?device_id=eq.{deviceId}
-                &select=device_id,license_expires_at,license_status
-             headers: apikey / Authorization: Bearer <anon key>
+       → SE encontrou uma linha COM license_status ('blocked' ou 'expired'):
+            → license_status = 'blocked'  (reason: 'server_rejected')
+            → Exibe tela de bloqueio — FIM
 
-           → SE encontrou uma linha E license_status === 'active':
-                → Atualiza license_expires_at (valor retornado pelo Supabase)
-                → license_status = 'active'
-                → Atualiza last_opened_at = agora
-                → Libera navegação
+       → SE array vazio (device_id não cadastrado no Supabase):
+            → license_status = 'blocked'  (reason: 'not_registered')
+            → Exibe tela de bloqueio com o device_id, para repassar
+              ao suporte — FIM
 
-           → SE encontrou uma linha COM license_status ('blocked' ou 'expired'):
-                → license_status = 'blocked'  (reason: 'server_rejected')
-                → Exibe tela de bloqueio
+       → SE erro HTTP do Supabase (ex: 401/403):
+            → license_status = 'blocked'  (reason: 'server_rejected') — FIM
 
-           → SE array vazio (device_id não cadastrado no Supabase):
-                → license_status = 'blocked'  (reason: 'not_registered')
-                → Exibe tela de bloqueio com o device_id, para repassar ao suporte
+       → SE erro de rede/timeout: cai pro passo 3 abaixo, sem erro
 
-           → SE erro HTTP do Supabase (ex: 401/403):
-                → license_status = 'blocked'  (reason: 'server_rejected')
+   SENÃO (sem internet, ou Supabase não configurado): cai pro passo 3
 
-       SE NÃO HÁ INTERNET, OU SUPABASE NÃO CONFIGURADO, OU FALHA DE REDE/TIMEOUT:
-           → SE graca_excedida:                                             [2026-09-01]
-                → license_status = 'blocked'  (reason: 'grace_period_exceeded')
-                → Exibe tela de bloqueio (não é mais somente-leitura)
-           → SENÃO (ainda é o próprio dia do vencimento):
-                → license_status = 'expired'  (reason: 'offline')
-                → Modo somente-leitura (não bloqueia visualização/backup)
-           → Exibe aviso + botão de retry em ambos os casos
+3. TRATAMENTO LOCAL POR DATA (só chega aqui se não deu pra validar com
+   o servidor) — nunca dá erro por si só, só decide active OU blocked
+   com base na data já registrada localmente:
+
+   SE agora < license_expires_at (ainda não venceu, mesmo que hoje seja
+   o dia do vencimento):
+       → license_status = 'active'
+       → App funciona 100% normalmente, sem nenhuma restrição
+
+   SENÃO SE hoje > dia_vencimento (já passou pelo menos 1 dia INTEIRO
+   desde o vencimento — não é mais "o dia que venceu"):
+       → license_status = 'blocked'  (reason: 'grace_period_exceeded')
+       → Exibe tela de bloqueio
+
+   SENÃO (venceu, mas ainda é o próprio dia do vencimento):
+       → license_status = 'expired'  (reason: 'offline')
+       → Modo somente-leitura (não bloqueia visualização/backup)
 ```
 
 ## 🔄 Diagrama de estados
 
 ```text
-                 ┌─────────────┐
-        ┌───────▶│   active    │◀───────────────┐
-        │        └─────────────┘                │
-        │          │        ▲                    │
-        │  dia do vencimento│ renovação           │ renovação OK
-        │  (tenta renovar   │ proativa OK         │ (com internet)
-        │   em segundo plano,│ (silenciosa)        │
-        │   sem afetar a UX)│                    │
-        │               │                        │
-        │      agora >= license_expires_at        │
-        │               │                        │
-        │               ▼                        │
-        │        ┌─────────────┐        tenta renovar
-        │        │  (checando  │────────────────┘
-        │        │  renovação) │
-        │        └─────────────┘
-        │               │
-        │      sem internet / falha
-        │               │
-        │        ainda é o dia do vencimento?
-        │          │                │
-        │         sim               não (virou o dia seguinte —
-        │          │                     tolerância de 1 dia excedida)
-        │          ▼                │
-        │   ┌─────────────┐         │
-        │   │   expired   │──── botão "Tentar novamente" ───┐
-        │   │ (somente     │                                 │
-        │   │  leitura)    │                                 │
-        │   └─────────────┘                                 │
-        │                                                     │
-        │   relógio voltado (agora < last_opened_at)         │
-        │   OU backend recusa a licença                       │
-        │   OU 1 dia de tolerância excedido sem renovar       │
-        │               │                                     │
-        │               ▼                                     │
-        │        ┌─────────────┐                             │
-        └────────│   blocked   │◀────────────────────────────┘
-                  └─────────────┘
+              a cada abertura do app                  renovação OK
+              e a cada 5 min                          (com internet,
+                     │                                  a qualquer momento —
+                     ▼                                  não só perto do
+              ┌─────────────┐  tenta validar com o     vencimento)
+   ┌─────────▶│   active    │──── servidor (se online)────┐
+   │          └─────────────┘                              │
+   │                                                        │
+   │   backend recusa (not_registered / server_rejected)    │
+   │   ──────────────────────────────────────────────┐      │
+   │                                                   │      │
+   │   sem internet (ou falha de rede/timeout)          │      │
+   │               │                                    │      │
+   │               ▼                                    │      │
+   │   agora < license_expires_at?                       │      │
+   │      │                    │                          │      │
+   │     sim                  não                          │      │
+   │      │                    │                          │      │
+   │      └──── continua active (sem restrição) ◀──────────┘      │
+   │                           │                                  │
+   │              hoje > dia_vencimento (1 dia de                  │
+   │              tolerância excedido)?                             │
+   │                 │                    │                         │
+   │                não                  sim                        │
+   │                 │                    │                         │
+   │                 ▼                    │                         │
+   │          ┌─────────────┐             │                         │
+   │          │   expired   │─── botão "Tentar novamente" ──────────┘
+   │          │  (somente    │
+   │          │   leitura)   │
+   │          └─────────────┘
+   │
+   │   relógio voltado (agora < last_opened_at)
+   │   OU backend recusa a licença
+   │   OU 1 dia de tolerância excedido sem renovar
+   │               │
+   │               ▼
+   │        ┌─────────────┐
+   └────────│   blocked   │
+             └─────────────┘
 ```
 
 ## 🚫 O que fica bloqueado quando a licença não está `active`
@@ -203,7 +199,7 @@ Elementos obrigatórios da tela:
 Adicionado em 2026-09-01. Diferente da `LicenseBlockedScreen`/`ReadOnlyBanner` (que só aparecem quando a licença **já** tem algum problema), este é um aviso preventivo: mostrado pelo `RootNavigator` só quando `status === 'active'` **e** o vencimento está próximo — pra dar tempo do vendedor se conectar à internet antes da licença realmente vencer.
 
 - **Não-bloqueante por design** ("não atrapalha o cliente de mexer nele"): é uma faixa fina no topo do app, acima da navegação — não é modal, não impede toque em nenhuma outra parte da tela, e tem um botão de fechar (✕).
-- **Quando aparece:** quando o tempo restante até `license_expires_at` cruza um destes limiares — **5 dias, 2 dias, 1 dia, 2 horas, 1 hora** antes do vencimento. Mostra sempre o limiar mais apertado já cruzado (ex: faltando 20h, mostra "1 dia", não "5 dias"/"2 dias"). O relógio de contagem é só local (recalcula a cada 30s a partir de `expiresAt`, sem chamada de rede) — quem efetivamente reavalia a licença é o `setInterval` de 15 min do `useLicenseGuard` (ver acima).
+- **Quando aparece:** quando o tempo restante até `license_expires_at` cruza um destes limiares — **5 dias, 2 dias, 1 dia, 2 horas, 1 hora** antes do vencimento. Mostra sempre o limiar mais apertado já cruzado (ex: faltando 20h, mostra "1 dia", não "5 dias"/"2 dias"). O relógio de contagem é só local (recalcula a cada 30s a partir de `expiresAt`, sem chamada de rede) — quem efetivamente reavalia a licença é o `setInterval` de 5 min do `useLicenseGuard` (ver acima).
 - **Fechar (✕):** esconde o aviso só para aquele limiar específico (guardado em estado local do componente, não persiste) — reaparece automaticamente se um limiar mais apertado for cruzado depois (ex: fechou o de "1 dia", mas o de "2 horas" aparece na hora certa), ou numa próxima sessão do app.
 - **Botão "Validar agora"** — chama a mesma função de retry (`useLicenseGuard().retry`, que roda `evaluateLicense()`) usada na `ReadOnlyBanner`/`LicenseBlockedScreen`. Se a renovação funcionar, `expiresAt` muda e o aviso desaparece sozinho (deixa de estar dentro de qualquer limiar).
 - Texto do aviso inclui a data/hora exata do vencimento (`toLocaleDateString`/`toLocaleTimeString('pt-BR')`) e lembra o vendedor de ficar conectado à internet para a renovação automática acontecer.
@@ -316,7 +312,7 @@ function useLicenseGuard(): {
   // 2. Aplica a árvore de decisão descrita acima (com fetchLicenseFromSupabase quando aplicável)
   // 3. Expõe status para o RootNavigator decidir entre
   //    Stack de negócio (Clients/Products/Orders) ou LicenseBlockedScreen
-  // 4. Reexecuta a própria checagem a cada 15 min via setInterval, enquanto o app fica aberto
+  // 4. Reexecuta a própria checagem a cada 5 min via setInterval, enquanto o app fica aberto
   //    (2026-09-01) — não só na montagem inicial.
 }
 ```

@@ -6,12 +6,23 @@ type LicenseAccessContextValue = {
   // Nunca true quando `blocked`: nesse estado o RootNavigator nem monta este provider, porque
   // a tela de bloqueio substitui o app inteiro (única exceção é o botão de backup embutido nela).
   readOnly: boolean;
+  // Data de vencimento da licença — usada pela HomeScreen para montar o status
+  // "Licença Válida"/"Faltam N dias". `null` só durante o carregamento inicial.
+  expiresAt: Date | null;
 };
 
-const LicenseAccessContext = createContext<LicenseAccessContextValue>({ readOnly: false });
+const LicenseAccessContext = createContext<LicenseAccessContextValue>({ readOnly: false, expiresAt: null });
 
-export function LicenseAccessProvider({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
-  return <LicenseAccessContext.Provider value={{ readOnly }}>{children}</LicenseAccessContext.Provider>;
+export function LicenseAccessProvider({
+  readOnly,
+  expiresAt,
+  children,
+}: {
+  readOnly: boolean;
+  expiresAt: Date | null;
+  children: ReactNode;
+}) {
+  return <LicenseAccessContext.Provider value={{ readOnly, expiresAt }}>{children}</LicenseAccessContext.Provider>;
 }
 
 export function useLicenseAccess(): LicenseAccessContextValue {
