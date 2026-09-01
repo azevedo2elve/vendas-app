@@ -225,6 +225,14 @@ export function HomeScreen({ navigation }: Props) {
                   <Text style={styles.recentMeta}>
                     {order.createdAt.toLocaleDateString('pt-BR')} · #{order.id.slice(0, 6).toUpperCase()}
                   </Text>
+                  {order.deliveryDate ? (
+                    <View style={styles.recentDeliveryRow}>
+                      <Ionicons name="cube-outline" size={12} color={colors.accent} />
+                      <Text style={styles.recentDeliveryText}>
+                        Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.recentRight}>
                   <Text style={styles.recentValue}>{formatCurrencyBRL(order.totalNet)}</Text>
@@ -437,6 +445,17 @@ const styles = StyleSheet.create({
   recentMeta: {
     fontSize: 11.5,
     color: colors.textMuted,
+  },
+  recentDeliveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  recentDeliveryText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
   },
   recentRight: {
     alignItems: 'flex-end',

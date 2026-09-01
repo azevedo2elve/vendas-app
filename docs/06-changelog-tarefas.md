@@ -294,6 +294,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Docs afetados:** `docs/02-arquitetura.md` (branch usada nesta fase), `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 - **Validação:** `tsc --noEmit` sem erros e `expo export --platform android` (bundle Metro completo) sem erros. **Não foi possível testar em dispositivo/emulador real** neste ambiente — recomenda-se validar antes do release: a migração v4→v5 partindo de dados reais (clientes com `address` preenchido, pedidos antigos com `order_number = 0`), a seleção de logo (`File.pickFileAsync` filtrado por imagem, em vez do seletor de galeria nativo — ver decisão acima), e a renderização do cabeçalho do PDF com e sem logo.
 
+### 2026-09-01 — Data de entrega visível nos cards de pedido
+- **Tipo:** feature
+- **Resumo:** A pedido do cliente, a `delivery_date` (adicionada mais cedo nesta mesma fase) passou a aparecer nos cards de pedido onde antes só existia no PDF e no detalhe: nos "Últimos pedidos" da `HomeScreen` e na listagem `OrderListScreen`. Em ambos, uma linha "Entrega em dd/mm/aaaa" (ícone `cube-outline`, cor de destaque) aparece só quando o pedido tem data de entrega definida — omitida por completo quando não há.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)
