@@ -28,7 +28,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
 | **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (acesso somente-leitura em `expired`/`blocked` implementado em 2026-09-01; falta só cobertura de testes automatizados) |
 | **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟢 Concluído |
-| **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado (revisão visual das telas críticas antecipada pela Fase 10; faltam testes automatizados e build EAS) |
+| **Fase 9** | Polimento, testes e preparação para build (EAS) | 🟡 Em andamento (`eas.json` criado em 2026-09-01; faltam testes automatizados e checklist final de release) |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
@@ -210,9 +210,15 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ## Fase 9 — Polimento e build
 
+### 2026-09-01 — `eas.json` (scaffold de build)
+- **Tipo:** chore
+- **Resumo:** Revisão pedida pelo usuário. Criado `eas.json` com 3 perfis: `development` (dev client, `distribution: internal` — necessário pro app rodar fora do Expo Go, já que depende de WatermelonDB), `preview` (APK interno pra testar em dispositivo antes de liberar) e `production` (`autoIncrement: true`, mais um perfil `submit.production` pra `eas submit`). Só o arquivo de configuração — **não** foi rodado `eas login`/`eas init`/`eas build` (sem acesso a uma conta Expo/EAS neste ambiente), então o projeto ainda não está de fato vinculado a uma conta (falta `extra.eas.projectId` em `app.json`). `android.package` em `app.json` também segue com o valor padrão do template (`com.anonymous.vendasapp`) — precisa virar o identificador definitivo antes do primeiro build de produção enviado à loja, já que não pode mais mudar depois.
+- **Docs afetados:** `docs/02-arquitetura.md` (nova seção "Build (EAS)"), `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] Revisão de UX em telas críticas (carrinho, bloqueio de licença) — antecipada pelo redesign da Fase 10.
-- [ ] Configuração de build via EAS (`eas.json`).
+- [x] Configuração de build via EAS (`eas.json`) — falta ainda vincular a uma conta EAS de verdade (`eas init`) e definir o `android.package` definitivo antes do primeiro build de produção.
+- [ ] Testes automatizados (nenhum framework configurado ainda — precisa de uma decisão de escopo/framework antes de começar).
 - [ ] Checklist final de conformidade com `docs/` antes do release.
 
 ---
