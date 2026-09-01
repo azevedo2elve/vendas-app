@@ -72,18 +72,17 @@ async function loadDashboardData(): Promise<DashboardData> {
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-// 5 estados possíveis: "Licença Válida", "Licença Inválida" (modo somente-leitura), e a
-// contagem regressiva nos últimos dias antes do vencimento (5/2/1 dia) — pedido explícito do
-// usuário. Sem contagem em horas aqui (isso fica só no LicenseExpiryBanner).
+// "Licença Válida", "Licença Inválida" (modo somente-leitura), ou a contagem regressiva de dias
+// (5, 4, 3, 2, 1 — diminui um a um conforme o dia passa, não pula direto de 5 para 2) a partir de
+// 5 dias antes do vencimento. Sem contagem em horas aqui (isso fica só no LicenseExpiryBanner).
 function licenseStatusLabel(readOnly: boolean, expiresAt: Date | null): string {
   if (readOnly) return 'Licença Inválida';
   if (!expiresAt) return 'Licença Válida';
 
   const remainingMs = expiresAt.getTime() - Date.now();
-  if (remainingMs <= ONE_DAY_MS) return 'Faltam 1 dia - validade';
-  if (remainingMs <= 2 * ONE_DAY_MS) return 'Faltam 2 dias - validade';
-  if (remainingMs <= 5 * ONE_DAY_MS) return 'Faltam 5 dias - validade';
-  return 'Licença Válida';
+  const daysRemaining = Math.max(1, Math.ceil(remainingMs / ONE_DAY_MS));
+  if (daysRemaining > 5) return 'Licença Válida';
+  return daysRemaining === 1 ? 'Falta 1 dia - validade' : `Faltam ${daysRemaining} dias - validade`;
 }
 
 export function HomeScreen({ navigation }: Props) {
