@@ -27,7 +27,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
 | **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (acesso somente-leitura em `expired`/`blocked` implementado em 2026-09-01; falta só cobertura de testes automatizados) |
-| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (acesso somente-leitura implementado em 2026-09-01; falta incluir `orders`/`order_items` no backup) |
+| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟢 Concluído |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado (revisão visual das telas críticas antecipada pela Fase 10; faltam testes automatizados e build EAS) |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
@@ -193,12 +193,18 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** No emulador Pixel 7 (e potencialmente em aparelhos sem um app de "Arquivos" registrado), o menu de compartilhamento do Android (`expo-sharing`) só mostrava Nearby Share/Drive/Gmail — sem opção de salvar direto no aparelho, porque esse menu só lista apps que registram suporte a receber o tipo de conteúdo compartilhado. Adicionado `saveBackupToDevice()` em `backupService.ts`, usando `Directory.pickDirectoryAsync()` (Storage Access Framework via a API nova do `expo-file-system`) para o usuário escolher uma pasta (ex: Downloads) e gravar o backup ali diretamente — não depende de nenhum app de terceiros. `BackupScreen` ganhou um segundo botão, "Salvar no dispositivo", ao lado de "Compartilhar backup". Nome do arquivo passou a incluir hora/minuto/segundo (não só a data) para evitar colisão ao exportar mais de uma vez no mesmo dia.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Incluir `orders`/`order_items` no backup
+- **Tipo:** feature
+- **Resumo:** Revisão pedida pelo usuário. Última pendência da Fase 8, adiada desde a Fase 5 até o módulo de Ordem de Venda existir de fato. `backupService.ts`: `orders` referenciam o cliente por `client_document` (não `client_id` — mesmo raciocínio já usado pra categoria/produto) e carregam a lista de `items` (`product_name_snapshot`, preço, quantidade, desconto, subtotal — não `product_id`, que nunca é lido pela UI). Deduplicação por `client_document` + `order_number` (par único, já que `order_number` é sequencial por cliente, não global). Um pedido só é importado se o cliente resolver (já existente ou vindo no mesmo backup); `product_id` de cada item é resolvido por nome contra produtos existentes/recém-importados, best-effort (fica em branco se não achar — inofensivo, a relação nunca é lida). `BackupPreview`/`ImportResult` ganharam `newOrders`/`skippedOrders`/`ordersImported`; `ExportResult` ganhou `ordersCount`, propagado nas mensagens de `BackupScreen` e `SettingsScreen`.
+- **Limitação conhecida (documentada, não é bug):** `orders.created_at` não é preservado na importação — campo `@readonly` do WatermelonDB, sempre gravado como "agora" na criação do registro. Pedidos importados nascem com a data da importação, não a data original da venda. O restante dos dados (valores, status, `order_number`, `delivery_date`, itens) é preservado corretamente.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] `services/backupService.ts` (exportação JSON via `expo-file-system`) — limitado a `clients`/`products` por enquanto.
 - [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".
 - [x] Importação com validação Zod e prévia (contagem de novos/duplicados) antes de confirmar.
 - [x] `BackupScreen` acessível mesmo com licença `expired` (e a exportação também com `blocked`) — implementado em 2026-09-01, ver entrada na Fase 7 acima (mesma mudança, cross-cutting).
-- [ ] Incluir `orders`/`order_items` no backup — o módulo de Ordem de Venda (Fase 5) já existe agora; falta integrar em `backupService.ts`.
+- [x] Incluir `orders`/`order_items` no backup — implementado em 2026-09-01, ver entrada acima.
 
 ---
 

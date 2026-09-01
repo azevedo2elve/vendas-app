@@ -243,7 +243,10 @@ export function SettingsScreen({ navigation }: Props) {
     setExporting(true);
     try {
       const result = await exportBackup();
-      showToast(`Backup gerado com ${result.clientsCount} cliente(s) e ${result.productsCount} produto(s).`, 'success');
+      showToast(
+        `Backup gerado com ${result.clientsCount} cliente(s), ${result.productsCount} produto(s) e ${result.ordersCount} pedido(s).`,
+        'success'
+      );
     } catch (error) {
       showToast(`Não foi possível exportar o backup: ${String(error)}`, 'error');
     } finally {

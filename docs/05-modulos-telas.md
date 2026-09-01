@@ -303,8 +303,10 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
 - **Exportar — duas opções**, ambas geram o mesmo JSON (`vendas-app-backup-AAAA-MM-DD_HH-mm-ss.json`, via a API nova do `expo-file-system` — classes `File`/`Directory`/`Paths`, não a API legada `FileSystem.writeAsStringAsync`):
   - **"Compartilhar backup"** (`backupService.exportBackup()`): escreve o arquivo em `Paths.document` (armazenamento privado do app) e abre o menu nativo de compartilhamento (`expo-sharing`) — WhatsApp, e-mail, Drive, etc. Em alguns aparelhos/emuladores sem um app de "Arquivos" instalado, esse menu **não** mostra uma opção de "salvar no aparelho" (só apps que registram esse tipo de compartilhamento aparecem).
   - **"Salvar no dispositivo"** (`backupService.saveBackupToDevice()`): abre o seletor de pastas do próprio sistema (`Directory.pickDirectoryAsync()` — Storage Access Framework no Android) e grava o arquivo diretamente na pasta escolhida (ex: Downloads). Funciona independentemente de quais apps estão instalados — é a forma garantida de "baixar" o arquivo.
-- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros já existentes são ignorados na importação — clientes por `document`, categorias por `name` (case-insensitive) e, desde a Fase 12 (sem mais `sku`), produtos também por `name` (case-insensitive). Inserção em lote via `database.batch(...)` (uma única transação).
+- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros já existentes são ignorados na importação — clientes por `document`, categorias por `name` (case-insensitive), produtos também por `name` (case-insensitive, desde a Fase 12, sem mais `sku`), e pedidos pela combinação cliente+`order_number` (ver abaixo). Inserção em lote via `database.batch(...)` (uma única transação).
 - **Categorias no backup (Fase 12):** exportadas por **nome**, não por `id` — cada produto carrega `category_name` (não `category_id`), já que um `id` gerado localmente não faz sentido ao restaurar em outro dispositivo. Na importação, categorias novas são criadas primeiro; produtos são então associados por nome (criando a categoria automaticamente se, por algum motivo, ainda não existir).
+- **Pedidos no backup (Fase 8, completado em 2026-09-01):** cada pedido carrega `client_document` (não `client_id`, mesmo raciocínio de categoria/produto) e a lista de itens (`product_name_snapshot`, preço, quantidade, desconto, subtotal — não `product_id`, já que a relação com o produto nunca é lida pela UI, só o snapshot). Chave de deduplicação: `client_document` + `order_number` juntos (`order_number` é sequencial **por cliente**, não um id global — dois clientes diferentes podem ambos ter um "pedido nº 1"). Um pedido só é importado se o cliente dele existir localmente (já cadastrado, ou vindo junto no mesmo arquivo de backup) — senão fica de fora, contado como "ignorado" na prévia. Ao montar o item, `product_id` é resolvido por nome contra os produtos existentes/recém-importados (best-effort — fica em branco se o produto correspondente não existir mais, sem quebrar nada, já que essa relação nunca é lida pela UI).
+  > ⚠️ **Limitação conhecida:** a data de criação do pedido (`created_at`) **não é preservada** na importação — é um campo `@readonly` do WatermelonDB, sempre gravado como "agora" no momento em que o registro é criado, então um pedido de 2026-08-01 importado hoje nasce com a data de hoje. O JSON inclui `created_at` só como referência informativa; o campo `order_number`/`delivery_date`/status/valores são todos preservados corretamente.
 - `license_control` nunca entra no backup (é específico do dispositivo, não faz sentido restaurar em outro aparelho). `company_settings` também nunca entrou (config isolada, não é uma entidade de negócio compartilhável entre dispositivos).
 - **Modo somente-leitura (Fases 7/8):** único módulo com regra assimétrica — "Escolher arquivo de backup" (importar) fica `disabled` com aviso; **exportar continua sempre liberado**, inclusive quando `blocked` (nesse caso via um botão dedicado direto na `LicenseBlockedScreen`, já que essa tela nem chega a ser montada — ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
 - **Endereço estruturado do cliente (Fase 13):** o antigo campo único `address` foi substituído por `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` no JSON, espelhando as novas colunas de `clients` (ver [docs/03](./03-banco-de-dados.md#-tabela-clients)).
@@ -330,11 +332,25 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
   ],
   "products": [
     { "name": "Refrigerante 2L", "category_name": "Bebidas", "price": 990, "unit": "UN" }
+  ],
+  "orders": [
+    {
+      "client_document": "11144477735",
+      "status": "pending",
+      "total_gross": 1980,
+      "discount_total": 0,
+      "total_net": 1980,
+      "payment_method": "pix",
+      "order_number": 1,
+      "delivery_date": null,
+      "created_at": "2026-08-22T14:00:00.000Z",
+      "items": [
+        { "product_name_snapshot": "Refrigerante 2L", "unit_price": 990, "quantity": 2, "discount_value": 0, "subtotal": 1980 }
+      ]
+    }
   ]
 }
 ```
-
-> 🚧 **Escopo desta fase:** só `clients` e `products` — `orders`/`order_items` entram no backup quando o módulo de Ordem de Venda existir (Fase 5). **Também não está** disponível com licença `expired`/`blocked` ainda: o `RootNavigator` bloqueia toda a navegação (inclusive Backup) quando a licença não está `active` — a exceção "backup sempre acessível" descrita em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active) ainda não foi implementada (fica para quando essa distinção de acesso for construída).
 
 ## ⚙️ Módulo Configurações
 
