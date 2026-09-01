@@ -279,6 +279,15 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ---
 
+## Processo — Fluxo de branches (`hml` → `main`)
+
+### 2026-09-01 — Adotado fluxo de homologação via branch `hml`
+- **Tipo:** chore
+- **Resumo:** A partir de agora, `feature/*` deixam de ser mergeadas direto em `main` (produção). Nova branch `hml` (criada a partir de `main`, logo após o merge da Fase 12) passa a ser o destino intermediário: `feature/*` → `hml` (testes de homologação) → `main` (produção). A branch `feature/categorias-produtos-sem-sku` (Fase 12, já mergeada em `main`) foi excluída local e remotamente.
+- **Docs afetados:** `docs/02-arquitetura.md` (nova seção "Estratégia de branches"), `docs/06-changelog-tarefas.md`.
+
+---
+
 ## 📎 Documentos relacionados
 
 - Visão geral: [docs/01-visao-geral.md](./01-visao-geral.md)

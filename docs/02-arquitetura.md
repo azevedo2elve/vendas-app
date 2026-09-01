@@ -156,6 +156,18 @@ O app é offline-first, então há apenas **um** ponto de rede real no sistema:
 
 Todo o resto (PDF, compartilhamento, banco de dados) roda 100% no dispositivo, sem chamadas HTTP.
 
+## 🌿 Estratégia de branches
+
+> ✨ Adotada a partir da **Fase 12**. Antes disso, as `feature/*` eram mergeadas direto em `main`.
+
+| Branch | Papel | Ambiente |
+|---|---|---|
+| `feature/*` | Desenvolvimento de uma feature/fix isolada, a partir de `hml` (ou de `main`, se `hml` ainda não tiver sido criada) | — (local/dev) |
+| `hml` | Homologação — recebe o merge de `feature/*` para testes antes de ir para produção | HML |
+| `main` | Produção — só recebe merge de `hml` já validada | PRD |
+
+Fluxo: `feature/*` → PR/merge em `hml` → testes de homologação → PR/merge de `hml` em `main`. Branches `feature/*` já mergeadas devem ser excluídas (local e remota) para manter o repositório limpo — o GitHub já faz isso automaticamente ao mergear um PR, nesse repositório.
+
 ## 🧪 Estratégia de testes (diretriz)
 
 - **Services** (`licenseService`, `pdfService`, `backupService`): unidade, com foco em regras de negócio puras (cálculo de totais, regras de data da licença, geração do payload do PDF).
