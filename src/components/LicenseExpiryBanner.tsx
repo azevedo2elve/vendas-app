@@ -10,23 +10,21 @@ type LicenseExpiryBannerProps = {
   validating: boolean;
 };
 
-type Threshold = { ms: number; label: string };
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * ONE_HOUR_MS;
+const MAX_DAYS_BEFORE = 5;
 
-const THRESHOLDS: Threshold[] = [
-  { ms: 5 * 24 * 60 * 60 * 1000, label: '5 dias' },
-  { ms: 2 * 24 * 60 * 60 * 1000, label: '2 dias' },
-  { ms: 1 * 24 * 60 * 60 * 1000, label: '1 dia' },
-  { ms: 2 * 60 * 60 * 1000, label: '2 horas' },
-  { ms: 1 * 60 * 60 * 1000, label: '1 hora' },
-];
-
-// O aviso mais "apertado" (menor threshold) já cruzado pelo tempo restante — ex: faltando 20h,
-// já cruzamos "5 dias", "2 dias" e "1 dia", mas o mais relevante pra mostrar é "1 dia".
-function currentThreshold(remainingMs: number): Threshold | null {
+// A partir de 5 dias antes do vencimento, o aviso conta os dias regressivamente um a um (5, 4,
+// 3, 2, 1 — não pula direto de "5 dias" pra "2 dias"); nas últimas 2h, troca pra contagem em
+// hora ("2 horas", depois "1 hora"), mais precisa que "1 dia" pros minutos finais.
+function currentReminderLabel(remainingMs: number): string | null {
   if (remainingMs <= 0) return null;
-  const crossed = THRESHOLDS.filter((t) => remainingMs <= t.ms);
-  if (crossed.length === 0) return null;
-  return crossed.reduce((tightest, t) => (t.ms < tightest.ms ? t : tightest));
+  if (remainingMs <= ONE_HOUR_MS) return '1 hora';
+  if (remainingMs <= 2 * ONE_HOUR_MS) return '2 horas';
+
+  const daysRemaining = Math.ceil(remainingMs / ONE_DAY_MS);
+  if (daysRemaining > MAX_DAYS_BEFORE) return null;
+  return daysRemaining === 1 ? '1 dia' : `${daysRemaining} dias`;
 }
 
 // Faixa não-bloqueante (o app continua 100% usável por baixo) mostrada quando a licença ainda
@@ -36,15 +34,18 @@ function currentThreshold(remainingMs: number): Threshold | null {
 export function LicenseExpiryBanner({ expiresAt, onValidateNow, validating }: LicenseExpiryBannerProps) {
   const insets = useSafeAreaInsets();
   const [now, setNow] = useState(() => Date.now());
-  const [dismissedThresholdMs, setDismissedThresholdMs] = useState<number | null>(null);
+  // Chave de "fechado" é o próprio rótulo (não um valor fixo): como a contagem muda todo dia
+  // (5 dias → 4 dias → 3 dias...), fechar o aviso em "3 dias" não esconde o de "2 dias" no dia
+  // seguinte — reaparece sozinho a cada rótulo novo.
+  const [dismissedLabel, setDismissedLabel] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(interval);
   }, []);
 
-  const threshold = currentThreshold(expiresAt.getTime() - now);
-  if (!threshold || threshold.ms === dismissedThresholdMs) {
+  const label = currentReminderLabel(expiresAt.getTime() - now);
+  if (!label || label === dismissedLabel) {
     return null;
   }
 
@@ -55,8 +56,8 @@ export function LicenseExpiryBanner({ expiresAt, onValidateNow, validating }: Li
     <View style={[styles.banner, { paddingTop: insets.top + spacing.xs }]}>
       <Ionicons name="alarm-outline" size={16} color={colors.warningStrong} />
       <Text style={styles.text} numberOfLines={3}>
-        Sua licença vence em {threshold.label} ({dateLabel} às {timeLabel}) — fique conectado à internet para
-        renovar automaticamente.
+        Sua licença vence em {label} ({dateLabel} às {timeLabel}) — fique conectado à internet para renovar
+        automaticamente.
       </Text>
       <TouchableOpacity onPress={onValidateNow} disabled={validating} style={styles.validateButton}>
         {validating ? (
@@ -66,7 +67,7 @@ export function LicenseExpiryBanner({ expiresAt, onValidateNow, validating }: Li
         )}
       </TouchableOpacity>
       <TouchableOpacity
-        onPress={() => setDismissedThresholdMs(threshold.ms)}
+        onPress={() => setDismissedLabel(label)}
         accessibilityLabel="Fechar aviso"
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >

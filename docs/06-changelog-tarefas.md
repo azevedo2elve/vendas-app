@@ -197,6 +197,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
   - `CLAUDE.md` atualizado para refletir a regra de licenciamento real (validação contínua, não mais "100% offline até vencer").
 - **Docs afetados:** `CLAUDE.md`, `docs/01-visao-geral.md`, `docs/04-sistema-licenca.md` (árvore de decisão e diagrama reescritos), `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Fix: contagem de dias da licença pulava de 5 pra 2, agora é contínua
+- **Tipo:** fix
+- **Resumo:** A entrada anterior implementou só 3 faixas fixas (5/2/1 dia), então o rótulo pulava de "Faltam 5 dias" direto pra "Faltam 2 dias" (nunca mostrava "4" ou "3"). Pedido do usuário: a contagem deve diminuir dia a dia a partir de 5 dias restantes. `HomeScreen.tsx` (`licenseStatusLabel()`) e `LicenseExpiryBanner.tsx` (`currentReminderLabel()`, renomeada de `currentThreshold()`) recalculados para `Math.ceil(remainingMs / ONE_DAY_MS)` em vez de comparar contra 3 limiares fixos — mostram "Faltam 5/4/3/2 dias" e "Falta 1 dia" (singular corrigido) continuamente. No banner, as duas faixas de hora (2h/1h) continuam como estavam; só a faixa de dias (5→1) passou a ser contínua. A chave de "aviso fechado" do banner mudou de um valor de limiar fixo para o próprio rótulo do dia — fechar em "3 dias" não esconde mais o aviso de "2 dias" no dia seguinte.
+- **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Fase 8 — Módulo Backup
