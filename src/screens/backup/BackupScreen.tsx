@@ -126,8 +126,8 @@ export function BackupScreen() {
           <Text style={styles.cardTitle}>Importar backup</Text>
         </View>
         <Text style={styles.description}>
-          Restaura Clientes e Produtos a partir de um arquivo de backup exportado anteriormente. Registros já
-          existentes (mesmo CPF/CNPJ ou SKU) são ignorados — não duplica dados.
+          Restaura Clientes, Categorias e Produtos a partir de um arquivo de backup exportado anteriormente.
+          Registros já existentes (mesmo CPF/CNPJ ou mesmo nome) são ignorados — não duplica dados.
         </Text>
         <PrimaryButton
           label="Escolher arquivo de backup"
@@ -145,6 +145,10 @@ export function BackupScreen() {
               {preview.duplicateClients > 0 ? ` (${preview.duplicateClients} já existem, serão ignorados)` : ''}
             </Text>
             <Text style={styles.previewRow}>
+              • {preview.newCategories} categoria(s) nova(s)
+              {preview.duplicateCategories > 0 ? ` (${preview.duplicateCategories} já existem, serão ignoradas)` : ''}
+            </Text>
+            <Text style={styles.previewRow}>
               • {preview.newProducts} produto(s) novo(s)
               {preview.duplicateProducts > 0 ? ` (${preview.duplicateProducts} já existem, serão ignorados)` : ''}
             </Text>
@@ -153,7 +157,7 @@ export function BackupScreen() {
                 label="Confirmar importação"
                 onPress={handleConfirmImport}
                 loading={importing}
-                disabled={preview.newClients === 0 && preview.newProducts === 0}
+                disabled={preview.newClients === 0 && preview.newCategories === 0 && preview.newProducts === 0}
                 style={styles.previewActionButton}
               />
               <PrimaryButton

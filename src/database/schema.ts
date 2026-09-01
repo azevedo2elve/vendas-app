@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 3,
+  version: 4,
   tables: [
     tableSchema({
       name: 'clients',
@@ -14,10 +14,17 @@ export default appSchema({
       ],
     }),
     tableSchema({
+      name: 'categories',
+      columns: [
+        { name: 'name', type: 'string', isIndexed: true },
+        { name: 'created_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
       name: 'products',
       columns: [
         { name: 'name', type: 'string', isIndexed: true },
-        { name: 'sku', type: 'string', isIndexed: true },
+        { name: 'category_id', type: 'string', isIndexed: true, isOptional: true },
         { name: 'price', type: 'number' },
         { name: 'unit', type: 'string' },
         { name: 'created_at', type: 'number' },

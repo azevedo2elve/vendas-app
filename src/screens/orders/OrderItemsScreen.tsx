@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import {
   FlatList,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,6 +15,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { database } from '@/database';
 import Product from '@/database/models/Product';
+import Category from '@/database/models/Category';
+import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { OrderProgressBar } from '@/components/OrderProgressBar';
 import { QuantityStepper } from '@/components/QuantityStepper';
@@ -26,23 +29,44 @@ import { cartItemLineTotal } from '@/types/orderDraft';
 
 type Props = NativeStackScreenProps<OrderDraftStackParamList, 'OrderItems'>;
 
-function observeProducts(searchQuery: string) {
+function observeProducts(searchQuery: string, categoryId: string | null) {
   const trimmed = searchQuery.trim();
+  const clauses = [];
 
-  if (!trimmed) {
-    return database.get<Product>('products').query(Q.sortBy('name', Q.asc)).observe();
+  if (trimmed) {
+    clauses.push(Q.where('name', Q.like(`%${Q.sanitizeLikeString(trimmed)}%`)));
+  }
+  if (categoryId) {
+    clauses.push(Q.where('category_id', categoryId));
   }
 
-  const like = `%${Q.sanitizeLikeString(trimmed)}%`;
   return database
     .get<Product>('products')
-    .query(Q.or(Q.where('name', Q.like(like)), Q.where('sku', Q.like(like))), Q.sortBy('name', Q.asc))
+    .query(...clauses, Q.sortBy('name', Q.asc))
     .observe();
 }
 
-type ListProps = Props & { products: Product[]; searchQuery: string; onSearchChange: (value: string) => void };
+function observeCategories() {
+  return database.get<Category>('categories').query(Q.sortBy('name', Q.asc)).observe();
+}
 
-function OrderItemsScreenBase({ navigation, products, onSearchChange }: ListProps) {
+type ListProps = Props & {
+  products: Product[];
+  categories: Category[];
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  selectedCategoryId: string | null;
+  onSelectCategory: (id: string | null) => void;
+};
+
+function OrderItemsScreenBase({
+  navigation,
+  products,
+  categories,
+  onSearchChange,
+  selectedCategoryId,
+  onSelectCategory,
+}: ListProps) {
   const { clientName, items, totals, addProduct, updateQuantity, removeItem } = useOrderDraft();
   const [cartVisible, setCartVisible] = useState(false);
   const { width } = useWindowDimensions();
@@ -71,7 +95,20 @@ function OrderItemsScreenBase({ navigation, products, onSearchChange }: ListProp
                 </View>
               ) : null}
               <Text style={styles.sectionTitle}>Catálogo de produtos</Text>
-              <SearchBar placeholder="Buscar por nome ou SKU" onDebouncedChange={onSearchChange} />
+              <SearchBar placeholder="Buscar por nome" onDebouncedChange={onSearchChange} />
+              {categories.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  <Chip label="Todas" selected={selectedCategoryId === null} onPress={() => onSelectCategory(null)} />
+                  {categories.map((category) => (
+                    <Chip
+                      key={category.id}
+                      label={category.name}
+                      selected={selectedCategoryId === category.id}
+                      onPress={() => onSelectCategory(category.id)}
+                    />
+                  ))}
+                </ScrollView>
+              ) : null}
             </View>
           }
           renderItem={({ item }) => {
@@ -82,9 +119,7 @@ function OrderItemsScreenBase({ navigation, products, onSearchChange }: ListProp
                   <Text style={styles.productName} numberOfLines={2}>
                     {item.name}
                   </Text>
-                  <Text style={styles.productSubtitle}>
-                    SKU: {item.sku} · {item.unit}
-                  </Text>
+                  <Text style={styles.productSubtitle}>{item.unit}</Text>
                   <Text style={styles.productPrice}>{formatCurrencyBRL(item.price)}</Text>
                 </View>
 
@@ -188,15 +223,21 @@ function OrderItemsScreenBase({ navigation, products, onSearchChange }: ListProp
   );
 }
 
-const enhance = withObservables(['searchQuery'], ({ searchQuery }: { searchQuery: string }) => ({
-  products: observeProducts(searchQuery),
-}));
+const enhance = withObservables(
+  ['searchQuery', 'selectedCategoryId'],
+  ({ searchQuery, selectedCategoryId }: { searchQuery: string; selectedCategoryId: string | null }) => ({
+    products: observeProducts(searchQuery, selectedCategoryId),
+    categories: observeCategories(),
+  })
+);
 
 const EnhancedOrderItems = enhance(OrderItemsScreenBase);
 
 export function OrderItemsScreen({ navigation, route }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const onSearchChange = useCallback((value: string) => setSearchQuery(value), []);
+  const onSelectCategory = useCallback((id: string | null) => setSelectedCategoryId(id), []);
 
   return (
     <EnhancedOrderItems
@@ -204,6 +245,8 @@ export function OrderItemsScreen({ navigation, route }: Props) {
       route={route}
       searchQuery={searchQuery}
       onSearchChange={onSearchChange}
+      selectedCategoryId={selectedCategoryId}
+      onSelectCategory={onSelectCategory}
     />
   );
 }
@@ -251,6 +294,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: colors.textPrimary,
+  },
+  filterRow: {
+    gap: spacing.xs,
   },
   productCard: {
     flex: 1,

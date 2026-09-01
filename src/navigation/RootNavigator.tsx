@@ -8,6 +8,7 @@ import { ClientListScreen } from '@/screens/clients/ClientListScreen';
 import { ClientFormScreen } from '@/screens/clients/ClientFormScreen';
 import { ProductListScreen } from '@/screens/products/ProductListScreen';
 import { ProductFormScreen } from '@/screens/products/ProductFormScreen';
+import { CategoryListScreen } from '@/screens/products/CategoryListScreen';
 import { BackupScreen } from '@/screens/backup/BackupScreen';
 import { OrderListScreen } from '@/screens/orders/OrderListScreen';
 import { OrderDetailScreen } from '@/screens/orders/OrderDetailScreen';
@@ -45,6 +46,7 @@ export function RootNavigator() {
         <Stack.Screen name="ClientForm" component={ClientFormScreen} options={{ title: 'Cliente' }} />
         <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: 'Produtos' }} />
         <Stack.Screen name="ProductForm" component={ProductFormScreen} options={{ title: 'Produto' }} />
+        <Stack.Screen name="CategoryList" component={CategoryListScreen} options={{ title: 'Categorias' }} />
         <Stack.Screen name="Backup" component={BackupScreen} options={{ title: 'Backup' }} />
         <Stack.Screen name="OrderList" component={OrderListScreen} options={{ title: 'Ordens de Venda' }} />
         <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Pedido' }} />
