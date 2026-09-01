@@ -17,6 +17,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { StatCard } from '@/components/StatCard';
 import { testSupabaseFetch } from '@/services/licenseService';
 import { getOrCreateCompanySettings, resolveDisplayName } from '@/services/settingsService';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -76,6 +77,7 @@ export function HomeScreen({ navigation }: Props) {
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
+  const { readOnly, guard } = useReadOnlyGuard();
 
   const refresh = useCallback(async () => {
     const dashboard = await loadDashboardData();
@@ -140,9 +142,15 @@ export function HomeScreen({ navigation }: Props) {
                 {isOnline ? 'Online' : 'Modo Offline Ativo'}
               </Text>
             </View>
-            <View style={[styles.statusPill, styles.statusPillLicense]}>
-              <Ionicons name="shield-checkmark" size={13} color={colors.accent} />
-              <Text style={[styles.statusPillText, { color: colors.accentDark }]}>Licença Válida</Text>
+            <View style={[styles.statusPill, readOnly ? styles.statusPillOffline : styles.statusPillLicense]}>
+              <Ionicons
+                name={readOnly ? 'time-outline' : 'shield-checkmark'}
+                size={13}
+                color={readOnly ? colors.warningStrong : colors.accent}
+              />
+              <Text style={[styles.statusPillText, { color: readOnly ? colors.warningStrong : colors.accentDark }]}>
+                {readOnly ? 'Somente leitura' : 'Licença Válida'}
+              </Text>
             </View>
           </View>
         </View>
@@ -157,7 +165,7 @@ export function HomeScreen({ navigation }: Props) {
       <View style={styles.quickActions}>
         <TouchableOpacity
           style={styles.primaryAction}
-          onPress={() => navigation.navigate('NewOrder')}
+          onPress={() => guard(() => navigation.navigate('NewOrder'))}
           activeOpacity={0.85}
         >
           <View style={styles.primaryActionIcon}>
@@ -173,7 +181,7 @@ export function HomeScreen({ navigation }: Props) {
         <View style={styles.secondaryActionsRow}>
           <TouchableOpacity
             style={styles.secondaryAction}
-            onPress={() => navigation.navigate('ClientForm', undefined)}
+            onPress={() => guard(() => navigation.navigate('ClientForm', undefined))}
             activeOpacity={0.75}
           >
             <Ionicons name="person-add-outline" size={20} color={colors.accent} />

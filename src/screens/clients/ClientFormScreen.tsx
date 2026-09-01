@@ -11,6 +11,7 @@ import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { LoadingView } from '@/components/LoadingView';
 import { useToast } from '@/components/Toast';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, spacing } from '@/theme';
 import { onlyDigits } from '@/utils/masks';
@@ -55,6 +56,7 @@ export function ClientFormScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   const {
     control,
@@ -279,7 +281,15 @@ export function ClientFormScreen({ navigation, route }: Props) {
         )}
       />
 
-      <PrimaryButton label="Salvar" icon="checkmark-circle-outline" onPress={handleSubmit(onSubmit)} loading={saving} />
+      {readOnly ? <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, não é possível salvar.</Text> : null}
+
+      <PrimaryButton
+        label="Salvar"
+        icon="checkmark-circle-outline"
+        onPress={handleSubmit(onSubmit)}
+        loading={saving}
+        disabled={readOnly}
+      />
 
       {isEditing ? (
         <PrimaryButton
@@ -287,6 +297,7 @@ export function ClientFormScreen({ navigation, route }: Props) {
           variant="danger"
           icon="trash-outline"
           onPress={handleDelete}
+          disabled={readOnly}
           style={styles.deleteButton}
         />
       ) : null}
@@ -326,5 +337,11 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     marginTop: 4,
+  },
+  readOnlyNotice: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.warningStrong,
+    textAlign: 'center',
   },
 });

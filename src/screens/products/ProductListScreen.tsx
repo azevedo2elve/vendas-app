@@ -11,6 +11,7 @@ import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -57,6 +58,7 @@ function ProductListScreenBase({
   onSelectCategory,
 }: ListProps) {
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
+  const { guard } = useReadOnlyGuard();
 
   return (
     <View style={styles.container}>
@@ -125,7 +127,7 @@ function ProductListScreenBase({
         />
       </View>
 
-      <Fab accessibilityLabel="Novo produto" onPress={() => navigation.navigate('ProductForm', undefined)} />
+      <Fab accessibilityLabel="Novo produto" onPress={() => guard(() => navigation.navigate('ProductForm', undefined))} />
     </View>
   );
 }

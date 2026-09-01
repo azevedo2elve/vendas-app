@@ -10,6 +10,7 @@ import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
 import { SearchBar } from '@/components/SearchBar';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 import { maskCpfCnpj, maskPhone } from '@/utils/masks';
@@ -35,6 +36,8 @@ function observeClients(searchQuery: string) {
 type ListProps = Props & { clients: Client[]; searchQuery: string; onSearchChange: (value: string) => void };
 
 function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps) {
+  const { guard } = useReadOnlyGuard();
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -82,7 +85,7 @@ function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps
         />
       </View>
 
-      <Fab accessibilityLabel="Novo cliente" onPress={() => navigation.navigate('ClientForm', undefined)} />
+      <Fab accessibilityLabel="Novo cliente" onPress={() => guard(() => navigation.navigate('ClientForm', undefined))} />
     </View>
   );
 }

@@ -16,6 +16,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { LoadingView } from '@/components/LoadingView';
 import { useToast } from '@/components/Toast';
 import { createCategory, isCategoryNameTaken } from '@/services/categoryService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, spacing } from '@/theme';
 
@@ -44,6 +45,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   const {
     control,
@@ -241,15 +243,17 @@ export function ProductFormScreen({ navigation, route }: Props) {
                   onPress={() => field.onChange(category.id)}
                 />
               ))}
-              <Chip
-                label="Nova categoria"
-                icon="add"
-                selected={false}
-                onPress={() => setAddingCategory((current) => !current)}
-              />
+              {readOnly ? null : (
+                <Chip
+                  label="Nova categoria"
+                  icon="add"
+                  selected={false}
+                  onPress={() => setAddingCategory((current) => !current)}
+                />
+              )}
             </View>
 
-            {addingCategory ? (
+            {addingCategory && !readOnly ? (
               <View style={styles.addCategoryRow}>
                 <MaskedInput
                   placeholder="Nome da nova categoria"
@@ -284,7 +288,15 @@ export function ProductFormScreen({ navigation, route }: Props) {
         )}
       />
 
-      <PrimaryButton label="Salvar" icon="checkmark-circle-outline" onPress={handleSubmit(onSubmit)} loading={saving} />
+      {readOnly ? <Text style={styles.errorText}>Licença expirada — somente leitura, não é possível salvar.</Text> : null}
+
+      <PrimaryButton
+        label="Salvar"
+        icon="checkmark-circle-outline"
+        onPress={handleSubmit(onSubmit)}
+        loading={saving}
+        disabled={readOnly}
+      />
 
       {isEditing ? (
         <PrimaryButton
@@ -292,6 +304,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
           variant="danger"
           icon="trash-outline"
           onPress={handleDelete}
+          disabled={readOnly}
           style={styles.deleteButton}
         />
       ) : null}
