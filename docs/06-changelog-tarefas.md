@@ -31,6 +31,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado (revisão visual das telas críticas antecipada pela Fase 10; faltam testes automatizados e build EAS) |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
+| **Fase 12** | Categorias de produtos + remoção do SKU | 🟡 Em andamento |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -231,6 +232,31 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Tipo:** fix / feature
 - **Resumo:** A pedido do usuário ("não ficar muito grande a tela"), as 3 seções de `SettingsScreen` passaram a ser recolhíveis. Novo componente `src/components/CollapsibleCard.tsx` (cabeçalho tocável com chevron animado). Comportamento de accordion de seção única: só uma seção fica expandida por vez (abrir uma recolhe a anterior); todas começam recolhidas ao entrar na tela.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+## Fase 12 — Categorias de produtos + remoção do SKU
+
+### 2026-09-01 — Planejamento: categorias no catálogo, SKU removido
+- **Tipo:** docs (planejamento da fase, código a seguir na mesma branch)
+- **Resumo:** Branch `feature/categorias-produtos-sem-sku`. A pedido do cliente: (1) o campo `sku` do módulo Produtos será removido — considerado complexidade desnecessária para o negócio; (2) produtos passam a pertencer a uma **categoria** (nova tabela `categories`, schema v3 → v4), com tela de gestão (criar/renomear/excluir categoria), seleção obrigatória de categoria no cadastro/edição de produto, e filtro por categoria (chips) na listagem do catálogo.
+- **Decisões de design registradas antes da implementação:**
+  - `products.category_id` fica **opcional no schema** (para não quebrar produtos cadastrados antes desta fase, que ficam "sem categoria" até serem editados), mas **obrigatório na validação do formulário** para produtos novos/editados.
+  - `sku` não é removida via migration (WatermelonDB não tem `removeColumns`) — fica órfã no SQLite em instalações existentes, mesmo padrão já usado na Fase 5 (`total_amount`/`discount`/`total_price`).
+  - Backup (`backupService.ts`) passa a exportar/importar categorias por **nome**, não por `id` (um `id` local não faz sentido ao restaurar em outro dispositivo); deduplicação de produtos no backup deixa de ser por `sku` e passa a ser por `name` (case-insensitive), já que o SKU não existe mais.
+  - Gestão de categorias (`CategoryListScreen`) não ganhou uma tela de formulário separada — campo de adicionar + edição inline por linha, pela mesma filosofia de simplicidade pedida pelo cliente para o restante do app.
+- **Docs afetados nesta entrada:** `docs/03-banco-de-dados.md` (tabela `categories`, `products` sem `sku`/com `category_id`, schema v4, migration v4), `docs/05-modulos-telas.md` (módulo Produtos, `CategoryListScreen`, `OrderItemsScreen`, módulo Backup), `docs/06-changelog-tarefas.md`.
+- **Próximo passo:** implementar o código (schema/migration/models, `CategoryListScreen`, `ProductFormScreen`/`ProductListScreen`, `backupService.ts`) e fechar esta entrada com o resumo final + validação (`tsc --noEmit` / bundle).
+
+### Tarefas planejadas
+- [ ] Schema v3 → v4: tabela `categories` (`createTable`) + `products.category_id` (`addColumns`, opcional).
+- [ ] `src/database/models/Category.ts` (novo) e `Product.ts` sem `sku`, com `categoryId`/relação `category`.
+- [ ] `CategoryListScreen` (criar/renomear/excluir, com bloqueio de exclusão se houver produto vinculado).
+- [ ] `ProductFormScreen`: remover campo SKU, adicionar seleção de categoria (chips, obrigatória).
+- [ ] `ProductListScreen`: remover SKU da busca/exibição, adicionar filtro por categoria (chips) e exibição do nome da categoria.
+- [ ] `OrderItemsScreen`: remover referências a SKU (busca e exibição no card do catálogo).
+- [ ] `backupService.ts` (+ `BackupScreen.tsx`): incluir `categories` no backup, trocar dedupe de produto de `sku` para `name`, resolver categoria por nome na importação.
+- [ ] Validar com `tsc --noEmit` e `expo export --platform android`.
+
+---
 
 ## 📎 Documentos relacionados
 

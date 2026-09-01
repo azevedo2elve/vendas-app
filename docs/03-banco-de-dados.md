@@ -11,6 +11,7 @@ Tabelas do sistema:
 | Tabela | Descrição |
 |---|---|
 | `clients` | Cadastro de clientes do vendedor |
+| `categories` | Categorias do catálogo de produtos |
 | `products` | Catálogo de produtos vendáveis |
 | `orders` | Ordens de venda (cabeçalho) |
 | `order_items` | Itens de cada ordem (linhas do carrinho, relação N:1 com `orders` e `products`) |
@@ -22,7 +23,7 @@ clients (1) ──────< orders (N)
                        │
                        │ (1)
                        ▼
-                order_items (N) >────── (1) products
+                order_items (N) >────── (1) products >────── (1) categories
 ```
 
 ---
@@ -64,34 +65,77 @@ export default class Client extends Model {
 
 ---
 
+## 🏷️ Tabela `categories`
+
+> ✨ Adicionada na **Fase 12** (schema v3 → v4) para permitir organizar o catálogo de produtos por categoria (ex: "Bebidas", "Limpeza"). Substitui o antigo campo `sku`, removido nesta mesma fase a pedido do cliente (fluxo considerado desnecessariamente complexo para o negócio).
+
+| Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
+|---|---|---|---|---|
+| `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente |
+| `name` | `string` (indexado) | `string` | ✔️ | Nome da categoria (único, checado na tela antes de salvar) |
+| `created_at` | `number` | `Date` | ✔️ | Gerenciado automaticamente |
+
+### Model (`src/database/models/Category.ts`)
+
+```ts
+import { Model, Query } from '@nozbe/watermelondb';
+import { field, date, readonly, children } from '@nozbe/watermelondb/decorators';
+import type Product from './Product';
+
+export default class Category extends Model {
+  static table = 'categories';
+  static associations = {
+    products: { type: 'has_many', foreignKey: 'category_id' },
+  } as const;
+
+  @field('name') declare name: string;
+
+  @readonly @date('created_at') declare createdAt: Date;
+
+  @children('products') declare products: Query<Product>;
+}
+```
+
+---
+
 ## 📦 Tabela `products`
+
+> 🔁 **Fase 12:** coluna `sku` removida (o cliente não usa esse conceito — cadastro considerado simples demais para justificar SKU); coluna `category_id` adicionada, relacionando cada produto a uma `categories`.
 
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
 | `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente |
 | `name` | `string` (indexado) | `string` | ✔️ | Nome do produto |
-| `sku` | `string` (indexado) | `string` | ✔️ | Código do produto |
+| `category_id` | `string` (indexado, FK → `categories.id`) | `string` | ⛔ (opcional no schema, obrigatório na validação do formulário de cadastro) | Categoria do produto — opcional no schema só para não quebrar produtos já existentes de antes da Fase 12, que ficam "sem categoria" até serem editados |
 | `price` | `number` | `number` | ✔️ | Preço de venda em **centavos** (BRL) |
 | `unit` | `string` | `string` | ✔️ | Unidade de medida (`UN`, `KG`, `CX`, `L`, etc.) |
 | `created_at` | `number` | `Date` | ✔️ | Gerenciado automaticamente |
 
 > 💰 **Convenção de dinheiro:** todos os valores monetários (`price`, `total_amount`, `discount`, `unit_price`, `total_price`) são armazenados como **inteiros em centavos** (ex: R$ 19,90 → `1990`). A formatação para exibição é responsabilidade exclusiva da UI/PDF.
+>
+> 🗑️ **Coluna `sku` órfã:** em instalações que já existiam antes da Fase 12, a coluna `sku` continua fisicamente na tabela SQLite (WatermelonDB não remove colunas em migration, só adiciona — mesmo padrão já usado na Fase 5 com `total_amount`/`discount`/`total_price`), mas não é mais lida nem escrita pelo app. Instalações novas (schema aplicado direto de `schema.ts`) nunca tiveram essa coluna.
 
 ### Model (`src/database/models/Product.ts`)
 
 ```ts
-import { Model } from '@nozbe/watermelondb';
-import { field, date, readonly } from '@nozbe/watermelondb/decorators';
+import { Model, Relation } from '@nozbe/watermelondb';
+import { field, date, readonly, relation } from '@nozbe/watermelondb/decorators';
+import type Category from './Category';
 
 export default class Product extends Model {
   static table = 'products';
+  static associations = {
+    categories: { type: 'belongs_to', key: 'category_id' },
+  } as const;
 
   @field('name') declare name: string;
-  @field('sku') declare sku: string;
+  @field('category_id') declare categoryId?: string;
   @field('price') declare price: number; // centavos
   @field('unit') declare unit: string;
 
   @readonly @date('created_at') declare createdAt: Date;
+
+  @relation('categories', 'category_id') declare category: Relation<Category>;
 }
 ```
 
@@ -274,7 +318,7 @@ export default class CompanySettings extends Model {
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 3,
+  version: 4,
   tables: [
     tableSchema({
       name: 'clients',
@@ -287,10 +331,17 @@ export default appSchema({
       ],
     }),
     tableSchema({
+      name: 'categories',
+      columns: [
+        { name: 'name', type: 'string', isIndexed: true },
+        { name: 'created_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
       name: 'products',
       columns: [
         { name: 'name', type: 'string', isIndexed: true },
-        { name: 'sku', type: 'string', isIndexed: true },
+        { name: 'category_id', type: 'string', isIndexed: true, isOptional: true },
         { name: 'price', type: 'number' },
         { name: 'unit', type: 'string' },
         { name: 'created_at', type: 'number' },
@@ -370,6 +421,7 @@ Toda alteração de schema (nova coluna, nova tabela) deve:
 | 1 | Schema inicial (Fase 2): `clients`, `products`, `orders`, `order_items`, `license_control`. | — (schema inicial, sem migration) |
 | 2 | Fase 5 (Ordem de Venda): `orders` ganhou `total_gross`/`discount_total`/`total_net`/`notes` (substituindo `total_amount`/`discount`, que ficam órfãos no SQLite mas não são mais lidos pelo app); `order_items` ganhou `product_name_snapshot`/`discount_value`/`subtotal` (substituindo `total_price`). Não havia nenhuma tela usando os campos antigos ainda, então não foi preciso migrar dados existentes — só `addColumns`. | `src/database/migrations.ts` |
 | 3 | Fase 11 (tela de Configurações): nova tabela `company_settings` (`createTable`) — dados cadastrais da empresa/vendedor. Não afeta nenhuma tabela existente. | `src/database/migrations.ts` |
+| 4 | Fase 12 (categorias de produtos): nova tabela `categories` (`createTable`); `products` ganhou `category_id` (`addColumns`, opcional). A coluna `sku` de `products` **não** é removida pela migration (WatermelonDB não suporta `removeColumns`) — fica órfã no SQLite em instalações que já existiam, mesmo padrão da coluna `total_amount` na migration da Fase 5. | `src/database/migrations.ts` |
 
 ```ts
 // src/database/migrations.ts
@@ -377,6 +429,22 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 
 export default schemaMigrations({
   migrations: [
+    {
+      toVersion: 4,
+      steps: [
+        createTable({
+          name: 'categories',
+          columns: [
+            { name: 'name', type: 'string', isIndexed: true },
+            { name: 'created_at', type: 'number' },
+          ],
+        }),
+        addColumns({
+          table: 'products',
+          columns: [{ name: 'category_id', type: 'string', isIndexed: true, isOptional: true }],
+        }),
+      ],
+    },
     {
       toVersion: 3,
       steps: [

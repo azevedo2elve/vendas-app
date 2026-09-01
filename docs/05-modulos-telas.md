@@ -7,7 +7,7 @@
 | Dashboard | `HomeScreen` | `orders`/`clients` (WatermelonDB, agregados), `licenseService`, `netinfo` |
 | Licença | `LicenseBlockedScreen` | `licenseService` |
 | Clientes | `ClientListScreen`, `ClientFormScreen` | `clients` (WatermelonDB) |
-| Produtos | `ProductListScreen`, `ProductFormScreen` | `products` (WatermelonDB) |
+| Produtos | `ProductListScreen`, `ProductFormScreen`, `CategoryListScreen` | `products`, `categories` (WatermelonDB) |
 | Ordem de Venda | `OrderSelectClientScreen`, `OrderItemsScreen`, `OrderReviewScreen`, `OrderSuccessScreen`, `OrderListScreen`, `OrderDetailScreen` | `orders`, `order_items`, `pdfService` |
 | Backup | `BackupScreen` | `backupService` |
 | Configurações | `SettingsScreen` | `settingsService`, `licenseService`, `backupService`, `orderService`, `company_settings`/`license_control` (WatermelonDB) |
@@ -64,13 +64,17 @@ const clientSchema = z.object({
 
 ## 📦 Módulo Produtos
 
+> 🔁 **Fase 12:** SKU removido (o cliente não usa esse conceito); em troca, produtos agora pertencem a uma **categoria**, com tela própria de gestão (`CategoryListScreen`) e filtro por categoria no catálogo.
+
 ### `ProductListScreen` (`src/screens/products/ProductListScreen.tsx`)
-- Lista reativa via `withObservables` observando `products`, ordenada por nome.
-- Busca em tempo real por `name` **ou** `sku` (mesmo padrão `Q.or` + `Q.like` + debounce do módulo Clientes).
-- Card por produto: nome, SKU, unidade de medida e preço formatado em BRL (`formatCurrencyBRL`, `src/utils/masks.ts` — `Intl`/`toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })` sobre o valor em centavos).
+- Lista reativa via `withObservables` observando **duas** coleções simultaneamente: `products` (filtrados por busca + categoria selecionada) e `categories` (todas, ordenadas por nome — usada tanto para montar os chips de filtro quanto para resolver o nome da categoria de cada produto via um `Map<id, name>` local, sem precisar de um fetch assíncrono por card).
+- Busca em tempo real por `name` (antes incluía `sku`, removido nesta fase) — mesmo padrão `Q.like` + debounce do módulo Clientes.
+- **Filtro por categoria:** linha de `Chip`s roláveis horizontalmente abaixo da busca — "Todas" + uma por categoria cadastrada. Selecionar uma categoria adiciona `Q.where('category_id', categoryId)` à query observada. Some da tela quando não há nenhuma categoria cadastrada ainda.
+- Ícone de pasta no cabeçalho da lista → `CategoryListScreen` (gestão de categorias).
+- Card por produto: nome, nome da categoria (ou "Sem categoria" — produtos cadastrados antes da Fase 12 podem não ter uma), unidade de medida e preço formatado em BRL (`formatCurrencyBRL`).
 - FAB "+" → `ProductFormScreen` em modo criação; toque no card → modo edição.
 
-> 🚧 **Não implementado nesta fase:** filtro por categoria (chips) — a coluna `category` não existe no schema real ([docs/03](./03-banco-de-dados.md#-tabela-products)); e soft delete via `is_active`, pelo mesmo motivo do módulo Clientes (usa `markAsDeleted()`).
+> 🚧 Soft delete via `is_active` não implementado, mesmo motivo do módulo Clientes (usa `markAsDeleted()`).
 
 ### `ProductFormScreen` (`src/screens/products/ProductFormScreen.tsx`)
 - Formulário com **React Hook Form + Zod**:
@@ -80,7 +84,7 @@ const UNITS = ['UN', 'KG', 'CX', 'L', 'PC'] as const;
 
 const productSchema = z.object({
   name: z.string().trim().min(2, 'Nome muito curto'),
-  sku: z.string().trim().min(1, 'SKU obrigatório'),
+  categoryId: z.string().min(1, 'Selecione uma categoria'),
   price: z.string().refine((value) => Number(value) > 0, 'Preço deve ser maior que zero'),
   unit: z.enum(UNITS),
 });
@@ -88,8 +92,14 @@ const productSchema = z.object({
 
 - Campo de preço usa `MaskedInput` com `mask="currency"`: o valor do form já trafega em **centavos** (string), evitando conversão reais↔centavos fora do componente de máscara — digitação funciona como uma calculadora (dígitos entram pela direita).
 - Unidade de medida é um seletor de chips (`UN`/`KG`/`CX`/`L`/`PC`), não um `<select>`/Picker — evita dependência extra (`@react-native-picker/picker` não está instalado).
-- Validação de SKU único (mesmo padrão de duplicidade do módulo Clientes) antes de criar/atualizar.
+- **Categoria:** seletor de chips carregado da tabela `categories` (recarregado a cada foco da tela via `useFocusEffect`, para já refletir uma categoria criada na hora em `CategoryListScreen`); se não houver nenhuma categoria cadastrada, mostra um aviso com atalho direto para `CategoryListScreen` em vez de um seletor vazio.
 - Botão "Excluir produto" (modo edição) com confirmação via `Alert.alert` + `markAsDeleted()`.
+
+### `CategoryListScreen` (`src/screens/products/CategoryListScreen.tsx`)
+- Tela enxuta de gestão de categorias (sem tela de formulário separada — decisão deliberada pela simplicidade pedida pelo cliente): campo de texto + botão "Adicionar" fixos no topo, lista reativa (`withObservables`) abaixo, ordenada por nome.
+- Cada linha mostra o nome da categoria e a contagem de produtos nela (`category.products.fetchCount()`, resolvida sob demanda por linha). Toque no ícone de lápis troca a linha para modo de edição inline (`TextInput` + confirmar/cancelar) — sem `Alert.prompt`, que não existe no Android.
+- Validação de nome duplicado (case-insensitive, mesmo padrão de duplicidade dos outros módulos) tanto ao criar quanto ao renomear.
+- Exclusão (ícone de lixeira + `Alert.alert` de confirmação): **bloqueada** com aviso se algum produto ainda referencia a categoria (`category.products.fetchCount() > 0`) — evita produtos com `category_id` órfão; o vendedor precisa reatribuir os produtos antes de excluir.
 
 ---
 
@@ -131,7 +141,7 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Botão "Cadastrar novo cliente": usa `navigation.getParent()` para navegar até a rota `ClientForm` do stack **raiz** (fora do fluxo aninhado) — ao voltar, o cliente novo já aparece na lista (reativa) para ser selecionado.
 
 ### 2. `OrderItemsScreen` — Catálogo e carrinho
-- Catálogo de produtos em cards (nome, SKU, unidade, preço em destaque), em `FlatList` com `numColumns` responsivo (`useWindowDimensions` — 2 colunas a partir de 760px de largura, 1 coluna abaixo disso, comum em tablets em retrato vs. paisagem). Busca por nome/SKU no cabeçalho da lista.
+- Catálogo de produtos em cards (nome, unidade, preço em destaque — SKU removido na Fase 12), em `FlatList` com `numColumns` responsivo (`useWindowDimensions` — 2 colunas a partir de 760px de largura, 1 coluna abaixo disso, comum em tablets em retrato vs. paisagem). Busca por nome no cabeçalho da lista (sem filtro por categoria nesta tela — escopo do filtro por categoria é só o catálogo em `ProductListScreen`).
 - Produto **fora** do carrinho: card mostra botão "+ Adicionar". Produto **já no** carrinho: card troca para [`QuantityStepper`](../src/components/QuantityStepper.tsx) (+/-) + botão de lixeira (remove o item inteiro, independente da quantidade).
 - **Barra flutuante inferior fixa** (`bottomBar`): contagem total de itens, total geral (`totals.totalGross`) e botão "Avançar" (desabilitado com carrinho vazio) → `OrderReview`. Tocar na área de resumo abre um **modal de carrinho** (`Modal` nativo, slide de baixo para cima) listando cada item com stepper e remoção individual — forma rápida de revisar/ajustar sem sair da tela de catálogo.
 - **Mudança de escopo vs. versão anterior:** o desconto por item (`DiscountInput` por linha do carrinho) foi removido desta tela na Fase 10 — o carrinho aqui só lida com quantidade. Todo desconto agora é aplicado uma única vez, como desconto geral do pedido, na etapa seguinte (`OrderReviewScreen`). `CartItem.discountValue` (`src/types/orderDraft.ts`) continua existindo no tipo e é somado no cálculo de subtotal, mas nenhuma tela hoje o define como diferente de `0` — decisão deliberada para simplificar o fluxo visual (catálogo rápido → fechamento com desconto único), não uma remoção de capacidade do modelo de dados.
@@ -257,7 +267,8 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
 - **Exportar — duas opções**, ambas geram o mesmo JSON (`vendas-app-backup-AAAA-MM-DD_HH-mm-ss.json`, via a API nova do `expo-file-system` — classes `File`/`Directory`/`Paths`, não a API legada `FileSystem.writeAsStringAsync`):
   - **"Compartilhar backup"** (`backupService.exportBackup()`): escreve o arquivo em `Paths.document` (armazenamento privado do app) e abre o menu nativo de compartilhamento (`expo-sharing`) — WhatsApp, e-mail, Drive, etc. Em alguns aparelhos/emuladores sem um app de "Arquivos" instalado, esse menu **não** mostra uma opção de "salvar no aparelho" (só apps que registram esse tipo de compartilhamento aparecem).
   - **"Salvar no dispositivo"** (`backupService.saveBackupToDevice()`): abre o seletor de pastas do próprio sistema (`Directory.pickDirectoryAsync()` — Storage Access Framework no Android) e grava o arquivo diretamente na pasta escolhida (ex: Downloads). Funciona independentemente de quais apps estão instalados — é a forma garantida de "baixar" o arquivo.
-- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros com `document`/`sku` já cadastrado são ignorados na importação — evita duplicar dados se o mesmo backup for importado mais de uma vez. Inserção em lote via `database.batch(...)` (uma única transação).
+- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros já existentes são ignorados na importação — clientes por `document`, categorias por `name` (case-insensitive) e, desde a Fase 12 (sem mais `sku`), produtos também por `name` (case-insensitive). Inserção em lote via `database.batch(...)` (uma única transação).
+- **Categorias no backup (Fase 12):** exportadas por **nome**, não por `id` — cada produto carrega `category_name` (não `category_id`), já que um `id` gerado localmente não faz sentido ao restaurar em outro dispositivo. Na importação, categorias novas são criadas primeiro; produtos são então associados por nome (criando a categoria automaticamente se, por algum motivo, ainda não existir).
 - `license_control` nunca entra no backup (é específico do dispositivo, não faz sentido restaurar em outro aparelho).
 
 ```json
@@ -267,8 +278,11 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
   "clients": [
     { "name": "João da Silva", "document": "11144477735", "phone": "11987654321", "address": "Rua Exemplo, 123" }
   ],
+  "categories": [
+    { "name": "Bebidas" }
+  ],
   "products": [
-    { "name": "Refrigerante 2L", "sku": "REF-2L-001", "price": 990, "unit": "UN" }
+    { "name": "Refrigerante 2L", "category_name": "Bebidas", "price": 990, "unit": "UN" }
   ]
 }
 ```
