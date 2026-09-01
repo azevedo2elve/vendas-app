@@ -261,6 +261,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** `database.get('categories')` retornava `null` (`TypeError: Cannot read property 'query' of null` ao abrir o Catálogo) porque o novo model `Category` foi criado mas nunca adicionado a `modelClasses` em `src/database/index.ts` nem exportado em `src/database/models/index.ts` — passo que existe pra todo model desde a Fase 2, mas ficou de fora na implementação inicial desta fase.
 - **Docs afetados:** nenhum (correção pontual, não muda nenhuma regra/schema já documentado).
 
+### 2026-09-01 — Filtro por categoria também no catálogo da Nova Venda
+- **Tipo:** feature
+- **Resumo:** `OrderItemsScreen` (Passo 2 do fluxo de Nova Venda) ganhou a mesma linha de `Chip`s de filtro por categoria ("Todas" + uma por categoria) já implementada em `ProductListScreen` — a pedido do cliente, que também precisa filtrar por categoria na hora de montar o carrinho, não só na tela de gestão do catálogo. Mesmo padrão de query (`Q.where('category_id', ...)` somado à busca por nome) e mesmo componente reutilizável (`Chip`).
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] Schema v3 → v4: tabela `categories` (`createTable`) + `products.category_id` (`addColumns`, opcional).
 - [x] `src/database/models/Category.ts` (novo) e `Product.ts` sem `sku`, com `categoryId`/relação `category`.
