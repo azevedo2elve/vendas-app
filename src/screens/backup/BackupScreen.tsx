@@ -12,6 +12,7 @@ import {
   saveBackupToDevice,
   type BackupPreview,
 } from '@/services/backupService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 
 type FeedbackState = { type: 'success' | 'error'; message: string };
 
@@ -23,6 +24,7 @@ export function BackupScreen() {
   const [preview, setPreview] = useState<BackupPreview | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   async function handleExport() {
     setExporting(true);
@@ -129,12 +131,16 @@ export function BackupScreen() {
           Restaura Clientes, Categorias e Produtos a partir de um arquivo de backup exportado anteriormente.
           Registros já existentes (mesmo CPF/CNPJ ou mesmo nome) são ignorados — não duplica dados.
         </Text>
+        {readOnly ? (
+          <Text style={styles.readOnlyNotice}>Licença expirada — importação indisponível (exportar continua liberado).</Text>
+        ) : null}
         <PrimaryButton
           label="Escolher arquivo de backup"
           variant="outline"
           icon="folder-open-outline"
           onPress={handlePickFile}
           loading={picking}
+          disabled={readOnly}
         />
 
         {preview ? (
@@ -228,6 +234,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 19,
+  },
+  readOnlyNotice: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.warningStrong,
   },
   previewBox: {
     backgroundColor: colors.slate50,

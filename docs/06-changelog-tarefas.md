@@ -26,8 +26,8 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
-| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (`licenseService` + `useLicenseGuard` + `LicenseBlockedScreen` prontos; acesso somente-leitura em `expired` depende das Fases 3/4/8) |
-| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (Clientes + Produtos prontos; falta incluir `orders`/`order_items` agora que a Fase 5 existe; acesso mesmo com licença `expired` ainda não implementado) |
+| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (acesso somente-leitura em `expired`/`blocked` implementado em 2026-09-01; falta só cobertura de testes automatizados) |
+| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (acesso somente-leitura implementado em 2026-09-01; falta incluir `orders`/`order_items` no backup) |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado (revisão visual das telas críticas antecipada pela Fase 10; faltam testes automatizados e build EAS) |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
@@ -160,6 +160,15 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Avaliamos duas formas de manter `license_status` sincronizado com `license_expires_at` no Supabase: (a) o app fazer o write-back a cada fetch, ou (b) um job `pg_cron` no banco. Optamos por (b): dar à chave `anon` permissão de `UPDATE` na tabela `licenses` (opção a) seria um risco de segurança sério, já que essa chave vem embutida no APK e não há autenticação por dispositivo — qualquer app instalado poderia reescrever o status de **qualquer** `device_id`, não só o próprio. O job `pg_cron` (`sync_license_statuses()`, substituindo o `expire_licenses()` anterior) agora sincroniza status nos dois sentidos (`active → expired` e `expired → active`, conforme a data), mas nunca sobrescreve `'blocked'` — que continua sendo um kill switch manual, independente da data. Nenhuma mudança de código neste repo; só SQL no Supabase (documentado em `docs/04`).
 - **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Acesso somente-leitura em `expired`, e backup liberado mesmo em `blocked`
+- **Tipo:** feature
+- **Resumo:** Revisão pedida pelo usuário ("revisar as fases em andamento"). Implementada a distinção de acesso que ficava pendente desde a Fase 1, agora que Clientes/Produtos/Backup (Fases 3, 4, 8) existem. `RootNavigator` deixou de ser binário:
+  - `blocked` continua mostrando só `LicenseBlockedScreen`, sem montar nenhuma tela de negócio — mas essa tela ganhou um botão **"Exportar meus dados (Backup)"**, chamando `backupService.exportBackup()` direto (decisão: liberado em **qualquer** motivo de bloqueio, revertendo uma indicação anterior deste doc que previa esconder o botão em `server_rejected`).
+  - `expired` passou a montar o app inteiro normalmente, envolto por um novo `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`) com `readOnly = true`, e uma faixa fixa (`ReadOnlyBanner`, novo componente) acima da navegação com aviso + retry.
+  - Novos hooks no mesmo arquivo: `useLicenseAccess()` (`{ readOnly }`, usado dentro de formulários/detalhes pra desabilitar botões de escrita) e `useReadOnlyGuard()` (`{ readOnly, guard }`, usado nos pontos de entrada de criação — FABs, "Nova Venda" — pra avisar e não navegar).
+  - Telas afetadas: `HomeScreen` (Nova Venda/Novo Cliente guardados; pill de licença deixou de ser estática), `ClientListScreen`/`ProductListScreen`/`OrderListScreen` (FABs guardados), `ClientFormScreen`/`ProductFormScreen`/`OrderDetailScreen`/`SettingsScreen` (botões de escrita desabilitados), `CategoryListScreen` (adicionar/renomear/excluir somem), `BackupScreen` (só a importação é desabilitada — exportar nunca é bloqueado).
+- **Docs afetados:** `docs/04-sistema-licenca.md` (tabela de regras atualizada de "planejado" para "implementado"), `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] `services/licenseService.ts` implementando a árvore de decisão de [docs/04-sistema-licenca.md](./04-sistema-licenca.md).
 - [x] `hooks/useLicenseGuard.ts`.
@@ -167,7 +176,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] Integração com `@react-native-community/netinfo`.
 - [x] Validação/renovação remota real via Supabase (`fetchLicenseFromSupabase`), substituindo o endpoint placeholder.
 - [ ] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementação manual feita, cobertura de testes ainda pendente (Fase 9).
-- [ ] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — depende das Fases 3, 4 e 8 existirem.
+- [x] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — implementado em 2026-09-01 (ver entrada acima).
 
 ---
 
@@ -188,7 +197,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `services/backupService.ts` (exportação JSON via `expo-file-system`) — limitado a `clients`/`products` por enquanto.
 - [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".
 - [x] Importação com validação Zod e prévia (contagem de novos/duplicados) antes de confirmar.
-- [ ] `BackupScreen` acessível mesmo com licença `expired` — depende da distinção de acesso ainda não implementada no `RootNavigator` (ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
+- [x] `BackupScreen` acessível mesmo com licença `expired` (e a exportação também com `blocked`) — implementado em 2026-09-01, ver entrada na Fase 7 acima (mesma mudança, cross-cutting).
 - [ ] Incluir `orders`/`order_items` no backup — o módulo de Ordem de Venda (Fase 5) já existe agora; falta integrar em `backupService.ts`.
 
 ---

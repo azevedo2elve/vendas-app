@@ -18,6 +18,7 @@ import { isSupportPhoneConfigured, SUPPORT_WHATSAPP_PHONE } from '@/services/api
 import { exportBackup } from '@/services/backupService';
 import { evaluateLicense, getCurrentLicenseSnapshot } from '@/services/licenseService';
 import { clearAllOrders } from '@/services/orderService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import {
   getDatabaseSummary,
   getOrCreateCompanySettings,
@@ -88,6 +89,7 @@ export function SettingsScreen({ navigation }: Props) {
   const [pickingLogo, setPickingLogo] = useState(false);
   const { showToast } = useToast();
   const netInfo = useNetInfo();
+  const { readOnly } = useLicenseAccess();
 
   function toggleSection(section: 'company' | 'system' | 'data') {
     setExpandedSection((current) => (current === section ? null : section));
@@ -339,9 +341,16 @@ export function SettingsScreen({ navigation }: Props) {
                 icon="cloud-upload-outline"
                 onPress={handlePickLogo}
                 loading={pickingLogo}
+                disabled={readOnly}
               />
               {logoBase64 ? (
-                <PrimaryButton label="Remover" variant="danger" icon="trash-outline" onPress={handleRemoveLogo} />
+                <PrimaryButton
+                  label="Remover"
+                  variant="danger"
+                  icon="trash-outline"
+                  onPress={handleRemoveLogo}
+                  disabled={readOnly}
+                />
               ) : null}
             </View>
           </View>
@@ -508,6 +517,7 @@ export function SettingsScreen({ navigation }: Props) {
           icon="checkmark-circle-outline"
           onPress={handleSubmit(onSubmitCompany)}
           loading={saving}
+          disabled={readOnly}
         />
       </CollapsibleCard>
 
@@ -648,6 +658,7 @@ export function SettingsScreen({ navigation }: Props) {
           variant="danger"
           icon="trash-outline"
           onPress={() => setConfirmClearVisible(true)}
+          disabled={readOnly}
         />
       </CollapsibleCard>
 

@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
 import { createCategory, isCategoryNameTaken } from '@/services/categoryService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 
@@ -26,6 +27,7 @@ function CategoryRow({ category }: RowProps) {
   const [saving, setSaving] = useState(false);
   const [productsCount, setProductsCount] = useState<number | null>(null);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   useEffect(() => {
     database
@@ -134,12 +136,16 @@ function CategoryRow({ category }: RowProps) {
           {productsCount === null ? '...' : `${productsCount} produto(s)`}
         </Text>
       </View>
-      <TouchableOpacity style={styles.iconButton} onPress={() => setEditing(true)} accessibilityLabel="Renomear categoria">
-        <Ionicons name="pencil-outline" size={18} color={colors.slate600} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.iconButton} onPress={handleDelete} accessibilityLabel="Excluir categoria">
-        <Ionicons name="trash-outline" size={18} color={colors.danger} />
-      </TouchableOpacity>
+      {readOnly ? null : (
+        <>
+          <TouchableOpacity style={styles.iconButton} onPress={() => setEditing(true)} accessibilityLabel="Renomear categoria">
+            <Ionicons name="pencil-outline" size={18} color={colors.slate600} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconButton} onPress={handleDelete} accessibilityLabel="Excluir categoria">
+            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 }
@@ -150,6 +156,7 @@ function CategoryListScreenBase({ categories }: ListProps) {
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   async function handleAdd() {
     const trimmed = newName.trim();
@@ -172,18 +179,22 @@ function CategoryListScreenBase({ categories }: ListProps) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.addInput}
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="Nova categoria (ex: Bebidas)"
-            placeholderTextColor={colors.slate400}
-            onSubmitEditing={handleAdd}
-            returnKeyType="done"
-          />
-          <PrimaryButton label="Adicionar" onPress={handleAdd} loading={adding} disabled={!newName.trim()} style={styles.addButton} />
-        </View>
+        {readOnly ? (
+          <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, gestão de categorias indisponível.</Text>
+        ) : (
+          <View style={styles.addRow}>
+            <TextInput
+              style={styles.addInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Nova categoria (ex: Bebidas)"
+              placeholderTextColor={colors.slate400}
+              onSubmitEditing={handleAdd}
+              returnKeyType="done"
+            />
+            <PrimaryButton label="Adicionar" onPress={handleAdd} loading={adding} disabled={!newName.trim()} style={styles.addButton} />
+          </View>
+        )}
 
         <FlatList
           data={categories}
@@ -228,6 +239,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  readOnlyNotice: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.warningStrong,
+    textAlign: 'center',
     padding: spacing.lg,
     paddingBottom: spacing.xs,
   },

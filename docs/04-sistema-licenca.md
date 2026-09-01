@@ -122,18 +122,30 @@ agora = Date.now()
 
 ## 🚫 O que fica bloqueado quando a licença não está `active`
 
+> ✅ Implementado em **2026-09-01**, fechando pendências das Fases 7 e 8 (antes só documentado como planejado — ver nota de status que existia aqui, removida). A tabela abaixo é o comportamento real do app.
+
 | Ação | `expired` (sem internet) | `blocked` |
 |---|---|---|
 | Visualizar clientes/produtos cadastrados | ✔️ Permitido (somente leitura) | ⛔ Bloqueado |
 | Criar/editar cliente ou produto | ⛔ Bloqueado | ⛔ Bloqueado |
+| Gerenciar categorias (criar/renomear/excluir) | ⛔ Bloqueado | ⛔ Bloqueado |
 | Emitir nova ordem de venda | ⛔ Bloqueado | ⛔ Bloqueado |
 | Gerar/compartilhar PDF | ⛔ Bloqueado | ⛔ Bloqueado |
-| Exportar backup | ✔️ Permitido (o vendedor não pode perder dados) | ✔️ Permitido |
-| Botão de retry de renovação | ✔️ Visível | ✔️ Visível (mas backend pode recusar de novo) |
+| Concluir/cancelar/excluir pedido existente | ⛔ Bloqueado | ⛔ Bloqueado |
+| Editar dados da empresa/vendedor, logo | ⛔ Bloqueado | ⛔ Bloqueado |
+| Importar backup | ⛔ Bloqueado | ⛔ Bloqueado |
+| **Exportar backup** | ✔️ Permitido (o vendedor não pode perder dados) | ✔️ Permitido — **mesmo bloqueado** |
+| Botão de retry de renovação | ✔️ Visível (banner no topo do app) | ✔️ Visível (tela de bloqueio) |
 
-> A decisão de permitir leitura + backup em `expired` (mas nunca em `blocked`) evita que o vendedor perca acesso aos próprios dados por estar temporariamente sem internet, mas impede a operação normal do negócio (emissão de pedidos) até a renovação.
+> A decisão de permitir leitura + exportação de backup em `expired` **e também em `blocked`** evita que o vendedor perca acesso aos próprios dados por estar sem internet ou com a licença revogada, mas impede a operação normal do negócio (cadastros, pedidos, PDF) até a renovação. Diferente de uma versão anterior deste documento, a exportação de backup **não** é restrita quando `blocked` — foi uma decisão deliberada para priorizar o vendedor nunca ficar sem acesso aos próprios dados, mesmo numa revogação manual.
 
-> 🚧 **Status desta fase (setup de arquitetura):** os módulos Clientes/Produtos/Backup ainda não existem, então `RootNavigator` hoje só decide entre "tela de negócio" (uma `HomeScreen` de diagnóstico) e `LicenseBlockedScreen` — não há, ainda, o acesso somente-leitura em modo `expired` descrito na tabela acima. Implementar essa distinção fica para quando os módulos de Clientes/Produtos/Backup existirem (Fases 3, 4 e 8 do [changelog](./06-changelog-tarefas.md)).
+### Como é implementado
+
+- **`blocked`**: `RootNavigator` continua mostrando só `LicenseBlockedScreen`, sem montar nenhuma tela de negócio — mas essa tela agora tem um botão **"Exportar meus dados (Backup)"**, que chama `backupService.exportBackup()` diretamente (sem precisar navegar, já que não há navegação nenhuma montada nesse estado).
+- **`expired`**: `RootNavigator` monta o app inteiro normalmente (todas as telas continuam navegáveis), mas envolve a árvore com `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`, contexto simples `{ readOnly: boolean }`) com `readOnly = true`, e exibe uma faixa fixa no topo (`ReadOnlyBanner`, acima do próprio `NavigationContainer` — visível em qualquer tela) com o aviso e um botão de retry.
+  - `useReadOnlyGuard()` (mesmo arquivo) expõe `{ readOnly, guard }` — `guard(acao)` executa a ação normalmente se `readOnly` for `false`, ou mostra um `Alert` explicativo e não faz nada se for `true`. Usado nos pontos de entrada de criação (FABs de Clientes/Produtos/Ordens, botão "Nova Venda" da `HomeScreen`).
+  - Dentro das telas de formulário/detalhe (`ClientFormScreen`, `ProductFormScreen`, `CategoryListScreen`, `OrderDetailScreen`, `SettingsScreen`, `BackupScreen`), o padrão é ler `const { readOnly } = useLicenseAccess()` diretamente e desabilitar (`disabled={readOnly}`) os botões que escrevem dados — a visualização continua acessível normalmente, sem gating adicional.
+  - `BackupScreen` é a única tela com uma regra assimétrica: exportar continua sempre habilitado, só o botão de **importar** é desabilitado quando `readOnly`.
 
 ## 🖥️ Tela de bloqueio (`screens/License/LicenseBlockedScreen.tsx`)
 
@@ -149,7 +161,7 @@ Elementos obrigatórios da tela:
   2. Se online e o Supabase estiver configurado, consulta `fetchLicenseFromSupabase` novamente.
   3. Mostra loading durante a tentativa; trata timeout com mensagem amigável.
 - Exibe o **`device_id`** do dispositivo (texto selecionável) em todos os motivos de bloqueio — é o dado que o suporte precisa para cadastrar/liberar o dispositivo na tabela `licenses` do Supabase.
-- Acesso alternativo (link/botão secundário) para **Exportar backup** — planejado para quando o módulo de Backup existir (ver nota de status logo acima), sempre visível exceto quando `blocked`/`server_rejected`.
+- Botão secundário **"Exportar meus dados (Backup)"** — chama `backupService.exportBackup()` diretamente, visível em **todo** motivo de bloqueio (Fases 7/8 — sem exceção; uma versão anterior deste doc previa esconder em `server_rejected`, decisão revertida em favor de nunca cortar o vendedor do próprio dado).
 
 ## 🌐 Integração com o Supabase
 

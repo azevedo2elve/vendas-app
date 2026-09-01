@@ -14,15 +14,26 @@
 
 ---
 
+## 🔒 Modo somente-leitura (licença `expired`) — cross-cutting, Fases 7/8
+
+Regra completa em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active). Mecanismo, usado em várias telas abaixo:
+
+- `RootNavigator` monta `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`) com `readOnly = status === 'expired'`, e mostra uma faixa fixa (`ReadOnlyBanner`) acima da navegação inteira quando `readOnly`.
+- `useLicenseAccess()` — hook cru, só `{ readOnly }`, usado dentro de telas de formulário/detalhe pra desabilitar (`disabled={readOnly}`) os botões que escrevem dado (Salvar, Excluir, Compartilhar PDF, Concluir/Cancelar pedido, etc.), mantendo a tela navegável/visível.
+- `useReadOnlyGuard()` — `{ readOnly, guard }`, usado nos **pontos de entrada de criação** (FABs, botão "Nova Venda"): `guard(acao)` só executa `acao` se não estiver em somente-leitura; senão mostra um `Alert` e não navega.
+- Quando `blocked` (não `expired`), nada disso se aplica — o app inteiro fica só com `LicenseBlockedScreen`, que ganhou seu próprio botão de exportar backup direto (ver docs/04).
+
+---
+
 ## 🏠 Dashboard — `HomeScreen` (`src/screens/HomeScreen.tsx`)
 
 Redesenhada na Fase 10 como uma tela comercial de verdade (era um painel de diagnóstico técnico até então). `headerShown: false` no `RootNavigator` — a tela desenha seu próprio cabeçalho (respeitando `useSafeAreaInsets`).
 
 - **Cabeçalho:** nome do vendedor/empresa em destaque (`resolveDisplayName()`, `src/services/settingsService.ts` — prioridade `company_settings.vendedor_nome` → `nome_fantasia` → `razao_social` → `"Vendas App"` como default; **Fase 13**, substituiu a saudação por horário "Bom dia"/"Boa tarde"/"Boa noite" usada até então), data por extenso, e dois indicadores de status:
   - **Conectividade**, via `useNetInfo()` (`@react-native-community/netinfo`) — "Online" ou "Modo Offline Ativo", refletindo o estado real do dispositivo (não é decorativo).
-  - **Licença**, estático "Licença Válida" — a tela só é alcançável quando `useLicenseGuard` já validou `status === 'active'` no `RootNavigator`, então não há necessidade de checar de novo aqui.
+  - **Licença** — desde as Fases 7/8 já não é mais estático: mostra "Licença Válida" só quando `status === 'active'`; em modo somente-leitura (`status === 'expired'`, ver [seção de modo somente-leitura](#-modo-somente-leitura-licença-expired--cross-cutting-fases-78) acima) mostra "Somente leitura" em tom de aviso. A tela nunca é alcançável com `status === 'blocked'` (aí é só `LicenseBlockedScreen`).
 - **Cards de resumo** (`StatCard`, 3 no total): "Vendido hoje" (soma de `total_net` das ordens não-canceladas criadas desde `00:00` do dia atual), "Pedidos emitidos" (contagem total de ordens, todos os tempos) e "Clientes cadastrados" (contagem total).
-- **Ações rápidas:** um botão grande em destaque "Nova Venda" → `NewOrder`, e uma linha de 3 atalhos secundários: "Novo Cliente" (→ `ClientForm`), "Catálogo" (→ `ProductList`), "Backup" (→ `Backup`).
+- **Ações rápidas:** um botão grande em destaque "Nova Venda" → `NewOrder`, e uma linha de 3 atalhos secundários: "Novo Cliente" (→ `ClientForm`), "Catálogo" (→ `ProductList`), "Backup" (→ `Backup`). "Nova Venda" e "Novo Cliente" passam por `useReadOnlyGuard().guard(...)` (Fases 7/8) — em modo somente-leitura, mostram um aviso em vez de navegar.
 - **Últimos pedidos:** até 5 ordens mais recentes (`Q.sortBy('created_at', Q.desc), Q.take(5)`), cada uma com nome do cliente (resolvido via `order.client.fetch()` — busca pontual, não observável, porque a tela já se atualiza sozinha em cada foco), valor e `Badge` de status. Se o pedido tiver `delivery_date` definida (Fase 13), mostra uma linha extra "Entrega em dd/mm/aaaa" (ícone `cube-outline`) abaixo da data de criação — omitida quando não há data de entrega combinada. `EmptyState` quando não há nenhum pedido ainda.
 - **Atualização dos dados:** `useFocusEffect` (não um observable `withObservables`) — a cada vez que a tela ganha foco (ex: voltando de uma Nova Venda), os agregados são recalculados. Também suporta pull-to-refresh (`RefreshControl`). Optou-se por essa abordagem em vez de queries observáveis porque os dados exibidos são **agregados** (somas/contagens), que o `withObservables` não resolve tão diretamente quanto uma lista simples.
 - **Atalhos de módulo:** dois links de lista ("Gerenciar clientes", "Todas as ordens de venda") abaixo da seção de últimos pedidos, para quem quer ir direto às listagens completas.
@@ -38,7 +49,7 @@ Redesenhada na Fase 10 como uma tela comercial de verdade (era um painel de diag
 - Lista reativa via `withObservables` (`@nozbe/watermelondb/react`) observando `clients`, ordenada por nome (`Q.sortBy('name', Q.asc)`).
 - Busca em tempo real (por `name` **ou** `document`, `Q.or` + `Q.like`) com debounce de 300ms — componente reutilizável [`SearchBar`](../src/components/SearchBar.tsx).
 - Card por cliente: `Avatar` com iniciais do nome (cor determinística por hash), nome, documento formatado (`maskCpfCnpj`), telefone formatado (`maskPhone`), endereço formatado em uma linha (`formatClientFullAddress()`, `src/utils/address.ts` — combina rua/número/complemento/cidade/UF/CEP, omitindo o que estiver vazio) e um botão de ícone (`Ionicons name="logo-whatsapp"`, antes um emoji 💬 de placeholder) que abre o WhatsApp do cliente (`utils/whatsapp.ts`, via `https://wa.me/55...`).
-- Toque no card → `ClientFormScreen` em modo edição. [`Fab`](../src/components/Fab.tsx) (botão flutuante "+") → `ClientFormScreen` em modo criação.
+- Toque no card → `ClientFormScreen` em modo edição (sempre permitido — é leitura). [`Fab`](../src/components/Fab.tsx) (botão flutuante "+") → `ClientFormScreen` em modo criação, passando por `useReadOnlyGuard().guard(...)` (Fases 7/8).
 - [`EmptyState`](../src/components/EmptyState.tsx) quando não há clientes cadastrados/nenhum resultado de busca.
 
 > 🚧 Não há soft delete via `is_active` (essa coluna não existe no schema real — ver [docs/03](./03-banco-de-dados.md#-tabela-clients)). A exclusão usa `client.markAsDeleted()`, o soft-delete nativo do WatermelonDB (marca `_status: 'deleted'` e exclui das queries automaticamente, sem apagar a linha fisicamente — preserva integridade caso já existam `orders` referenciando o cliente).
@@ -66,6 +77,7 @@ const clientSchema = z.object({
 - Validação de duplicidade: antes de salvar (criar ou editar), consulta se já existe outro cliente com o mesmo `document` (`Q.where('document', ...)`) e bloqueia com erro no campo.
 - Modo edição carrega o registro via `database.get('clients').find(id)` e usa `reset()` do React Hook Form para popular o formulário.
 - Botão "Excluir cliente" (só em modo edição) com `Alert.alert` de confirmação antes de chamar `markAsDeleted()`.
+- **Modo somente-leitura (Fases 7/8):** botões "Salvar"/"Excluir cliente" ficam `disabled` quando `useLicenseAccess().readOnly`, com um aviso acima deles — os campos continuam visíveis (o cliente pode ser consultado normalmente), só não dá pra persistir mudanças.
 - **Não implementado nesta fase:** atalho "Salvar e criar pedido" (mencionado em versões anteriores deste doc) — depende do módulo de Ordem de Venda, que é a Fase 5.
 
 ---
@@ -80,7 +92,7 @@ const clientSchema = z.object({
 - **Filtro por categoria:** linha de `Chip`s roláveis horizontalmente abaixo da busca — "Todas" + uma por categoria cadastrada. Selecionar uma categoria adiciona `Q.where('category_id', categoryId)` à query observada. Some da tela quando não há nenhuma categoria cadastrada ainda.
 - Ícone de pasta no cabeçalho da lista → `CategoryListScreen` (gestão de categorias).
 - Card por produto: nome, nome da categoria (ou "Sem categoria" — produtos cadastrados antes da Fase 12 podem não ter uma), unidade de medida e preço formatado em BRL (`formatCurrencyBRL`).
-- FAB "+" → `ProductFormScreen` em modo criação; toque no card → modo edição.
+- FAB "+" → `ProductFormScreen` em modo criação (via `useReadOnlyGuard().guard(...)`, Fases 7/8); toque no card → modo edição (sempre permitido).
 
 > 🚧 Soft delete via `is_active` não implementado, mesmo motivo do módulo Clientes (usa `markAsDeleted()`).
 
@@ -102,12 +114,14 @@ const productSchema = z.object({
 - Unidade de medida é um seletor de chips (`UN`/`KG`/`CX`/`L`/`PC`), não um `<select>`/Picker — evita dependência extra (`@react-native-picker/picker` não está instalado).
 - **Categoria:** seletor de chips carregado da tabela `categories` (recarregado a cada foco da tela via `useFocusEffect`, para já refletir uma categoria criada em `CategoryListScreen`, **e também logo após criar uma categoria inline nesta própria tela** — ver abaixo). Um chip extra "Nova categoria" (ícone `+`) fica sempre disponível ao final da lista de chips, **mesmo quando já existem categorias** — corrige um bug da Fase 12, onde só era possível criar a primeira categoria direto do formulário (via um link que só aparecia com a lista vazia); com categorias já cadastradas, a única forma de criar uma nova era navegar até `CategoryListScreen`. Tocar em "Nova categoria" abre uma linha inline (`MaskedInput` + confirmar/cancelar, mesmo padrão de edição do `CategoryListScreen`) que cria a categoria (`categoryService.createCategory`, com a mesma checagem de nome duplicado) e já a seleciona no formulário, sem sair da tela.
 - Botão "Excluir produto" (modo edição) com confirmação via `Alert.alert` + `markAsDeleted()`.
+- **Modo somente-leitura (Fases 7/8):** "Salvar"/"Excluir produto" ficam `disabled` (com aviso) quando `useLicenseAccess().readOnly`; o chip "Nova categoria" e a linha inline de criação somem inteiramente (não só desabilitados) — mesma leitura de "isso é uma escrita, então não aparece" usada em `CategoryListScreen`.
 
 ### `CategoryListScreen` (`src/screens/products/CategoryListScreen.tsx`)
 - Tela enxuta de gestão de categorias (sem tela de formulário separada — decisão deliberada pela simplicidade pedida pelo cliente): campo de texto + botão "Adicionar" fixos no topo, lista reativa (`withObservables`) abaixo, ordenada por nome.
 - Cada linha mostra o nome da categoria e a contagem de produtos nela (`category.products.fetchCount()`, resolvida sob demanda por linha). Toque no ícone de lápis troca a linha para modo de edição inline (`TextInput` + confirmar/cancelar) — sem `Alert.prompt`, que não existe no Android.
 - Validação de nome duplicado (case-insensitive, mesmo padrão de duplicidade dos outros módulos) tanto ao criar quanto ao renomear — lógica compartilhada com `ProductFormScreen` via `src/services/categoryService.ts` (`isCategoryNameTaken`, `createCategory`), extraído na Fase 13 pra evitar duplicar essa checagem nos dois lugares.
 - Exclusão (ícone de lixeira + `Alert.alert` de confirmação): **bloqueada** com aviso se algum produto ainda referencia a categoria (`category.products.fetchCount() > 0`) — evita produtos com `category_id` órfão; o vendedor precisa reatribuir os produtos antes de excluir.
+- **Modo somente-leitura (Fases 7/8):** o campo "Nova categoria" some (troca por um aviso), e os ícones de lápis/lixeira de cada linha somem — a lista de categorias continua visível, só a gestão fica indisponível.
 
 ---
 
@@ -130,6 +144,7 @@ const productSchema = z.object({
 | `Toast` (`ToastProvider`/`useToast`) | `src/components/Toast.tsx` | Notificação flutuante de confirmação |
 | `OrderProgressBar` | `src/components/OrderProgressBar.tsx` | Indicador de progresso do wizard de Nova Venda (3 etapas) |
 | `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade |
+| `ReadOnlyBanner` | `src/components/ReadOnlyBanner.tsx` | Faixa fixa acima da navegação, mostrada em toda a app quando a licença está `expired` (Fases 7/8) |
 
 Utilitários: `src/utils/masks.ts` (formatação — inclui `maskDateBR`/`parseDateBR`, Fase 13, usados pelo `mask="date"` do `MaskedInput`), `src/utils/address.ts` (Fase 13 — formata o endereço estruturado do cliente para exibição/PDF), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 
@@ -177,7 +192,7 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Lista reativa ordenada por `created_at` desc. Filtro por status (chips: Todos/Pendente/Concluído/Cancelado) e busca por nome do cliente via `Q.on('clients', Q.where('name', Q.like(...)))` — filtra pela tabela relacionada direto na query, sem carregar tudo em memória.
 - Cada card observa reativamente seu próprio cliente e contagem de itens (`withObservables(['order'], ({ order }) => ({ client: order.client.observe(), itemCount: order.items.observeCount() }))` — padrão comum do WatermelonDB para listas onde cada linha depende de uma relação).
 - Exibe: ID resumido (8 primeiros caracteres do `id`), nome do cliente, data/hora (`toLocaleString('pt-BR')`), contagem de itens, status (badge colorido) e `total_net` formatado em BRL. Se houver `delivery_date` (Fase 13), mostra "Entrega em dd/mm/aaaa" (ícone `cube-outline`) entre o nome do cliente e o rodapé do card — mesmo padrão usado nos cards de "Últimos pedidos" da `HomeScreen`.
-- FAB "+" → `NewOrder` (novo fluxo de criação).
+- FAB "+" → `NewOrder` (novo fluxo de criação), via `useReadOnlyGuard().guard(...)` (Fases 7/8) — junto com o botão "Nova Venda" da `HomeScreen`, são os dois únicos pontos de entrada do fluxo de criação, então bloqueá-los ali já é suficiente (as 3 telas do wizard em si não precisam de gating próprio).
 
 ### `OrderDetailScreen` — Detalhe
 - Carrega a `Order` por id (`database.get('orders').find(orderId)`) e observa reativamente cliente + itens.
@@ -187,6 +202,7 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
   - "Marcar como concluído" (só se `pending`) → `setOrderStatus(id, 'completed')`.
   - "Cancelar pedido" (se não já `cancelled`) → confirmação (`Alert.alert`) → `setOrderStatus(id, 'cancelled')`.
   - "Excluir pedido" → confirmação → `deleteOrder(id)`, que também marca todos os `order_items` associados como excluídos (`markAsDeleted`, em lote) antes do próprio pedido — evita itens órfãos.
+- **Modo somente-leitura (Fases 7/8):** os 4 botões (Compartilhar/Concluir/Cancelar/Excluir) ficam `disabled`, com um aviso acima — o detalhe do pedido continua totalmente visível.
 
 ### Cálculo de totais (`src/types/orderDraft.ts` + `src/services/orderService.ts`)
 
@@ -290,6 +306,7 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
 - **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros já existentes são ignorados na importação — clientes por `document`, categorias por `name` (case-insensitive) e, desde a Fase 12 (sem mais `sku`), produtos também por `name` (case-insensitive). Inserção em lote via `database.batch(...)` (uma única transação).
 - **Categorias no backup (Fase 12):** exportadas por **nome**, não por `id` — cada produto carrega `category_name` (não `category_id`), já que um `id` gerado localmente não faz sentido ao restaurar em outro dispositivo. Na importação, categorias novas são criadas primeiro; produtos são então associados por nome (criando a categoria automaticamente se, por algum motivo, ainda não existir).
 - `license_control` nunca entra no backup (é específico do dispositivo, não faz sentido restaurar em outro aparelho). `company_settings` também nunca entrou (config isolada, não é uma entidade de negócio compartilhável entre dispositivos).
+- **Modo somente-leitura (Fases 7/8):** único módulo com regra assimétrica — "Escolher arquivo de backup" (importar) fica `disabled` com aviso; **exportar continua sempre liberado**, inclusive quando `blocked` (nesse caso via um botão dedicado direto na `LicenseBlockedScreen`, já que essa tela nem chega a ser montada — ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
 - **Endereço estruturado do cliente (Fase 13):** o antigo campo único `address` foi substituído por `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` no JSON, espelhando as novas colunas de `clients` (ver [docs/03](./03-banco-de-dados.md#-tabela-clients)).
 
 ```json
@@ -331,6 +348,7 @@ Implementado na Fase 11. `SettingsScreen` (`src/screens/settings/SettingsScreen.
 - **Logo da Empresa (Fase 13):** preview 72×72 (ou um placeholder tracejado se não houver logo) + botão "Selecionar logo"/"Trocar logo" (`settingsService.pickCompanyLogo()`) + botão "Remover" quando já existe uma. `pickCompanyLogo()` reaproveita o seletor de arquivos do sistema (`File.pickFileAsync`, mesma API já usada no módulo Backup) filtrado por `image/png`/`image/jpeg` — decisão deliberada para **não instalar `expo-image-picker`** só para isso (mesma filosofia de evitar dependência extra já registrada para o seletor de unidade de Produtos). Limite de 2MB no arquivo original; lê o conteúdo como base64 (`file.base64()`) e monta um data URI (`data:image/png;base64,...`), salvo direto em `company_settings.logo_base64` — diferente do restante do formulário, a logo é salva **imediatamente** ao selecionar (não espera o botão "Salvar Dados da Empresa"), para o vendedor não perder a seleção se esquecer de salvar o resto.
 - Botão "Salvar Dados da Empresa" → `Toast` de sucesso ("Dados da empresa salvos com sucesso!").
 - Ao entrar na tela, os campos são carregados automaticamente (registro único, criado sob demanda na primeira visita).
+- **Modo somente-leitura (Fases 7/8):** "Salvar Dados da Empresa", "Selecionar/Trocar logo" e "Remover" (logo) ficam `disabled` quando `useLicenseAccess().readOnly` — os dados continuam visíveis, só não editáveis.
 
 ### 2. Sistema e Sobre
 - **ID do Dispositivo:** reaproveita o `device_id` já gerado por `licenseService` (UUID v4, o mesmo registrado na tabela `licenses` do Supabase) — **não** usa `expo-application`/Android ID. Foi uma decisão deliberada: o ID mostrado precisa ser exatamente o mesmo que o suporte consulta no Supabase para liberar a licença; um identificador nativo diferente (Android ID) quebraria esse fluxo, já que não seria o valor cadastrado remotamente. Exibido em `fontFamily: 'monospace'` (`Platform`-neutro o suficiente: `'monospace'` resolve tanto no Android quanto no iOS via Courier/fonte mono padrão do sistema).
@@ -346,6 +364,7 @@ Implementado na Fase 11. `SettingsScreen` (`src/screens/settings/SettingsScreen.
 - **Exportar Backup (JSON):** botão chama `backupService.exportBackup()` diretamente (a mesma função usada pelo botão "Compartilhar backup" da `BackupScreen`) — abre o menu nativo de compartilhamento.
 - **Importar/Restaurar Backup:** em vez de duplicar o fluxo de seleção de arquivo + prévia + confirmação já implementado em `BackupScreen` (não é uma ação de um toque só — precisa de uma tela própria para mostrar a prévia de registros novos/duplicados antes de confirmar), o botão navega para a tela `Backup` já existente (`navigation.navigate('Backup')`). Decisão deliberada para não duplicar ~80 linhas de lógica de preview/confirmação entre duas telas.
 - **Zona de perigo — "Limpar Pedidos de Teste":** remove todas as `orders`/`order_items` (não toca em `clients`/`products`), via nova função `orderService.clearAllOrders()` (soft-delete em lote, mesmo padrão de `deleteOrder`). Protegido por um modal de confirmação customizado (não o `Alert.alert` nativo usado nas outras exclusões do app) — ícone de aviso, contagem de quantos pedidos serão removidos, texto explícito "não pode ser desfeita", botões "Cancelar"/"Sim, limpar tudo". Justificativa para o modal customizado em vez do `Alert` padrão: esta é uma ação destrutiva em massa (todos os pedidos, não um registro isolado), então merece um passo de confirmação visualmente mais explícito que os `Alert.alert` de exclusão individual já usados em `ClientFormScreen`/`ProductFormScreen`/`OrderDetailScreen`.
+- **Modo somente-leitura (Fases 7/8):** só "Limpar Pedidos de Teste" fica `disabled` — "Exportar Backup" e o botão que navega para `Backup` continuam liberados (a tela `Backup` já trata a distinção importar/exportar internamente); "Verificar Licença Agora" também continua liberado (é a própria ação de tentar sair do modo somente-leitura).
 
 ## 📎 Documentos relacionados
 

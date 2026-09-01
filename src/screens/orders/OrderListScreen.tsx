@@ -12,6 +12,7 @@ import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, type OrderStatus } from '@/types/database';
@@ -85,6 +86,8 @@ type ListProps = Props & {
 };
 
 function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter, onStatusChange }: ListProps) {
+  const { guard } = useReadOnlyGuard();
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -119,7 +122,7 @@ function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter,
         />
       </View>
 
-      <Fab accessibilityLabel="Nova ordem de venda" onPress={() => navigation.navigate('NewOrder')} />
+      <Fab accessibilityLabel="Nova ordem de venda" onPress={() => guard(() => navigation.navigate('NewOrder'))} />
     </View>
   );
 }

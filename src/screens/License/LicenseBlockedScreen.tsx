@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { LicenseCheckResult } from '@/services/licenseService';
+import { exportBackup } from '@/services/backupService';
 import { colors, radii, spacing } from '@/theme';
 
 type LicenseBlockedScreenProps = {
@@ -24,6 +25,7 @@ const MESSAGES: Record<string, string> = {
 
 export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: LicenseBlockedScreenProps) {
   const [retrying, setRetrying] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const message = MESSAGES[reason ?? 'offline'] ?? MESSAGES.offline;
 
@@ -33,6 +35,19 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
       await onRetry();
     } finally {
       setRetrying(false);
+    }
+  }
+
+  // O vendedor nunca deve perder acesso aos próprios dados, mesmo com a licença bloqueada — só
+  // a operação normal do negócio (cadastros, pedidos, PDF) fica indisponível aqui.
+  async function handleExportBackup() {
+    setExporting(true);
+    try {
+      await exportBackup();
+    } catch (error) {
+      Alert.alert('Não foi possível exportar o backup', String(error instanceof Error ? error.message : error));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -64,6 +79,17 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
           </Text>
         </View>
       ) : null}
+
+      <TouchableOpacity style={styles.exportButton} onPress={handleExportBackup} disabled={exporting} activeOpacity={0.8}>
+        {exporting ? (
+          <ActivityIndicator color={colors.slate700} />
+        ) : (
+          <View style={styles.buttonContent}>
+            <Ionicons name="cloud-upload-outline" size={16} color={colors.slate700} />
+            <Text style={styles.exportButtonText}>Exportar meus dados (Backup)</Text>
+          </View>
+        )}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -138,5 +164,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  exportButton: {
+    marginTop: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 13,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.md,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  exportButtonText: {
+    color: colors.slate700,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
