@@ -75,6 +75,18 @@ WatermelonDB depende de código nativo (módulo JSI, resolvido automaticamente p
 2. **`tsconfig.json`** — `experimentalDecorators: true` (para o `tsc` aceitar a sintaxe) e `paths: { "@/*": ["./src/*"] }` (sem `baseUrl`, deprecado a partir do TypeScript 6 — `paths` sozinho já resolve relativo ao `tsconfig.json` com `moduleResolution: "bundler"`).
 3. **Sem Expo Go:** por ter módulo nativo, o app não roda no app Expo Go da loja. É preciso `expo-dev-client` + `expo prebuild` + `expo run:android`/`expo run:ios` para gerar um build de desenvolvimento próprio.
 
+## 🏗️ Build (EAS)
+
+`eas.json` (Fase 9) define 3 perfis de build (`eas build --profile <nome>`), pensados especificamente pro fato do app depender de código nativo (WatermelonDB — ver seção acima):
+
+| Perfil | Uso | Distribuição |
+|---|---|---|
+| `development` | Gera o dev client com código nativo já embutido (`developmentClient: true`) — necessário porque o app não roda no Expo Go. É o build que se instala uma vez no aparelho/emulador e depois recebe atualizações de JS via `expo start` normalmente. | `internal` (APK direto, sem passar pela loja) |
+| `preview` | Build "de verdade" (sem o client de dev) pra testar em dispositivo físico antes de liberar — ex: mandar pro cliente avaliar. | `internal` (APK) |
+| `production` | Build final para a loja (`autoIncrement: true` — incrementa o `versionCode`/`buildNumber` automaticamente a cada build, sem precisar editar `app.json` na mão). | Loja (via `eas submit`, perfil `production` também configurado) |
+
+> ⚠️ **Pendências antes do primeiro build real:** (1) `eas.json` sozinho não basta — é preciso rodar `eas login`/`eas init` (ou `eas build:configure`) pra vincular o projeto a uma conta Expo/EAS e gerar o `extra.eas.projectId` em `app.json`, passo que não foi feito aqui (sem acesso a uma conta Expo neste ambiente). (2) `android.package` em `app.json` ainda está com o valor padrão do template (`com.anonymous.vendasapp`) — trocar para o identificador definitivo da empresa antes de submeter à Play Store, já que esse valor não pode mais mudar depois do primeiro upload.
+
 ## 🔑 Variáveis de ambiente
 
 Config de serviços externos (hoje só o Supabase, ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-integração-com-o-supabase)) fica em variáveis com prefixo `EXPO_PUBLIC_`, que o Metro inlineia automaticamente no bundle (suporte nativo do Expo, sem lib adicional). Centralizadas em `src/services/api.ts`, nunca lidas diretamente de `process.env` no resto do código.
