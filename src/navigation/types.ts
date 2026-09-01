@@ -4,6 +4,7 @@ export type RootStackParamList = {
   ClientForm: { clientId?: string } | undefined;
   ProductList: undefined;
   ProductForm: { productId?: string } | undefined;
+  CategoryList: undefined;
   Backup: undefined;
   NewOrder: undefined;
   OrderList: undefined;

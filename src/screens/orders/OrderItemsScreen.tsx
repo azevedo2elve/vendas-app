@@ -36,7 +36,7 @@ function observeProducts(searchQuery: string) {
   const like = `%${Q.sanitizeLikeString(trimmed)}%`;
   return database
     .get<Product>('products')
-    .query(Q.or(Q.where('name', Q.like(like)), Q.where('sku', Q.like(like))), Q.sortBy('name', Q.asc))
+    .query(Q.where('name', Q.like(like)), Q.sortBy('name', Q.asc))
     .observe();
 }
 
@@ -71,7 +71,7 @@ function OrderItemsScreenBase({ navigation, products, onSearchChange }: ListProp
                 </View>
               ) : null}
               <Text style={styles.sectionTitle}>Catálogo de produtos</Text>
-              <SearchBar placeholder="Buscar por nome ou SKU" onDebouncedChange={onSearchChange} />
+              <SearchBar placeholder="Buscar por nome" onDebouncedChange={onSearchChange} />
             </View>
           }
           renderItem={({ item }) => {
@@ -82,9 +82,7 @@ function OrderItemsScreenBase({ navigation, products, onSearchChange }: ListProp
                   <Text style={styles.productName} numberOfLines={2}>
                     {item.name}
                   </Text>
-                  <Text style={styles.productSubtitle}>
-                    SKU: {item.sku} · {item.unit}
-                  </Text>
+                  <Text style={styles.productSubtitle}>{item.unit}</Text>
                   <Text style={styles.productPrice}>{formatCurrencyBRL(item.price)}</Text>
                 </View>
 

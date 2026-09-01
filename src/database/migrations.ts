@@ -3,6 +3,25 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export default schemaMigrations({
   migrations: [
     {
+      toVersion: 4,
+      steps: [
+        // Categorias de produtos (Fase 12): nova tabela `categories` + `products.category_id`.
+        // A coluna `sku` de `products` não é removida (WatermelonDB não suporta removeColumns) —
+        // fica órfã no SQLite em instalações existentes, mesmo padrão da Fase 5.
+        createTable({
+          name: 'categories',
+          columns: [
+            { name: 'name', type: 'string', isIndexed: true },
+            { name: 'created_at', type: 'number' },
+          ],
+        }),
+        addColumns({
+          table: 'products',
+          columns: [{ name: 'category_id', type: 'string', isIndexed: true, isOptional: true }],
+        }),
+      ],
+    },
+    {
       toVersion: 3,
       steps: [
         // Tela de Configurações (Fase 11): dados cadastrais da empresa/vendedor, usados no
