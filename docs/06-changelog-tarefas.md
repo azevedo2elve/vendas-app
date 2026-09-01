@@ -106,6 +106,12 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `ProductListScreen` com busca por nome/SKU (filtro por categoria descartado — sem coluna `category` no schema).
 - [x] `ProductFormScreen` com máscara de preço (BRL, em centavos) e validação de SKU único.
 
+### 2026-09-01 — Foto do produto (visual apenas, não entra no PDF)
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: poder cadastrar uma foto por produto para facilitar a visualização ao montar o pedido, sem impactar o PDF nem o armazenamento. Adicionada coluna `products.photo_path` (schema v6, `src/database/migrations.ts`) guardando só o **caminho** de um arquivo de imagem — nunca a foto em si no banco. Novo `src/services/productPhotoService.ts` (`expo-image-picker` + `expo-image-manipulator` + a API nova do `expo-file-system`: `File`/`Directory`/`Paths`) tira foto ou escolhe da galeria, redimensiona para no máximo 640px de largura e recomprime em JPEG ~60%, salvando em `product-photos/` dentro de `Paths.document`; apaga o arquivo anterior ao trocar a foto e ao excluir o produto (nunca deixa arquivo órfão). `ProductFormScreen` ganhou um seletor de foto no topo do formulário (`Alert.alert` com Câmera/Galeria/Remover); `ProductListScreen` e `OrderItemsScreen` mostram a miniatura no card quando existe. Permissões de câmera/galeria configuradas em `app.json` (plugin `expo-image-picker`, mensagens em pt-BR).
+- **Decisão:** a foto **não** entra no PDF de pedido (`templates/orderTemplate.ts` não foi alterado) nem no backup JSON (`backupService.ts` não exporta `photoPath`) — é só uma conveniência visual local, evitando inflar o PDF e o arquivo de backup.
+- **Docs afetados:** `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Fase 5 — Módulo Ordem de Venda
