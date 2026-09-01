@@ -32,6 +32,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
+| **Fase 13** | PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente | 🟢 Concluído |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -276,6 +277,22 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `backupService.ts` (+ `BackupScreen.tsx`): incluir `categories` no backup, trocar dedupe de produto de `sku` para `name`, resolver categoria por nome na importação.
 - [x] Validar com `tsc --noEmit` e `expo export --platform android`.
 - [ ] Testar em dispositivo/emulador real, partindo de dados pré-existentes (migração v3 → v4) — pendente, sem acesso a device físico neste ambiente.
+
+---
+
+## Fase 13 — PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente
+
+### 2026-09-01 — Cabeçalho do PDF com logo/vendedor, endereço estruturado, numeração por cliente e data de entrega
+- **Tipo:** feature / schema / fix
+- **Resumo:** Branch `feature/pdf-personalizado-e-endereco-cliente` (criada a partir de `hml`, primeira feature depois da adoção do fluxo `feature → hml → main` — ver [Processo](#processo--fluxo-de-branches-hml--main) abaixo). Schema **v4 → v5**:
+  - **`clients`:** campo único `address` (texto livre) substituído por endereço **estruturado** (`address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip`, todos opcionais) — necessário pro cabeçalho do PDF exibir endereço e cidade do cliente separadamente. `address` fica órfã no SQLite em instalações existentes (mesmo padrão do `sku` na Fase 12). Novo `src/utils/address.ts` (`formatClientStreetLine`, `formatClientCityLine`, `formatClientFullAddress`) centraliza a formatação, usado em `ClientListScreen`, `orderTemplate.ts` e no dedupe de `backupService.ts`.
+  - **`orders`:** `order_number` (obrigatório, sentinela `0` para pedidos pré-Fase 13) — número sequencial **por cliente** (1º, 2º, 3º pedido daquele cliente, não um id global), calculado em `orderService.createOrder()` como `(pedidos anteriores do cliente) + 1`; e `delivery_date` (opcional) — nova entrada de data (`MaskedInput mask="date"`, máscara nova `dd/mm/aaaa` + `parseDateBR()` em `utils/masks.ts`, validando que a data existe de verdade) em `OrderReviewScreen`.
+  - **`company_settings`:** `vendedor_nome` (novo campo no formulário da Seção 1 de Configurações) e `logo_base64` (logo da empresa como data URI, selecionada via `settingsService.pickCompanyLogo()` reaproveitando `File.pickFileAsync` do `expo-file-system` — mesma API já usada no Backup, para não instalar `expo-image-picker` só para isso; limite de 2MB, salva imediatamente ao selecionar, sem esperar o botão "Salvar").
+  - **Cabeçalho do PDF redesenhado** (`templates/orderTemplate.ts`, agora recebendo também `CompanySettings`): linha de cima com logo (ou nome da empresa em texto, se não houver logo) à esquerda e telefone/vendedor/data de emissão à direita; abaixo, duas colunas — esquerda com nome do cliente, data de entrega, endereço e forma de pagamento; direita com número do pedido do cliente, cidade e CPF/CNPJ. `pdfService.shareOrderPdf()` passou a buscar `CompanySettings` internamente (`getOrCreateCompanySettings()`), sem mudar a assinatura chamada por `OrderSuccessScreen`/`OrderDetailScreen`. Rodapé passou a citar o nome do app (`APP_DISPLAY_NAME = 'Vendas App'`, novo em `utils/appInfo.ts`) em vez do nome fixo "Força de Vendas" hardcoded até então.
+  - **`HomeScreen`:** saudação "Bom dia"/"Boa tarde"/"Boa noite" (`getGreeting()`) removida — no lugar, mostra o nome do vendedor/empresa (`settingsService.resolveDisplayName()`: `vendedor_nome` → `nome_fantasia` → `razao_social` → `"Vendas App"`), a pedido do cliente.
+  - **Fix:** `ProductFormScreen` só permitia criar categoria pelo formulário quando a lista estava **vazia** (link que sumia assim que a 1ª categoria existisse) — bug reportado pelo cliente. Agora um chip "Nova categoria" fica sempre disponível (mesmo com categorias já cadastradas), abrindo uma linha inline de criação sem sair da tela. Lógica de duplicidade/criação (`isCategoryNameTaken`, `createCategory`) extraída para `src/services/categoryService.ts`, compartilhada entre `ProductFormScreen` e `CategoryListScreen` (antes duplicada).
+- **Docs afetados:** `docs/02-arquitetura.md` (branch usada nesta fase), `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+- **Validação:** `tsc --noEmit` sem erros e `expo export --platform android` (bundle Metro completo) sem erros. **Não foi possível testar em dispositivo/emulador real** neste ambiente — recomenda-se validar antes do release: a migração v4→v5 partindo de dados reais (clientes com `address` preenchido, pedidos antigos com `order_number = 0`), a seleção de logo (`File.pickFileAsync` filtrado por imagem, em vez do seletor de galeria nativo — ver decisão acima), e a renderização do cabeçalho do PDF com e sem logo.
 
 ---
 

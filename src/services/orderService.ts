@@ -1,3 +1,4 @@
+import { Q } from '@nozbe/watermelondb';
 import { database } from '@/database';
 import Order from '@/database/models/Order';
 import OrderItem from '@/database/models/OrderItem';
@@ -10,6 +11,7 @@ export type CreateOrderInput = {
   discountTotal: number;
   paymentMethod: PaymentMethod;
   notes?: string;
+  deliveryDate?: Date | null;
 };
 
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
@@ -18,6 +20,11 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 
   const orderCollection = database.get<Order>('orders');
   const orderItemCollection = database.get<OrderItem>('order_items');
+
+  // Número sequencial do pedido específico deste cliente (1º, 2º, 3º...), não um id global —
+  // usado no cabeçalho do PDF pra identificar rapidamente "qual pedido é esse, deste cliente".
+  const previousOrdersCount = await orderCollection.query(Q.where('client_id', input.clientId)).fetchCount();
+  const orderNumber = previousOrdersCount + 1;
 
   let createdOrder!: Order;
 
@@ -30,6 +37,8 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
       record.totalNet = totalNet;
       record.paymentMethod = input.paymentMethod;
       record.notes = input.notes?.trim() || undefined;
+      record.orderNumber = orderNumber;
+      record.deliveryDate = input.deliveryDate ?? null;
     });
 
     const preparedItems = input.items.map((item) =>

@@ -7,13 +7,14 @@ import { createOrder } from '@/services/orderService';
 import { Card } from '@/components/Card';
 import { Chip } from '@/components/Chip';
 import { DiscountInput } from '@/components/DiscountInput';
+import { MaskedInput } from '@/components/MaskedInput';
 import { OrderProgressBar } from '@/components/OrderProgressBar';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import type { OrderDraftStackParamList } from '@/navigation/types';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@/types/database';
 import { cartItemSubtotal } from '@/types/orderDraft';
 import { colors, radii, spacing } from '@/theme';
-import { formatCurrencyBRL } from '@/utils/masks';
+import { formatCurrencyBRL, parseDateBR } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<OrderDraftStackParamList, 'OrderReview'>;
 
@@ -33,6 +34,8 @@ export function OrderReviewScreen({ navigation }: Props) {
   const [discountTotal, setDiscountTotal] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
   const [notes, setNotes] = useState('');
+  const [deliveryDateDigits, setDeliveryDateDigits] = useState('');
+  const [deliveryDateError, setDeliveryDateError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
   const totalNet = Math.max(0, totals.totalGross - discountTotal);
@@ -40,9 +43,19 @@ export function OrderReviewScreen({ navigation }: Props) {
   async function handleSave() {
     if (!clientId) return;
 
+    let deliveryDate: Date | null = null;
+    if (deliveryDateDigits.length > 0) {
+      deliveryDate = parseDateBR(deliveryDateDigits);
+      if (!deliveryDate) {
+        setDeliveryDateError('Data de entrega inválida');
+        return;
+      }
+    }
+    setDeliveryDateError(undefined);
+
     setSaving(true);
     try {
-      const order = await createOrder({ clientId, items, discountTotal, paymentMethod, notes });
+      const order = await createOrder({ clientId, items, discountTotal, paymentMethod, notes, deliveryDate });
       reset();
       navigation.navigate('OrderSuccess', { orderId: order.id });
     } catch (error) {
@@ -88,6 +101,18 @@ export function OrderReviewScreen({ navigation }: Props) {
             baseAmount={totals.totalGross}
             valueCents={discountTotal}
             onChange={setDiscountTotal}
+          />
+
+          <MaskedInput
+            label="Data de entrega"
+            mask="date"
+            placeholder="dd/mm/aaaa (opcional)"
+            value={deliveryDateDigits}
+            onChangeText={(value) => {
+              setDeliveryDateDigits(value);
+              setDeliveryDateError(undefined);
+            }}
+            error={deliveryDateError}
           />
 
           <View>

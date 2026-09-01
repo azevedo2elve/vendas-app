@@ -16,6 +16,7 @@ import { LoadingView } from '@/components/LoadingView';
 import { SectionHeader } from '@/components/SectionHeader';
 import { StatCard } from '@/components/StatCard';
 import { testSupabaseFetch } from '@/services/licenseService';
+import { getOrCreateCompanySettings, resolveDisplayName } from '@/services/settingsService';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -26,6 +27,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type RecentOrder = { order: Order; clientName: string };
 
 type DashboardData = {
+  displayName: string;
   clientsCount: number;
   ordersCount: number;
   totalToday: number;
@@ -39,7 +41,8 @@ async function loadDashboardData(): Promise<DashboardData> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [clientsCount, ordersCount, todayOrders, recentOrders] = await Promise.all([
+  const [companySettings, clientsCount, ordersCount, todayOrders, recentOrders] = await Promise.all([
+    getOrCreateCompanySettings(),
     clientsCollection.query().fetchCount(),
     ordersCollection.query().fetchCount(),
     ordersCollection
@@ -57,14 +60,13 @@ async function loadDashboardData(): Promise<DashboardData> {
     })
   );
 
-  return { clientsCount, ordersCount, totalToday, recentOrders: recentWithClients };
-}
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Bom dia';
-  if (hour < 18) return 'Boa tarde';
-  return 'Boa noite';
+  return {
+    displayName: resolveDisplayName(companySettings),
+    clientsCount,
+    ordersCount,
+    totalToday,
+    recentOrders: recentWithClients,
+  };
 }
 
 export function HomeScreen({ navigation }: Props) {
@@ -115,7 +117,7 @@ export function HomeScreen({ navigation }: Props) {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.greeting}>{data.displayName}</Text>
           <Text style={styles.dateText}>{today}</Text>
         </View>
         <View style={styles.headerRight}>

@@ -1,7 +1,10 @@
 import type Client from '@/database/models/Client';
+import type CompanySettings from '@/database/models/CompanySettings';
 import type Order from '@/database/models/Order';
 import type OrderItem from '@/database/models/OrderItem';
 import { PAYMENT_METHOD_LABELS } from '@/types/database';
+import { APP_DISPLAY_NAME } from '@/utils/appInfo';
+import { formatClientCityLine, formatClientStreetLine } from '@/utils/address';
 import { formatCurrencyBRL, maskCpfCnpj, maskPhone } from '@/utils/masks';
 
 function escapeHtml(value: string): string {
@@ -21,14 +24,24 @@ function escapeHtml(value: string): string {
   });
 }
 
-export function buildOrderHtml(order: Order, client: Client, items: OrderItem[]): string {
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+export function buildOrderHtml(order: Order, client: Client, items: OrderItem[], company: CompanySettings): string {
   const orderCode = order.id.slice(0, 8).toUpperCase();
-  const createdAt = order.createdAt.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  const createdAt = formatDate(order.createdAt);
   const createdAtTime = order.createdAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  const companyName = escapeHtml(company.nomeFantasia?.trim() || company.razaoSocial?.trim() || 'Empresa');
+  const companyPhone = company.phone ? maskPhone(company.phone) : '';
+  const vendedorNome = company.vendedorNome?.trim();
+  // Número sequencial do pedido para este cliente (não um id global) — `0` é o sentinela de
+  // pedido criado antes da Fase 13, quando essa numeração ainda não existia.
+  const orderNumberLabel = order.orderNumber > 0 ? String(order.orderNumber) : `${orderCode} (ref.)`;
+  const deliveryDateLabel = order.deliveryDate ? formatDate(order.deliveryDate) : 'A combinar';
+  const streetLine = escapeHtml(formatClientStreetLine(client)) || '—';
+  const cityLine = escapeHtml(formatClientCityLine(client)) || '—';
 
   const rows = items
     .map(
@@ -62,34 +75,31 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[])
     align-items: flex-start;
     border-bottom: 3px solid #2563EB;
     padding-bottom: 16px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
+  .header-left { display: flex; align-items: center; }
+  .logo { max-height: 56px; max-width: 220px; object-fit: contain; }
   .brand { font-size: 20px; font-weight: 800; color: #0F172A; }
-  .brand-sub { font-size: 11px; color: #64748B; margin-top: 2px; }
-  .doc-title { text-align: right; }
-  .doc-title h1 { font-size: 16px; margin: 0; color: #2563EB; }
-  .doc-title p { margin: 2px 0 0; color: #64748B; font-size: 11px; }
-  .section {
+  .header-right { text-align: right; }
+  .header-right p { margin: 2px 0; font-size: 12px; color: #334155; }
+  .header-right .doc-title { font-size: 14px; font-weight: 800; color: #2563EB; margin-bottom: 4px; }
+  .info-grid {
     display: flex;
     gap: 24px;
     margin-bottom: 20px;
   }
-  .box {
-    flex: 1;
-    background: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    border-radius: 10px;
-    padding: 14px 16px;
-  }
-  .box h3 {
-    font-size: 10px;
+  .info-col { flex: 1; }
+  .info-col.align-right { text-align: right; }
+  .info-label {
+    font-size: 9.5px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: #64748B;
-    margin: 0 0 8px;
+    margin: 8px 0 1px;
   }
-  .box p { margin: 3px 0; font-size: 12.5px; }
-  .box .name { font-weight: 700; font-size: 14px; color: #0F172A; }
+  .info-col .info-label:first-child { margin-top: 0; }
+  .info-value { margin: 0; font-size: 12.5px; color: #0F172A; }
+  .info-value.name { font-weight: 700; font-size: 14px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
   thead th {
     text-align: left;
@@ -115,18 +125,6 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[])
   .totals .grand td { border-top: 2px solid #0F172A; padding-top: 10px; font-size: 16px; }
   .totals .grand .label { color: #0F172A; font-weight: 800; }
   .totals .grand .value { color: #059669; font-weight: 800; }
-  .meta-row { display: flex; justify-content: space-between; margin-bottom: 16px; }
-  .badge {
-    display: inline-block;
-    background: #DBEAFE;
-    color: #1D4ED8;
-    font-weight: 700;
-    font-size: 10px;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    padding: 4px 10px;
-    border-radius: 999px;
-  }
   .notes {
     background: #FFFBEB;
     border: 1px solid #FEF3C7;
@@ -147,28 +145,35 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[])
 </head>
 <body>
   <div class="header">
-    <div>
-      <div class="brand">Força de Vendas</div>
-      <div class="brand-sub">Ordem de venda gerada pelo app offline</div>
+    <div class="header-left">
+      ${company.logoBase64 ? `<img class="logo" src="${company.logoBase64}" />` : `<div class="brand">${companyName}</div>`}
     </div>
-    <div class="doc-title">
-      <h1>ORDEM DE VENDA</h1>
-      <p>Nº ${orderCode} · ${createdAt} às ${createdAtTime}</p>
+    <div class="header-right">
+      <div class="doc-title">ORDEM DE VENDA</div>
+      ${companyPhone ? `<p>${companyPhone}</p>` : ''}
+      ${vendedorNome ? `<p>${escapeHtml(vendedorNome)}</p>` : ''}
+      <p>${createdAt} às ${createdAtTime}</p>
     </div>
   </div>
 
-  <div class="section">
-    <div class="box">
-      <h3>Cliente</h3>
-      <p class="name">${escapeHtml(client.name)}</p>
-      <p>${maskCpfCnpj(client.document)}</p>
-      <p>${maskPhone(client.phone)}</p>
-      ${client.address ? `<p>${escapeHtml(client.address)}</p>` : ''}
+  <div class="info-grid">
+    <div class="info-col">
+      <p class="info-label">Cliente</p>
+      <p class="info-value name">${escapeHtml(client.name)}</p>
+      <p class="info-label">Entrega</p>
+      <p class="info-value">${deliveryDateLabel}</p>
+      <p class="info-label">Endereço</p>
+      <p class="info-value">${streetLine}</p>
+      <p class="info-label">Pagamento</p>
+      <p class="info-value">${PAYMENT_METHOD_LABELS[order.paymentMethod]}</p>
     </div>
-    <div class="box">
-      <h3>Pagamento</h3>
-      <p class="name">${PAYMENT_METHOD_LABELS[order.paymentMethod]}</p>
-      <p><span class="badge">${items.length} ${items.length === 1 ? 'item' : 'itens'}</span></p>
+    <div class="info-col align-right">
+      <p class="info-label">Pedido nº (cliente)</p>
+      <p class="info-value name">${orderNumberLabel}</p>
+      <p class="info-label">Cidade</p>
+      <p class="info-value">${cityLine}</p>
+      <p class="info-label">CPF/CNPJ</p>
+      <p class="info-value">${maskCpfCnpj(client.document)}</p>
     </div>
   </div>
 
@@ -206,7 +211,7 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[])
     </table>
   </div>
 
-  <div class="footer">Documento gerado offline pelo aplicativo Força de Vendas — sem validade fiscal.</div>
+  <div class="footer">Documento gerado offline pelo aplicativo ${APP_DISPLAY_NAME} — sem validade fiscal.</div>
 </body>
 </html>`;
 }

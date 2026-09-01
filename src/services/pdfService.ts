@@ -3,10 +3,12 @@ import * as Sharing from 'expo-sharing';
 import type Client from '@/database/models/Client';
 import type Order from '@/database/models/Order';
 import type OrderItem from '@/database/models/OrderItem';
+import { getOrCreateCompanySettings } from '@/services/settingsService';
 import { buildOrderHtml } from '@/templates/orderTemplate';
 
 export async function shareOrderPdf(order: Order, client: Client, items: OrderItem[]): Promise<void> {
-  const html = buildOrderHtml(order, client, items);
+  const company = await getOrCreateCompanySettings();
+  const html = buildOrderHtml(order, client, items, company);
   const { uri } = await Print.printToFileAsync({ html, base64: false });
 
   const canShare = await Sharing.isAvailableAsync();

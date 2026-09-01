@@ -13,6 +13,7 @@ import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 import { maskCpfCnpj, maskPhone } from '@/utils/masks';
+import { formatClientFullAddress } from '@/utils/address';
 import { openWhatsApp } from '@/utils/whatsapp';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ClientList'>;
@@ -56,9 +57,9 @@ function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps
                 <Text style={styles.cardTitle}>{item.name}</Text>
                 <Text style={styles.cardSubtitle}>{maskCpfCnpj(item.document)}</Text>
                 <Text style={styles.cardSubtitle}>{maskPhone(item.phone)}</Text>
-                {item.address ? (
+                {formatClientFullAddress(item) ? (
                   <Text style={styles.cardAddress} numberOfLines={1}>
-                    {item.address}
+                    {formatClientFullAddress(item)}
                   </Text>
                 ) : null}
               </View>
