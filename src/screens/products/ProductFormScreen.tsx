@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -16,6 +16,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { LoadingView } from '@/components/LoadingView';
 import { useToast } from '@/components/Toast';
 import { createCategory, isCategoryNameTaken } from '@/services/categoryService';
+import { deleteProductPhoto, replaceProductPhoto } from '@/services/productPhotoService';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, spacing } from '@/theme';
@@ -44,6 +45,8 @@ export function ProductFormScreen({ navigation, route }: Props) {
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [photoPath, setPhotoPath] = useState<string | undefined>(undefined);
+  const [pickingPhoto, setPickingPhoto] = useState(false);
   const { showToast } = useToast();
   const { readOnly } = useLicenseAccess();
 
@@ -109,6 +112,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
           price: String(product.price),
           unit: (UNITS as readonly string[]).includes(product.unit) ? (product.unit as (typeof UNITS)[number]) : 'UN',
         });
+        setPhotoPath(product.photoPath);
         setLoading(false);
       });
 
@@ -117,6 +121,35 @@ export function ProductFormScreen({ navigation, route }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
+
+  async function handleSelectPhoto(source: 'camera' | 'library') {
+    setPickingPhoto(true);
+    try {
+      const newPath = await replaceProductPhoto(source, photoPath);
+      if (newPath) setPhotoPath(newPath);
+    } catch (error) {
+      Alert.alert('Não foi possível obter a foto', error instanceof Error ? error.message : 'Tente novamente.');
+    } finally {
+      setPickingPhoto(false);
+    }
+  }
+
+  async function handleRemovePhoto() {
+    await deleteProductPhoto(photoPath);
+    setPhotoPath(undefined);
+  }
+
+  function handleOpenPhotoOptions() {
+    const options: Parameters<typeof Alert.alert>[2] = [
+      { text: 'Tirar foto', onPress: () => handleSelectPhoto('camera') },
+      { text: 'Escolher da galeria', onPress: () => handleSelectPhoto('library') },
+    ];
+    if (photoPath) {
+      options.push({ text: 'Remover foto', style: 'destructive', onPress: handleRemovePhoto });
+    }
+    options.push({ text: 'Cancelar', style: 'cancel' });
+    Alert.alert('Foto do produto', 'A foto é só para visualização no app e não entra no PDF.', options);
+  }
 
   async function onSubmit(values: ProductFormValues) {
     setSaving(true);
@@ -131,6 +164,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
             record.categoryId = values.categoryId;
             record.price = priceCents;
             record.unit = values.unit;
+            record.photoPath = photoPath;
           });
         } else {
           await database.get<Product>('products').create((record) => {
@@ -138,6 +172,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
             record.categoryId = values.categoryId;
             record.price = priceCents;
             record.unit = values.unit;
+            record.photoPath = photoPath;
           });
         }
       });
@@ -161,6 +196,7 @@ export function ProductFormScreen({ navigation, route }: Props) {
           await database.write(async () => {
             await product.markAsDeleted();
           });
+          await deleteProductPhoto(product.photoPath);
           showToast('Produto excluído.', 'info');
           navigation.goBack();
         },
@@ -174,6 +210,28 @@ export function ProductFormScreen({ navigation, route }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.photoSection}>
+        <TouchableOpacity
+          style={styles.photoTouchable}
+          onPress={handleOpenPhotoOptions}
+          disabled={pickingPhoto || readOnly}
+          accessibilityLabel="Foto do produto"
+        >
+          {pickingPhoto ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : photoPath ? (
+            <Image source={{ uri: photoPath }} style={styles.photoImage} />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Ionicons name="camera-outline" size={26} color={colors.accent} />
+            </View>
+          )}
+        </TouchableOpacity>
+        <Text style={styles.photoHint}>
+          {photoPath ? 'Toque para trocar ou remover a foto' : 'Toque para adicionar uma foto (opcional)'}
+        </Text>
+      </View>
+
       <Controller
         control={control}
         name="name"
@@ -323,6 +381,34 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
+  },
+  photoSection: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  photoTouchable: {
+    width: 96,
+    height: 96,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  photoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoHint: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
   unitContainer: {
     gap: spacing.xs,

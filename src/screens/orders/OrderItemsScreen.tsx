@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import {
   FlatList,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -115,12 +116,21 @@ function OrderItemsScreenBase({
             const cartItem = cartByProductId.get(item.id);
             return (
               <View style={[styles.productCard, numColumns > 1 ? styles.productCardHalf : null]}>
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName} numberOfLines={2}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.productSubtitle}>{item.unit}</Text>
-                  <Text style={styles.productPrice}>{formatCurrencyBRL(item.price)}</Text>
+                <View style={styles.productCardTop}>
+                  {item.photoPath ? (
+                    <Image source={{ uri: item.photoPath }} style={styles.productThumbnail} />
+                  ) : (
+                    <View style={styles.productThumbnailPlaceholder}>
+                      <Ionicons name="cube-outline" size={18} color={colors.accent} />
+                    </View>
+                  )}
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productName} numberOfLines={2}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.productSubtitle}>{item.unit}</Text>
+                    <Text style={styles.productPrice}>{formatCurrencyBRL(item.price)}</Text>
+                  </View>
                 </View>
 
                 {cartItem ? (
@@ -311,7 +321,26 @@ const styles = StyleSheet.create({
   productCardHalf: {
     maxWidth: '49%',
   },
+  productCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  productThumbnail: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.sm,
+  },
+  productThumbnailPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.sm,
+    backgroundColor: colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   productInfo: {
+    flex: 1,
     gap: 3,
   },
   productName: {

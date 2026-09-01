@@ -3,6 +3,19 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export default schemaMigrations({
   migrations: [
     {
+      toVersion: 6,
+      steps: [
+        // Foto do produto (apenas visual, nunca vai pro PDF): guarda o caminho do arquivo já
+        // redimensionado/comprimido no armazenamento do próprio celular (productPhotoService),
+        // não a imagem em si — mesmo padrão do logo em `company_settings`, mas em disco em vez
+        // de base64 no banco, pra não pesar o SQLite com fotos.
+        addColumns({
+          table: 'products',
+          columns: [{ name: 'photo_path', type: 'string', isOptional: true }],
+        }),
+      ],
+    },
+    {
       toVersion: 5,
       steps: [
         // Fase 13: endereço estruturado do cliente (substitui a antiga coluna `address`, que

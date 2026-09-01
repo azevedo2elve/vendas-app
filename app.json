@@ -23,7 +23,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O app usa suas fotos para você escolher a imagem de um produto.",
+          "cameraPermission": "O app usa a câmera para tirar a foto de um produto."
+        }
+      ]
     ]
   }
 }

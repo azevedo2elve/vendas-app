@@ -115,6 +115,8 @@ export default class Category extends Model {
 ## 📦 Tabela `products`
 
 > 🔁 **Fase 12:** coluna `sku` removida (o cliente não usa esse conceito — cadastro considerado simples demais para justificar SKU); coluna `category_id` adicionada, relacionando cada produto a uma `categories`.
+>
+> 🖼️ **Foto do produto (2026-09-01):** coluna `photo_path` adicionada — guarda o caminho de um arquivo de imagem no armazenamento do próprio celular, nunca a imagem em si no banco. Ver seção "Foto do produto" mais abaixo.
 
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
@@ -123,11 +125,14 @@ export default class Category extends Model {
 | `category_id` | `string` (indexado, FK → `categories.id`) | `string` | ⛔ (opcional no schema, obrigatório na validação do formulário de cadastro) | Categoria do produto — opcional no schema só para não quebrar produtos já existentes de antes da Fase 12, que ficam "sem categoria" até serem editados |
 | `price` | `number` | `number` | ✔️ | Preço de venda em **centavos** (BRL) |
 | `unit` | `string` | `string` | ✔️ | Unidade de medida (`UN`, `KG`, `CX`, `L`, etc.) |
+| `photo_path` | `string` (opcional) | `string \| undefined` | ⛔ | Caminho local (`file://...`) da foto do produto, redimensionada/comprimida — só para exibição no app, nunca entra no PDF nem no backup JSON |
 | `created_at` | `number` | `Date` | ✔️ | Gerenciado automaticamente |
 
 > 💰 **Convenção de dinheiro:** todos os valores monetários (`price`, `total_amount`, `discount`, `unit_price`, `total_price`) são armazenados como **inteiros em centavos** (ex: R$ 19,90 → `1990`). A formatação para exibição é responsabilidade exclusiva da UI/PDF.
 >
 > 🗑️ **Coluna `sku` órfã:** em instalações que já existiam antes da Fase 12, a coluna `sku` continua fisicamente na tabela SQLite (WatermelonDB não remove colunas em migration, só adiciona — mesmo padrão já usado na Fase 5 com `total_amount`/`discount`/`total_price`), mas não é mais lida nem escrita pelo app. Instalações novas (schema aplicado direto de `schema.ts`) nunca tiveram essa coluna.
+>
+> 🖼️ **Foto do produto — armazenamento local, não no banco:** `photo_path` guarda só o caminho do arquivo (`Directory`/`File` de `expo-file-system`, diretório `product-photos/` dentro de `Paths.document`); a imagem em si nunca vira base64/blob no SQLite (diferente de `company_settings.logo_base64`, que é um único logo pequeno). Ao selecionar (câmera ou galeria, `src/services/productPhotoService.ts`), a imagem é redimensionada para no máximo 640px de largura e recomprimida em JPEG (~60% de qualidade) antes de salvar — mantém a lista de produtos leve e o consumo de armazenamento do cliente baixo. O arquivo é apagado do disco ao trocar a foto ou excluir o produto (nunca fica arquivo órfão). **Nunca é incluída no PDF de pedido nem no export/import de backup em JSON** — é só uma conveniência visual local; se o backup for restaurado em outro aparelho, o produto volta sem foto (o vendedor re-adiciona se quiser).
 
 ### Model (`src/database/models/Product.ts`)
 
@@ -146,6 +151,7 @@ export default class Product extends Model {
   @field('category_id') declare categoryId?: string;
   @field('price') declare price: number; // centavos
   @field('unit') declare unit: string;
+  @field('photo_path') declare photoPath?: string;
 
   @readonly @date('created_at') declare createdAt: Date;
 
@@ -340,7 +346,7 @@ export default class CompanySettings extends Model {
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 5,
+  version: 6,
   tables: [
     tableSchema({
       name: 'clients',
@@ -371,6 +377,7 @@ export default appSchema({
         { name: 'category_id', type: 'string', isIndexed: true, isOptional: true },
         { name: 'price', type: 'number' },
         { name: 'unit', type: 'string' },
+        { name: 'photo_path', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -454,6 +461,7 @@ Toda alteração de schema (nova coluna, nova tabela) deve:
 | 3 | Fase 11 (tela de Configurações): nova tabela `company_settings` (`createTable`) — dados cadastrais da empresa/vendedor. Não afeta nenhuma tabela existente. | `src/database/migrations.ts` |
 | 4 | Fase 12 (categorias de produtos): nova tabela `categories` (`createTable`); `products` ganhou `category_id` (`addColumns`, opcional). A coluna `sku` de `products` **não** é removida pela migration (WatermelonDB não suporta `removeColumns`) — fica órfã no SQLite em instalações que já existiam, mesmo padrão da coluna `total_amount` na migration da Fase 5. | `src/database/migrations.ts` |
 | 5 | Fase 13 (PDF personalizado + endereço estruturado): `clients` ganhou `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` (`addColumns`, opcionais — `address` fica órfã, mesmo padrão do `sku`); `orders` ganhou `order_number` (obrigatório — pedidos existentes recebem `0` como sentinela de "legado") e `delivery_date` (`addColumns`, opcional); `company_settings` ganhou `vendedor_nome` e `logo_base64` (`addColumns`, opcionais). | `src/database/migrations.ts` |
+| 6 | Foto do produto (2026-09-01): `products` ganhou `photo_path` (`addColumns`, opcional) — caminho local do arquivo de imagem, não a imagem em si. | `src/database/migrations.ts` |
 
 ```ts
 // src/database/migrations.ts
@@ -461,6 +469,15 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 
 export default schemaMigrations({
   migrations: [
+    {
+      toVersion: 6,
+      steps: [
+        addColumns({
+          table: 'products',
+          columns: [{ name: 'photo_path', type: 'string', isOptional: true }],
+        }),
+      ],
+    },
     {
       toVersion: 5,
       steps: [
