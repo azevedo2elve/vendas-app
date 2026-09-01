@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -21,6 +21,7 @@ import { clearAllOrders } from '@/services/orderService';
 import {
   getDatabaseSummary,
   getOrCreateCompanySettings,
+  pickCompanyLogo,
   saveCompanySettings,
   type DatabaseSummary,
 } from '@/services/settingsService';
@@ -37,6 +38,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 const companySchema = z.object({
   razaoSocial: z.string().trim().min(3, 'Nome/razão social muito curto'),
   nomeFantasia: z.string().trim().optional(),
+  vendedorNome: z.string().trim().optional(),
   document: z.string().refine((value) => value.length === 0 || isValidCpfOuCnpj(value), 'CNPJ/CPF inválido'),
   ie: z.string().trim().optional(),
   phone: z.string().min(10, 'Telefone inválido'),
@@ -55,6 +57,7 @@ type CompanyFormValues = z.infer<typeof companySchema>;
 const EMPTY_COMPANY_FORM: CompanyFormValues = {
   razaoSocial: '',
   nomeFantasia: '',
+  vendedorNome: '',
   document: '',
   ie: '',
   phone: '',
@@ -81,6 +84,8 @@ export function SettingsScreen({ navigation }: Props) {
   const [clearing, setClearing] = useState(false);
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'company' | 'system' | 'data' | null>(null);
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [pickingLogo, setPickingLogo] = useState(false);
   const { showToast } = useToast();
   const netInfo = useNetInfo();
 
@@ -91,6 +96,7 @@ export function SettingsScreen({ navigation }: Props) {
   const {
     control,
     handleSubmit,
+    getValues,
     reset,
     formState: { errors },
   } = useForm<CompanyFormValues>({
@@ -106,6 +112,7 @@ export function SettingsScreen({ navigation }: Props) {
       reset({
         razaoSocial: settings.razaoSocial,
         nomeFantasia: settings.nomeFantasia ?? '',
+        vendedorNome: settings.vendedorNome ?? '',
         document: settings.document,
         ie: settings.ie ?? '',
         phone: settings.phone,
@@ -118,6 +125,7 @@ export function SettingsScreen({ navigation }: Props) {
         addressZip: settings.addressZip ?? '',
         pixKey: settings.pixKey ?? '',
       });
+      setLogoBase64(settings.logoBase64 ?? null);
       setLicense(licenseSnapshot);
       setLoading(false);
     })();
@@ -138,28 +146,63 @@ export function SettingsScreen({ navigation }: Props) {
     }, [refreshSummary])
   );
 
+  function companySettingsInputFromForm(values: CompanyFormValues) {
+    return {
+      razaoSocial: values.razaoSocial,
+      nomeFantasia: values.nomeFantasia,
+      vendedorNome: values.vendedorNome,
+      document: onlyDigits(values.document ?? ''),
+      ie: values.ie,
+      phone: onlyDigits(values.phone),
+      email: values.email,
+      addressStreet: values.addressStreet,
+      addressNumber: values.addressNumber,
+      addressDistrict: values.addressDistrict,
+      addressCity: values.addressCity,
+      addressState: values.addressState?.toUpperCase(),
+      addressZip: onlyDigits(values.addressZip ?? ''),
+      pixKey: values.pixKey,
+    };
+  }
+
   async function onSubmitCompany(values: CompanyFormValues) {
     setSaving(true);
     try {
-      await saveCompanySettings({
-        razaoSocial: values.razaoSocial,
-        nomeFantasia: values.nomeFantasia,
-        document: onlyDigits(values.document ?? ''),
-        ie: values.ie,
-        phone: onlyDigits(values.phone),
-        email: values.email,
-        addressStreet: values.addressStreet,
-        addressNumber: values.addressNumber,
-        addressDistrict: values.addressDistrict,
-        addressCity: values.addressCity,
-        addressState: values.addressState?.toUpperCase(),
-        addressZip: onlyDigits(values.addressZip ?? ''),
-        pixKey: values.pixKey,
-      });
+      await saveCompanySettings(companySettingsInputFromForm(values));
       showToast('Dados da empresa salvos com sucesso!', 'success');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handlePickLogo() {
+    setPickingLogo(true);
+    try {
+      const dataUri = await pickCompanyLogo();
+      if (!dataUri) return;
+      await saveCompanySettings({ ...companySettingsInputFromForm(getValues()), logoBase64: dataUri });
+      setLogoBase64(dataUri);
+      showToast('Logo atualizada com sucesso!', 'success');
+    } catch (error) {
+      Alert.alert('Não foi possível definir a logo', String(error instanceof Error ? error.message : error));
+    } finally {
+      setPickingLogo(false);
+    }
+  }
+
+  function handleRemoveLogo() {
+    Alert.alert('Remover logo', 'Tem certeza que deseja remover a logo da empresa?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Remover',
+        style: 'destructive',
+        onPress: async () => {
+          await saveCompanySettings({ ...companySettingsInputFromForm(getValues()), logoBase64: null });
+          setLogoBase64(null);
+          showToast('Logo removida.', 'info');
+        },
+      },
+    ]);
   }
 
   async function handleCopyDeviceId() {
@@ -265,6 +308,45 @@ export function SettingsScreen({ navigation }: Props) {
             />
           )}
         />
+
+        <Controller
+          control={control}
+          name="vendedorNome"
+          render={({ field }) => (
+            <MaskedInput
+              label="Nome do Vendedor"
+              placeholder="Exibido na tela inicial e no PDF (opcional)"
+              value={field.value ?? ''}
+              onChangeText={field.onChange}
+            />
+          )}
+        />
+
+        <View>
+          <Text style={styles.sectionLabel}>Logo da Empresa</Text>
+          <View style={styles.logoRow}>
+            {logoBase64 ? (
+              <Image source={{ uri: logoBase64 }} style={styles.logoPreview} resizeMode="contain" />
+            ) : (
+              <View style={styles.logoPlaceholder}>
+                <Ionicons name="image-outline" size={22} color={colors.slate400} />
+              </View>
+            )}
+            <View style={styles.logoActions}>
+              <PrimaryButton
+                label={logoBase64 ? 'Trocar logo' : 'Selecionar logo'}
+                variant="outline"
+                icon="cloud-upload-outline"
+                onPress={handlePickLogo}
+                loading={pickingLogo}
+              />
+              {logoBase64 ? (
+                <PrimaryButton label="Remover" variant="danger" icon="trash-outline" onPress={handleRemoveLogo} />
+              ) : null}
+            </View>
+          </View>
+          <Text style={styles.helperText}>PNG ou JPG, até 2MB. Usada no cabeçalho do PDF da ordem de venda.</Text>
+        </View>
 
         <View style={styles.formRow}>
           <View style={styles.formRowItemWide}>
@@ -650,6 +732,35 @@ const styles = StyleSheet.create({
     color: colors.textDisabled,
     marginTop: spacing.xs,
     lineHeight: 16,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  logoPreview: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.slate50,
+  },
+  logoPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: colors.slate50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoActions: {
+    flex: 1,
+    gap: spacing.xs,
   },
   divider: {
     height: 1,

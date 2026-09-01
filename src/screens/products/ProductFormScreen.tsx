@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Q } from '@nozbe/watermelondb';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { database } from '@/database';
 import Product from '@/database/models/Product';
 import Category from '@/database/models/Category';
@@ -14,8 +15,9 @@ import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { LoadingView } from '@/components/LoadingView';
 import { useToast } from '@/components/Toast';
+import { createCategory, isCategoryNameTaken } from '@/services/categoryService';
 import type { RootStackParamList } from '@/navigation/types';
-import { colors, spacing } from '@/theme';
+import { colors, radii, spacing } from '@/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProductForm'>;
 
@@ -38,6 +40,9 @@ export function ProductFormScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const { showToast } = useToast();
 
   const {
@@ -54,15 +59,38 @@ export function ProductFormScreen({ navigation, route }: Props) {
     navigation.setOptions({ title: isEditing ? 'Editar produto' : 'Novo produto' });
   }, [navigation, isEditing]);
 
+  const loadCategories = useCallback(async () => {
+    const result = await database.get<Category>('categories').query(Q.sortBy('name', Q.asc)).fetch();
+    setCategories(result);
+    return result;
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      database
-        .get<Category>('categories')
-        .query(Q.sortBy('name', Q.asc))
-        .fetch()
-        .then(setCategories);
-    }, [])
+      loadCategories();
+    }, [loadCategories])
   );
+
+  async function handleCreateCategory(onSelect: (categoryId: string) => void) {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+
+    setCreatingCategory(true);
+    try {
+      if (await isCategoryNameTaken(trimmed)) {
+        Alert.alert('Categoria já existe', 'Já existe uma categoria cadastrada com esse nome.');
+        return;
+      }
+      const created = await createCategory(trimmed);
+      await loadCategories();
+      onSelect(created.id);
+      setNewCategoryName('');
+      setAddingCategory(false);
+      showToast('Categoria criada!', 'success');
+    } finally {
+      setCreatingCategory(false);
+    }
+  }
 
   useEffect(() => {
     if (!productId) return;
@@ -191,41 +219,69 @@ export function ProductFormScreen({ navigation, route }: Props) {
       <Controller
         control={control}
         name="categoryId"
-        render={({ field }) =>
-          categories.length === 0 ? (
-            <View style={styles.unitContainer}>
+        render={({ field }) => (
+          <View style={styles.unitContainer}>
+            <View style={styles.categoryHeader}>
               <Text style={styles.unitLabel}>Categoria</Text>
-              <TouchableOpacity
-                style={styles.noCategoryLink}
-                onPress={() => navigation.navigate('CategoryList')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.noCategoryLinkText}>Nenhuma categoria cadastrada. Toque para criar uma.</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('CategoryList')}>
+                <Text style={styles.manageCategoriesLink}>Gerenciar categorias</Text>
               </TouchableOpacity>
-              {errors.categoryId ? <Text style={styles.errorText}>{errors.categoryId.message}</Text> : null}
             </View>
-          ) : (
-            <View style={styles.unitContainer}>
-              <View style={styles.categoryHeader}>
-                <Text style={styles.unitLabel}>Categoria</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('CategoryList')}>
-                  <Text style={styles.manageCategoriesLink}>Gerenciar categorias</Text>
+
+            {categories.length === 0 ? (
+              <Text style={styles.helperText}>Nenhuma categoria cadastrada ainda — crie a primeira abaixo.</Text>
+            ) : null}
+
+            <View style={styles.unitChips}>
+              {categories.map((category) => (
+                <Chip
+                  key={category.id}
+                  label={category.name}
+                  selected={field.value === category.id}
+                  onPress={() => field.onChange(category.id)}
+                />
+              ))}
+              <Chip
+                label="Nova categoria"
+                icon="add"
+                selected={false}
+                onPress={() => setAddingCategory((current) => !current)}
+              />
+            </View>
+
+            {addingCategory ? (
+              <View style={styles.addCategoryRow}>
+                <MaskedInput
+                  placeholder="Nome da nova categoria"
+                  value={newCategoryName}
+                  onChangeText={setNewCategoryName}
+                  style={styles.addCategoryInput}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  style={styles.addCategoryIconButton}
+                  onPress={() => handleCreateCategory(field.onChange)}
+                  disabled={creatingCategory}
+                  accessibilityLabel="Confirmar nova categoria"
+                >
+                  <Ionicons name="checkmark" size={20} color={colors.success} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.addCategoryIconButton}
+                  onPress={() => {
+                    setAddingCategory(false);
+                    setNewCategoryName('');
+                  }}
+                  accessibilityLabel="Cancelar nova categoria"
+                >
+                  <Ionicons name="close" size={20} color={colors.slate500} />
                 </TouchableOpacity>
               </View>
-              <View style={styles.unitChips}>
-                {categories.map((category) => (
-                  <Chip
-                    key={category.id}
-                    label={category.name}
-                    selected={field.value === category.id}
-                    onPress={() => field.onChange(category.id)}
-                  />
-                ))}
-              </View>
-              {errors.categoryId ? <Text style={styles.errorText}>{errors.categoryId.message}</Text> : null}
-            </View>
-          )
-        }
+            ) : null}
+
+            {errors.categoryId ? <Text style={styles.errorText}>{errors.categoryId.message}</Text> : null}
+          </View>
+        )}
       />
 
       <PrimaryButton label="Salvar" icon="checkmark-circle-outline" onPress={handleSubmit(onSubmit)} loading={saving} />
@@ -278,18 +334,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.accent,
   },
-  noCategoryLink: {
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.sm,
+  helperText: {
+    fontSize: 12.5,
+    color: colors.textMuted,
   },
-  noCategoryLinkText: {
-    fontSize: 13.5,
-    color: colors.accent,
-    fontWeight: '600',
+  addCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  addCategoryInput: {
+    flex: 1,
+  },
+  addCategoryIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   errorText: {
     fontSize: 12,

@@ -4,6 +4,7 @@ import { Q } from '@nozbe/watermelondb';
 import type { Clause } from '@nozbe/watermelondb/QueryDescription';
 import { withObservables } from '@nozbe/watermelondb/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { database } from '@/database';
 import Order from '@/database/models/Order';
 import Client from '@/database/models/Client';
@@ -51,6 +52,12 @@ function OrderRowBase({ order, client, itemCount, onPress }: OrderRowProps & { c
         <Badge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONE[order.status]} />
       </View>
       <Text style={styles.cardClient}>{client?.name ?? '—'}</Text>
+      {order.deliveryDate ? (
+        <View style={styles.deliveryRow}>
+          <Ionicons name="cube-outline" size={13} color={colors.accent} />
+          <Text style={styles.deliveryText}>Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}</Text>
+        </View>
+      ) : null}
       <View style={styles.cardFooter}>
         <Text style={styles.cardMeta}>
           {order.createdAt.toLocaleString('pt-BR')} · {itemCount} {itemCount === 1 ? 'item' : 'itens'}
@@ -195,6 +202,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.textPrimary,
+  },
+  deliveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  deliveryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
   },
   cardFooter: {
     flexDirection: 'row',

@@ -17,6 +17,11 @@ export default class CompanySettings extends Model {
   @field('address_state') declare addressState?: string;
   @field('address_zip') declare addressZip?: string;
   @field('pix_key') declare pixKey?: string;
+  @field('vendedor_nome') declare vendedorNome?: string;
+  // Logo da empresa como data URI (`data:image/png;base64,...`) — guardada direto no banco em
+  // vez de um caminho de arquivo separado, pra sempre estar disponível offline na hora de montar
+  // o HTML do PDF, sem depender de permissão de leitura de filesystem naquele momento.
+  @field('logo_base64') declare logoBase64?: string;
 
   @date('updated_at') declare updatedAt: Date;
 }

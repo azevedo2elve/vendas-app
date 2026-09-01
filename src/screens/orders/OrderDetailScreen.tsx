@@ -97,6 +97,18 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
           <Ionicons name="calendar-outline" size={16} color={colors.slate500} />
           <Text style={styles.row}>{order.createdAt.toLocaleString('pt-BR')}</Text>
         </View>
+        {order.orderNumber > 0 ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="pricetag-outline" size={16} color={colors.slate500} />
+            <Text style={styles.row}>Pedido nº {order.orderNumber} deste cliente</Text>
+          </View>
+        ) : null}
+        {order.deliveryDate ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="cube-outline" size={16} color={colors.slate500} />
+            <Text style={styles.row}>Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}</Text>
+          </View>
+        ) : null}
         <View style={styles.infoRow}>
           <Ionicons name="wallet-outline" size={16} color={colors.slate500} />
           <Text style={styles.row}>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</Text>

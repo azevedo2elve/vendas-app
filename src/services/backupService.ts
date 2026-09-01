@@ -12,7 +12,12 @@ const backupClientSchema = z.object({
   name: z.string(),
   document: z.string(),
   phone: z.string(),
-  address: z.string().optional(),
+  address_street: z.string().optional(),
+  address_number: z.string().optional(),
+  address_complement: z.string().optional(),
+  address_city: z.string().optional(),
+  address_state: z.string().optional(),
+  address_zip: z.string().optional(),
 });
 
 const backupCategorySchema = z.object({
@@ -54,7 +59,12 @@ async function buildBackupData(): Promise<BackupData> {
       name: client.name,
       document: client.document,
       phone: client.phone,
-      address: client.address,
+      address_street: client.addressStreet,
+      address_number: client.addressNumber,
+      address_complement: client.addressComplement,
+      address_city: client.addressCity,
+      address_state: client.addressState,
+      address_zip: client.addressZip,
     })),
     categories: categories.map((category) => ({ name: category.name })),
     products: products.map((product) => ({
@@ -212,7 +222,12 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
       record.name = client.name;
       record.document = client.document;
       record.phone = client.phone;
-      record.address = client.address;
+      record.addressStreet = client.address_street;
+      record.addressNumber = client.address_number;
+      record.addressComplement = client.address_complement;
+      record.addressCity = client.address_city;
+      record.addressState = client.address_state;
+      record.addressZip = client.address_zip;
     })
   );
 

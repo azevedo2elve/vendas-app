@@ -10,16 +10,11 @@ import Product from '@/database/models/Product';
 import { EmptyState } from '@/components/EmptyState';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
+import { createCategory, isCategoryNameTaken } from '@/services/categoryService';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CategoryList'>;
-
-async function isCategoryNameTaken(name: string, ignoreId?: string): Promise<boolean> {
-  const categories = await database.get<Category>('categories').query().fetch();
-  const normalized = name.trim().toLowerCase();
-  return categories.some((category) => category.id !== ignoreId && category.name.trim().toLowerCase() === normalized);
-}
 
 type RowProps = {
   category: Category;
@@ -166,11 +161,7 @@ function CategoryListScreenBase({ categories }: ListProps) {
         Alert.alert('Categoria já existe', 'Já existe uma categoria cadastrada com esse nome.');
         return;
       }
-      await database.write(async () => {
-        await database.get<Category>('categories').create((record) => {
-          record.name = trimmed;
-        });
-      });
+      await createCategory(trimmed);
       setNewName('');
       showToast('Categoria criada!', 'success');
     } finally {

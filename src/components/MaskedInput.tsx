@@ -1,9 +1,9 @@
 import { forwardRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
 import { colors, radii, spacing } from '@/theme';
-import { formatCurrencyBRL, maskCep, maskCpfCnpj, maskPhone, onlyDigits } from '@/utils/masks';
+import { formatCurrencyBRL, maskCep, maskCpfCnpj, maskDateBR, maskPhone, onlyDigits } from '@/utils/masks';
 
-export type MaskType = 'cpfCnpj' | 'phone' | 'currency' | 'cep';
+export type MaskType = 'cpfCnpj' | 'phone' | 'currency' | 'cep' | 'date';
 
 type MaskedInputProps = Omit<TextInputProps, 'onChangeText' | 'value'> & {
   label?: string;
@@ -34,7 +34,7 @@ export const MaskedInput = forwardRef<TextInput, MaskedInputProps>(function Mask
       onChangeText(onlyDigits(text).slice(0, 11));
       return;
     }
-    if (mask === 'cep') {
+    if (mask === 'cep' || mask === 'date') {
       onChangeText(onlyDigits(text).slice(0, 8));
       return;
     }
@@ -81,6 +81,8 @@ function formatForDisplay(mask: MaskType | undefined, value: string): string {
       return formatCurrencyBRL(Number(value || '0'));
     case 'cep':
       return maskCep(value);
+    case 'date':
+      return maskDateBR(value);
     default:
       return value;
   }

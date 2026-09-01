@@ -30,14 +30,23 @@ clients (1) ──────< orders (N)
 
 ## 🧾 Tabela `clients`
 
+> 🔁 **Fase 13:** a antiga coluna `address` (texto livre único) foi substituída por endereço **estruturado** (rua, número, complemento, cidade, UF, CEP) — necessário pro cabeçalho do PDF (endereço e cidade do cliente em campos separados). `address` fica órfã no SQLite em instalações existentes (mesmo padrão já usado para `sku` na Fase 12).
+
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
 | `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente pelo WatermelonDB |
 | `name` | `string` (indexado) | `string` | ✔️ | Nome ou razão social do cliente |
 | `document` | `string` (indexado) | `string` | ✔️ | CPF ou CNPJ do cliente |
 | `phone` | `string` | `string` | ✔️ | Telefone/WhatsApp |
-| `address` | `string` | `string` | ⛔ | Endereço completo (opcional, texto livre) |
+| `address_street` | `string` | `string` | ⛔ | Rua/logradouro |
+| `address_number` | `string` | `string` | ⛔ | Número |
+| `address_complement` | `string` | `string` | ⛔ | Complemento (apto, sala, etc.) |
+| `address_city` | `string` | `string` | ⛔ | Cidade |
+| `address_state` | `string` | `string` | ⛔ | UF (sigla, 2 letras) |
+| `address_zip` | `string` | `string` | ⛔ | CEP (sem máscara) |
 | `created_at` | `number` (timestamp) | `Date` | ✔️ | Gerenciado automaticamente (`@readonly @date`) |
+
+> 📝 Todos os campos de endereço são opcionais no schema (não bloqueiam o cadastro do cliente) — helpers de formatação em [`src/utils/address.ts`](../src/utils/address.ts) (`formatClientStreetLine`, `formatClientCityLine`, `formatClientFullAddress`) lidam com combinações parciais.
 
 ### Model (`src/database/models/Client.ts`)
 
@@ -55,7 +64,12 @@ export default class Client extends Model {
   @field('name') declare name: string;
   @field('document') declare document: string;
   @field('phone') declare phone: string;
-  @field('address') declare address?: string;
+  @field('address_street') declare addressStreet?: string;
+  @field('address_number') declare addressNumber?: string;
+  @field('address_complement') declare addressComplement?: string;
+  @field('address_city') declare addressCity?: string;
+  @field('address_state') declare addressState?: string;
+  @field('address_zip') declare addressZip?: string;
 
   @readonly @date('created_at') declare createdAt: Date;
 
@@ -143,7 +157,7 @@ export default class Product extends Model {
 
 ## 🧾 Tabela `orders`
 
-> 🔁 Redesenhada na **Fase 5** (schema v2 — ver [Migrations](#-migrations) abaixo). Antes da Fase 5 essa tabela existia só como esqueleto (Fase 2), sem nenhuma tela usando os campos antigos (`total_amount`/`discount`).
+> 🔁 Redesenhada na **Fase 5** (schema v2 — ver [Migrations](#-migrations) abaixo). Antes da Fase 5 essa tabela existia só como esqueleto (Fase 2), sem nenhuma tela usando os campos antigos (`total_amount`/`discount`). Ganhou `order_number`/`delivery_date` na **Fase 13** (schema v4 → v5), para o cabeçalho do PDF.
 
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
@@ -155,6 +169,8 @@ export default class Product extends Model {
 | `total_net` | `number` | `number` | ✔️ | `total_gross − discount_total` (nunca negativo) |
 | `payment_method` | `string` | `'dinheiro' \| 'pix' \| 'boleto' \| 'cartao_credito' \| 'cartao_debito' \| 'a_prazo'` | ✔️ | Forma de pagamento combinada com o cliente |
 | `notes` | `string` | `string` | ⛔ | Observações gerais do pedido (opcional) |
+| `order_number` | `number` | `number` | ✔️ | Número sequencial do pedido **específico do cliente** (1º, 2º, 3º pedido daquele cliente — não um id global), calculado em `orderService.createOrder()` como `(pedidos anteriores do cliente) + 1`. Pedidos criados antes da Fase 13 têm `0` (sentinela de "legado", sem numeração) |
+| `delivery_date` | `number` (timestamp) | `Date \| null` | ⛔ | Data combinada de entrega (opcional — nem todo pedido tem data definida no fechamento) |
 | `created_at` | `number` | `Date` | ✔️ | Gerenciado automaticamente |
 
 ### Model (`src/database/models/Order.ts`)
@@ -180,8 +196,10 @@ export default class Order extends Model {
   @field('total_net') declare totalNet: number;
   @field('payment_method') declare paymentMethod: PaymentMethod;
   @field('notes') declare notes?: string;
+  @field('order_number') declare orderNumber: number;
 
   @readonly @date('created_at') declare createdAt: Date;
+  @date('delivery_date') declare deliveryDate: Date | null;
 
   @relation('clients', 'client_id') declare client: Relation<Client>;
   @children('order_items') declare items: Query<OrderItem>;
@@ -266,19 +284,21 @@ export default class LicenseControl extends Model {
 
 ## 🏢 Tabela `company_settings`
 
-Tabela de **linha única** (mesmo padrão de `license_control`, criada sob demanda na primeira vez que a tela de Configurações é aberta — ver `getOrCreateCompanySettings()` em `src/services/settingsService.ts`). Guarda os dados cadastrais da empresa/vendedor exibidos no cabeçalho das ordens de venda em PDF (e reservados para um futuro módulo de emissão fiscal). Adicionada na **Fase 11** (schema v2 → v3).
+Tabela de **linha única** (mesmo padrão de `license_control`, criada sob demanda na primeira vez que a tela de Configurações é aberta — ver `getOrCreateCompanySettings()` em `src/services/settingsService.ts`). Guarda os dados cadastrais da empresa/vendedor exibidos no cabeçalho das ordens de venda em PDF (e reservados para um futuro módulo de emissão fiscal). Adicionada na **Fase 11** (schema v2 → v3); ganhou `vendedor_nome`/`logo_base64` na **Fase 13** (schema v4 → v5).
 
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
 | `id` | `string` (PK, auto) | `string` | ✔️ | Gerado automaticamente (apenas 1 registro deve existir) |
 | `razao_social` | `string` | `string` | ✔️ | Razão social ou nome completo do emissor |
 | `nome_fantasia` | `string` | `string` | ⛔ | Nome fantasia (opcional) |
+| `vendedor_nome` | `string` | `string` | ⛔ | Nome do vendedor — exibido na saudação da `HomeScreen` e no cabeçalho do PDF; tem prioridade sobre `nome_fantasia`/`razao_social` nesses dois lugares (ver `resolveDisplayName()`) |
 | `document` | `string` | `string` | ✔️ (pode ficar vazio até o 1º preenchimento) | CPF ou CNPJ do emissor, sem máscara — validado com `isValidCpfOuCnpj` só quando não vazio |
 | `ie` | `string` | `string` | ⛔ | Inscrição Estadual ou Municipal (texto livre, opcional) |
 | `phone` | `string` | `string` | ✔️ (idem `document`) | Telefone/WhatsApp de contato comercial |
 | `email` | `string` | `string` | ⛔ | E-mail comercial (opcional, validado por formato quando preenchido) |
-| `address_street` / `address_number` / `address_district` / `address_city` / `address_state` / `address_zip` | `string` | `string` | ⛔ | Endereço estruturado (ao contrário de `clients.address`, que é texto livre único) — colunas separadas para permitir reaproveitar cada campo isoladamente em templates futuros (PDF, NF-e) |
+| `address_street` / `address_number` / `address_district` / `address_city` / `address_state` / `address_zip` | `string` | `string` | ⛔ | Endereço estruturado (mesma ideia hoje replicada em `clients`, Fase 13) — colunas separadas para permitir reaproveitar cada campo isoladamente em templates futuros (PDF, NF-e) |
 | `pix_key` | `string` | `string` | ⛔ | Chave PIX padrão para cobrança, exibida no resumo/PDF (texto livre — não há validação de formato, já que uma chave PIX pode ser CPF/CNPJ/e-mail/telefone/aleatória) |
+| `logo_base64` | `string` | `string` | ⛔ | Logo da empresa como **data URI** (`data:image/png;base64,...`) — guardada direto no banco (não um caminho de arquivo) pra estar sempre disponível offline na hora de montar o HTML do PDF; limite de 2MB no arquivo original, aplicado em `pickCompanyLogo()` |
 | `updated_at` | `number` (timestamp) | `Date` | ✔️ | Atualizado manualmente a cada `saveCompanySettings()` (não usa `@readonly`, pois o campo é regravado a cada salvamento, diferente de `created_at` nas outras tabelas) |
 
 > 📝 Diferente de `clients.document`/`phone`, não há checagem de duplicidade aqui (é sempre 1 único registro) nem relação com outras tabelas — é um registro de configuração isolado, não uma entidade de negócio.
@@ -305,6 +325,8 @@ export default class CompanySettings extends Model {
   @field('address_state') declare addressState?: string;
   @field('address_zip') declare addressZip?: string;
   @field('pix_key') declare pixKey?: string;
+  @field('vendedor_nome') declare vendedorNome?: string;
+  @field('logo_base64') declare logoBase64?: string;
 
   @date('updated_at') declare updatedAt: Date;
 }
@@ -318,7 +340,7 @@ export default class CompanySettings extends Model {
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 4,
+  version: 5,
   tables: [
     tableSchema({
       name: 'clients',
@@ -326,7 +348,12 @@ export default appSchema({
         { name: 'name', type: 'string', isIndexed: true },
         { name: 'document', type: 'string', isIndexed: true },
         { name: 'phone', type: 'string' },
-        { name: 'address', type: 'string', isOptional: true },
+        { name: 'address_street', type: 'string', isOptional: true },
+        { name: 'address_number', type: 'string', isOptional: true },
+        { name: 'address_complement', type: 'string', isOptional: true },
+        { name: 'address_city', type: 'string', isOptional: true },
+        { name: 'address_state', type: 'string', isOptional: true },
+        { name: 'address_zip', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -357,6 +384,8 @@ export default appSchema({
         { name: 'total_net', type: 'number' },
         { name: 'payment_method', type: 'string' },
         { name: 'notes', type: 'string', isOptional: true },
+        { name: 'order_number', type: 'number' },
+        { name: 'delivery_date', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -397,6 +426,8 @@ export default appSchema({
         { name: 'address_state', type: 'string', isOptional: true },
         { name: 'address_zip', type: 'string', isOptional: true },
         { name: 'pix_key', type: 'string', isOptional: true },
+        { name: 'vendedor_nome', type: 'string', isOptional: true },
+        { name: 'logo_base64', type: 'string', isOptional: true },
         { name: 'updated_at', type: 'number' },
       ],
     }),
@@ -404,7 +435,7 @@ export default appSchema({
 });
 ```
 
-> 📝 Este schema ainda é enxuto (sem `order_number`, `updated_at` ou soft delete em `orders`/`order_items`). `order_items` já tem snapshot de nome/preço (`product_name_snapshot`, `unit_price`), adicionado na Fase 5. `company_settings` é a exceção com `updated_at` — ali faz sentido, pois é regravado a cada salvamento do formulário, não um `created_at` imutável.
+> 📝 `orders` ganhou `order_number` na Fase 13 (não é mais "enxuto" nesse sentido) — ainda sem soft delete em `orders`/`order_items`. `order_items` já tem snapshot de nome/preço (`product_name_snapshot`, `unit_price`), adicionado na Fase 5. `company_settings` é a exceção com `updated_at` — ali faz sentido, pois é regravado a cada salvamento do formulário, não um `created_at` imutável.
 
 ## 🔁 Migrations
 
@@ -422,6 +453,7 @@ Toda alteração de schema (nova coluna, nova tabela) deve:
 | 2 | Fase 5 (Ordem de Venda): `orders` ganhou `total_gross`/`discount_total`/`total_net`/`notes` (substituindo `total_amount`/`discount`, que ficam órfãos no SQLite mas não são mais lidos pelo app); `order_items` ganhou `product_name_snapshot`/`discount_value`/`subtotal` (substituindo `total_price`). Não havia nenhuma tela usando os campos antigos ainda, então não foi preciso migrar dados existentes — só `addColumns`. | `src/database/migrations.ts` |
 | 3 | Fase 11 (tela de Configurações): nova tabela `company_settings` (`createTable`) — dados cadastrais da empresa/vendedor. Não afeta nenhuma tabela existente. | `src/database/migrations.ts` |
 | 4 | Fase 12 (categorias de produtos): nova tabela `categories` (`createTable`); `products` ganhou `category_id` (`addColumns`, opcional). A coluna `sku` de `products` **não** é removida pela migration (WatermelonDB não suporta `removeColumns`) — fica órfã no SQLite em instalações que já existiam, mesmo padrão da coluna `total_amount` na migration da Fase 5. | `src/database/migrations.ts` |
+| 5 | Fase 13 (PDF personalizado + endereço estruturado): `clients` ganhou `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` (`addColumns`, opcionais — `address` fica órfã, mesmo padrão do `sku`); `orders` ganhou `order_number` (obrigatório — pedidos existentes recebem `0` como sentinela de "legado") e `delivery_date` (`addColumns`, opcional); `company_settings` ganhou `vendedor_nome` e `logo_base64` (`addColumns`, opcionais). | `src/database/migrations.ts` |
 
 ```ts
 // src/database/migrations.ts
@@ -429,6 +461,36 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 
 export default schemaMigrations({
   migrations: [
+    {
+      toVersion: 5,
+      steps: [
+        addColumns({
+          table: 'clients',
+          columns: [
+            { name: 'address_street', type: 'string', isOptional: true },
+            { name: 'address_number', type: 'string', isOptional: true },
+            { name: 'address_complement', type: 'string', isOptional: true },
+            { name: 'address_city', type: 'string', isOptional: true },
+            { name: 'address_state', type: 'string', isOptional: true },
+            { name: 'address_zip', type: 'string', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'orders',
+          columns: [
+            { name: 'order_number', type: 'number' },
+            { name: 'delivery_date', type: 'number', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'company_settings',
+          columns: [
+            { name: 'vendedor_nome', type: 'string', isOptional: true },
+            { name: 'logo_base64', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
     {
       toVersion: 4,
       steps: [

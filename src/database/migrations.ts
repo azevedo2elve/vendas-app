@@ -3,6 +3,40 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export default schemaMigrations({
   migrations: [
     {
+      toVersion: 5,
+      steps: [
+        // Fase 13: endereço estruturado do cliente (substitui a antiga coluna `address`, que
+        // fica órfã no SQLite, mesmo padrão já usado para `sku` na Fase 12), número do pedido
+        // por cliente e data de entrega em `orders`, e logo/nome do vendedor em `company_settings`
+        // — todos consumidos pelo novo cabeçalho do PDF.
+        addColumns({
+          table: 'clients',
+          columns: [
+            { name: 'address_street', type: 'string', isOptional: true },
+            { name: 'address_number', type: 'string', isOptional: true },
+            { name: 'address_complement', type: 'string', isOptional: true },
+            { name: 'address_city', type: 'string', isOptional: true },
+            { name: 'address_state', type: 'string', isOptional: true },
+            { name: 'address_zip', type: 'string', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'orders',
+          columns: [
+            { name: 'order_number', type: 'number' },
+            { name: 'delivery_date', type: 'number', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'company_settings',
+          columns: [
+            { name: 'vendedor_nome', type: 'string', isOptional: true },
+            { name: 'logo_base64', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
       toVersion: 4,
       steps: [
         // Categorias de produtos (Fase 12): nova tabela `categories` + `products.category_id`.
