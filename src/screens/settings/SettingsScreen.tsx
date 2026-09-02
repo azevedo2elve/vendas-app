@@ -14,8 +14,8 @@ import { LoadingView } from '@/components/LoadingView';
 import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
-import { isSupportPhoneConfigured, SUPPORT_WHATSAPP_PHONE } from '@/services/api';
-import { exportBackup } from '@/services/backupService';
+import { isSupportEmailConfigured, isSupportPhoneConfigured, SUPPORT_WHATSAPP_PHONE } from '@/services/api';
+import { emailBackup, exportBackup } from '@/services/backupService';
 import { evaluateLicense, getCurrentLicenseSnapshot } from '@/services/licenseService';
 import { clearAllOrders } from '@/services/orderService';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
@@ -82,6 +82,7 @@ export function SettingsScreen({ navigation }: Props) {
   const [summary, setSummary] = useState<DatabaseSummary | null>(null);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [sendingBackupEmail, setSendingBackupEmail] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'company' | 'system' | 'data' | null>(null);
@@ -251,6 +252,22 @@ export function SettingsScreen({ navigation }: Props) {
       showToast(`Não foi possível exportar o backup: ${String(error)}`, 'error');
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleEmailBackup() {
+    setSendingBackupEmail(true);
+    try {
+      const result = await emailBackup();
+      if (result.status === 'cancelled') return;
+      showToast(
+        `Backup enviado com ${result.clientsCount} cliente(s), ${result.productsCount} produto(s) e ${result.ordersCount} pedido(s).`,
+        'success'
+      );
+    } catch (error) {
+      showToast(`Não foi possível enviar o backup por e-mail: ${String(error)}`, 'error');
+    } finally {
+      setSendingBackupEmail(false);
     }
   }
 
@@ -652,6 +669,23 @@ export function SettingsScreen({ navigation }: Props) {
           icon="cloud-download-outline"
           onPress={() => navigation.navigate('Backup')}
         />
+        <PrimaryButton
+          label="Enviar backup por e-mail (suporte)"
+          variant="outline"
+          icon="mail-outline"
+          onPress={handleEmailBackup}
+          loading={sendingBackupEmail}
+          disabled={!isSupportEmailConfigured()}
+        />
+        {!isSupportEmailConfigured() ? (
+          <Text style={styles.helperText}>
+            Envio de backup por e-mail não configurado (defina EXPO_PUBLIC_SUPPORT_EMAIL no .env).
+          </Text>
+        ) : (
+          <Text style={styles.helperText}>
+            Use quando precisar de ajuda do suporte: abre seu app de e-mail com o backup anexado, pronto pra enviar.
+          </Text>
+        )}
 
         <View style={styles.divider} />
 

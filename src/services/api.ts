@@ -15,6 +15,14 @@ export function isSupportPhoneConfigured(): boolean {
   return Boolean(SUPPORT_WHATSAPP_PHONE);
 }
 
+// E-mail do suporte para onde o vendedor envia o backup quando precisa de ajuda (ex: aparelho
+// com problema) — o próprio suporte usa esse backup pra restaurar em outro aparelho.
+export const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
+
+export function isSupportEmailConfigured(): boolean {
+  return Boolean(SUPPORT_EMAIL);
+}
+
 export function supabaseHeaders(): Record<string, string> {
   return {
     apikey: SUPABASE_ANON_KEY ?? '',

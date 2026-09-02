@@ -229,6 +229,12 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Limitação conhecida (documentada, não é bug):** `orders.created_at` não é preservado na importação — campo `@readonly` do WatermelonDB, sempre gravado como "agora" na criação do registro. Pedidos importados nascem com a data da importação, não a data original da venda. O restante dos dados (valores, status, `order_number`, `delivery_date`, itens) é preservado corretamente.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Envio de backup por e-mail ao suporte + atalho "Backup" removido da HomeScreen
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: tirar o atalho "Backup" da tela inicial (não é ação do dia a dia) deixando-o só em Configurações, e adicionar uma forma de mandar o backup por e-mail pro suporte quando o vendedor tiver problema — o próprio suporte usa esse arquivo pra restaurar depois. `HomeScreen.tsx`: removido o 3º atalho secundário ("Backup"); a linha de ações rápidas ficou só com "Novo Cliente"/"Catálogo" (a rota `Backup` continua existindo, só perdeu esse ponto de entrada). Nova função `backupService.emailBackup()` (`expo-mail-composer`, novo pacote): gera o mesmo JSON já usado por `exportBackup()`/`saveBackupToDevice()` e abre o app de e-mail do próprio celular com destinatário, assunto e o arquivo já anexados — o vendedor só confirma o envio. Não há servidor de e-mail próprio nem envio automático em segundo plano. Botão "Enviar backup por e-mail (suporte)" adicionado em `SettingsScreen` (seção "Dados, Backup e Armazenamento"), ao lado de "Exportar"/"Importar".
+- **Configuração:** endereço de destino em `EXPO_PUBLIC_SUPPORT_EMAIL` (`.env`, opcional — mesmo padrão já usado por `EXPO_PUBLIC_SUPPORT_WHATSAPP_PHONE`); botão fica `disabled` com aviso se ausente, ou se o celular não tiver nenhum app de e-mail configurado. `src/services/api.ts` ganhou `SUPPORT_EMAIL`/`isSupportEmailConfigured()`.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] `services/backupService.ts` (exportação JSON via `expo-file-system`) — limitado a `clients`/`products` por enquanto.
 - [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".
