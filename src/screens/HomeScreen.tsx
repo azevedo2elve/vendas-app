@@ -211,14 +211,6 @@ export function HomeScreen({ navigation }: Props) {
             <Ionicons name="grid-outline" size={20} color={colors.accent} />
             <Text style={styles.secondaryActionText}>Catálogo</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryAction}
-            onPress={() => navigation.navigate('Backup')}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="cloud-upload-outline" size={20} color={colors.accent} />
-            <Text style={styles.secondaryActionText}>Backup</Text>
-          </TouchableOpacity>
         </View>
       </View>
 

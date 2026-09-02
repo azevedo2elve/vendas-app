@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import * as MailComposer from 'expo-mail-composer';
 import * as Sharing from 'expo-sharing';
 import { z } from 'zod';
 import { database } from '@/database';
@@ -7,6 +8,7 @@ import Product from '@/database/models/Product';
 import Category from '@/database/models/Category';
 import Order from '@/database/models/Order';
 import OrderItem from '@/database/models/OrderItem';
+import { SUPPORT_EMAIL } from '@/services/api';
 import type { OrderStatus, PaymentMethod } from '@/types/database';
 
 const BACKUP_APP_VERSION = '1.0.0';
@@ -188,6 +190,43 @@ export async function saveBackupToDevice(): Promise<ExportResult | null> {
 
   const { file, data } = await writeBackupFile(directory);
   return { file, clientsCount: data.clients.length, productsCount: data.products.length, ordersCount: data.orders.length };
+}
+
+export type EmailBackupResult =
+  | { status: 'sent' | 'saved'; clientsCount: number; productsCount: number; ordersCount: number }
+  | { status: 'cancelled' };
+
+// Gera o backup e abre o app de e-mail já instalado no celular, preenchido com o endereço do
+// suporte (EXPO_PUBLIC_SUPPORT_EMAIL) e o JSON anexado — o vendedor só confirma o envio. Não
+// existe servidor de e-mail próprio: usa o app de e-mail já configurado no aparelho (Gmail
+// etc.), então precisa de internet e de um app de e-mail configurado.
+export async function emailBackup(): Promise<EmailBackupResult> {
+  if (!SUPPORT_EMAIL) {
+    throw new Error('E-mail de suporte não configurado.');
+  }
+  if (!(await MailComposer.isAvailableAsync())) {
+    throw new Error('Nenhum aplicativo de e-mail configurado neste celular.');
+  }
+
+  const { file, data } = await writeBackupFile(new Directory(Paths.document));
+
+  const result = await MailComposer.composeAsync({
+    recipients: [SUPPORT_EMAIL],
+    subject: `Backup do app de vendas — ${data.exported_at.slice(0, 10)}`,
+    body: 'Segue em anexo o backup do aplicativo (clientes, produtos e pedidos) para restauração pelo suporte.',
+    attachments: [file.uri],
+  });
+
+  if (result.status === MailComposer.MailComposerStatus.CANCELLED) {
+    return { status: 'cancelled' };
+  }
+
+  return {
+    status: result.status === MailComposer.MailComposerStatus.SAVED ? 'saved' : 'sent',
+    clientsCount: data.clients.length,
+    productsCount: data.products.length,
+    ordersCount: data.orders.length,
+  };
 }
 
 export type BackupPreview = {
