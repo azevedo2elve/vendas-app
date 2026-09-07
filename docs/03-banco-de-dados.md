@@ -268,6 +268,7 @@ Tabela de **linha única** (singleton local, criada automaticamente na primeira 
 | `license_expires_at` | `number` (timestamp) | `Date` | ✔️ | Data/hora de expiração da licença atual |
 | `license_status` | `string` | `'active' \| 'expired' \| 'blocked'` | ✔️ | Estado corrente da licença |
 | `last_opened_at` | `number` (timestamp) | `Date` | ✔️ | Último momento em que o app foi aberto com sucesso (base do anti-fraude de relógio) |
+| `last_remote_backup_at` | `number` (timestamp, opcional) | `Date \| null` | ⛔ | Último envio bem-sucedido do backup remoto (2026-09-07) — ver seção "Backup remoto automático" em [docs/04](./04-sistema-licenca.md#-backup-remoto-automático-supabase-storage) |
 
 ### Model (`src/database/models/LicenseControl.ts`)
 
@@ -283,6 +284,7 @@ export default class LicenseControl extends Model {
   @date('license_expires_at') declare licenseExpiresAt: Date;
   @field('license_status') declare licenseStatus: LicenseStatus;
   @date('last_opened_at') declare lastOpenedAt: Date;
+  @date('last_remote_backup_at') declare lastRemoteBackupAt: Date | null;
 }
 ```
 
@@ -346,7 +348,7 @@ export default class CompanySettings extends Model {
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 6,
+  version: 7,
   tables: [
     tableSchema({
       name: 'clients',
@@ -415,6 +417,7 @@ export default appSchema({
         { name: 'license_expires_at', type: 'number' },
         { name: 'license_status', type: 'string' },
         { name: 'last_opened_at', type: 'number' },
+        { name: 'last_remote_backup_at', type: 'number', isOptional: true },
       ],
     }),
     tableSchema({
@@ -462,6 +465,7 @@ Toda alteração de schema (nova coluna, nova tabela) deve:
 | 4 | Fase 12 (categorias de produtos): nova tabela `categories` (`createTable`); `products` ganhou `category_id` (`addColumns`, opcional). A coluna `sku` de `products` **não** é removida pela migration (WatermelonDB não suporta `removeColumns`) — fica órfã no SQLite em instalações que já existiam, mesmo padrão da coluna `total_amount` na migration da Fase 5. | `src/database/migrations.ts` |
 | 5 | Fase 13 (PDF personalizado + endereço estruturado): `clients` ganhou `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` (`addColumns`, opcionais — `address` fica órfã, mesmo padrão do `sku`); `orders` ganhou `order_number` (obrigatório — pedidos existentes recebem `0` como sentinela de "legado") e `delivery_date` (`addColumns`, opcional); `company_settings` ganhou `vendedor_nome` e `logo_base64` (`addColumns`, opcionais). | `src/database/migrations.ts` |
 | 6 | Foto do produto (2026-09-01): `products` ganhou `photo_path` (`addColumns`, opcional) — caminho local do arquivo de imagem, não a imagem em si. | `src/database/migrations.ts` |
+| 7 | Backup remoto automático (2026-09-07): `license_control` ganhou `last_remote_backup_at` (`addColumns`, opcional) — controla o "no máximo 1x por dia" do envio silencioso pro Supabase Storage. | `src/database/migrations.ts` |
 
 ```ts
 // src/database/migrations.ts
@@ -469,6 +473,15 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 
 export default schemaMigrations({
   migrations: [
+    {
+      toVersion: 7,
+      steps: [
+        addColumns({
+          table: 'license_control',
+          columns: [{ name: 'last_remote_backup_at', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
     {
       toVersion: 6,
       steps: [

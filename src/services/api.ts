@@ -30,3 +30,10 @@ export function supabaseHeaders(): Record<string, string> {
     'Content-Type': 'application/json',
   };
 }
+
+// A API de Storage do Supabase vive na raiz do projeto (`/storage/v1/...`), não em `/rest/v1`
+// como a API do PostgREST usada pela licença — deriva a raiz a partir de `SUPABASE_REST_URL`
+// pra não precisar de uma segunda variável de ambiente só pra isso.
+export function supabaseStorageBaseUrl(): string {
+  return (SUPABASE_REST_URL ?? '').replace(/\/rest\/v1\/?$/, '');
+}

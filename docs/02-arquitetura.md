@@ -115,10 +115,12 @@ src/
 │   ├── licenseService.ts  # Validação/renovação de licença
 │   ├── orderService.ts    # Criação/atualização/exclusão de ordens de venda
 │   ├── pdfService.ts       # Geração do HTML/PDF da ordem de venda + compartilhamento (expo-print/expo-sharing)
-│   ├── backupService.ts   # Exportação/Importação JSON
+│   ├── backupService.ts   # Exportação/Importação JSON (manual, acionado pelo vendedor)
+│   ├── remoteBackupService.ts # Backup automático e silencioso (catálogo + vendas 30d) pro Supabase Storage
 │   └── settingsService.ts # Dados cadastrais da empresa (company_settings) + resumo de contagens do banco
 ├── hooks/            # Hooks customizados
 │   ├── useLicenseGuard.ts # Bloqueia navegação se licença inválida
+│   ├── useRemoteBackupSync.ts # Dispara o backup remoto silencioso (abertura, intervalo, reconexão)
 │   └── useOrderDraft.tsx  # Estado do carrinho/rascunho de ordem via Context, compartilhado entre as 3 telas do wizard
 ├── navigation/       # Stacks e rotas (RootNavigator, OrderDraftNavigator, tipos de rota)
 ├── templates/        # Template HTML para expo-print (Ordem de Venda A4) — orderTemplate.ts
