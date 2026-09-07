@@ -296,6 +296,60 @@ Não é redundante — são dois mecanismos independentes, e o app exige que **a
 - **`license_expires_at`**: expiração natural "por tempo", sem ação manual.
 - **`license_status`**: revogação manual e imediata, independente da data — o kill switch (`'blocked'`) para cortar acesso antes do vencimento (inadimplência, uso indevido, etc.) sem precisar editar a data. Por isso o job de sincronização acima nunca sobrescreve `'blocked'`.
 
+## 💾 Backup remoto automático (Supabase Storage)
+
+Adicionado em 2026-09-07. Pedido do cliente: um backup de segurança que aconteça sozinho, todo dia, sem o vendedor precisar fazer nada — diferente do backup manual (Fase 8, JSON completo, exportado/importado/enviado por e-mail pelo próprio vendedor quando ele quiser), este é silencioso e automático, pensado só pra suporte conseguir restaurar dados se um aparelho tiver problema.
+
+### O que é enviado (e o que não é)
+
+Só um recorte pequeno, pra caber folgado no plano gratuito do Supabase (500MB banco / 1GB Storage) mesmo com muitos vendedores usando o mesmo projeto:
+- **Catálogo de produtos completo** (nome, categoria, preço, unidade — igual ao backup local, sem `photo_path`, que nunca sai do celular).
+- **Vendas (`orders`) dos últimos 30 dias apenas** (`created_at >= agora - 30 dias`), cada uma com o nome/documento do cliente (snapshot embutido — não existe uma coleção `clients` separada aqui) e os itens (mesmo formato do backup local: `product_name_snapshot`, preço, quantidade, desconto, subtotal).
+- **Nunca** envia: clientes fora do contexto de uma venda recente, pedidos com mais de 30 dias, `license_control`, `company_settings`, nem fotos de produto.
+
+`src/services/remoteBackupService.ts` (`buildRemoteBackupPayload`) monta esse JSON reaproveitando a mesma lógica/nomenclatura do `backupService.ts` (Fase 8), só que com esse recorte.
+
+### Onde fica guardado — só o mais recente, nunca acumula
+
+Um arquivo por dispositivo, no bucket `device-backups` do Supabase Storage, no caminho `device-backups/{device_id}.json`. Todo envio **sobrescreve** o arquivo anterior (upload com `x-upsert: true`) — nunca fica um histórico de backups antigos acumulando espaço. Pra identificar de qual vendedor é um arquivo, cruze o `device_id` do nome do arquivo com a tabela `licenses` (mesmo projeto Supabase, já tem `device_id` → `client_name`) — por isso o payload não precisa repetir esse dado.
+
+### Quando é enviado
+
+Não existe um "relógio" rodando com o app fechado — nenhuma solução no Expo managed workflow garante isso de forma confiável (principalmente no iOS). Em vez disso, `useRemoteBackupSync` (chamado incondicionalmente em `App.tsx`, independente da tela ou do status da licença — inclusive em modo somente-leitura ou bloqueado, já que o objetivo é justamente ter um backup de segurança para esses casos) tenta a cada:
+- Abertura do app;
+- 15 minutos, enquanto o app fica aberto;
+- Reconexão de rede (`NetInfo.addEventListener`).
+
+`remoteBackupService.syncRemoteBackupIfNeeded()` só efetivamente faz alguma coisa se: (1) ainda não enviou hoje (`license_control.last_remote_backup_at` não é do mesmo dia local) **e** (2) há internet no momento (`NetInfo.fetch()`) — sem internet, não tenta e não é erro, só espera a próxima chamada. Na prática, cobre bem um app de vendas usado diariamente: se o vendedor abrir o app em algum momento do dia com internet, o backup daquele dia é enviado; dias sem abrir o app ou sem internet nenhuma vez simplesmente não geram backup daquele dia (o próximo envio bem-sucedido sobrescreve o arquivo mesmo assim). Falhas (offline, Supabase fora do ar) são silenciosas — nunca aparece erro pro vendedor, é uma ação de bundle, não dele.
+
+### Segurança — só escreve, nunca lê
+
+O app usa a mesma chave **anon/publishable** já usada pra licença (não existe login/autenticação de usuário nesse app) — por isso não dá pra restringir por RLS "cada dispositivo só grava no próprio arquivo" de forma criptograficamente garantida (todo app instalado compartilha a mesma chave). A mitigação adotada:
+- O nome do arquivo é o próprio `device_id` (UUID, não é exposto em nenhuma tela nem é sequencial/adivinhável) — sem uma forma de descobrir o nome do arquivo de outro vendedor, não dá pra mirar nele.
+- A policy do bucket permite **INSERT/UPDATE** para a role `anon`, mas **nenhum SELECT/list** — ou seja, mesmo alguém extraindo a chave anon do app (ela é pública por natureza), não consegue **listar nem baixar** nenhum arquivo, só sobrescrever um caminho que já conheça. Só o dono do projeto (painel do Supabase, que usa a `service_role` por trás e ignora RLS) consegue navegar/baixar os arquivos.
+- Esse é o mesmo nível de proteção que a tabela `licenses` já tem hoje (a chave anon permite `SELECT` filtrando por `device_id`, sem nada impedindo consultar o `device_id` de outro dispositivo se alguém o soubesse) — não é uma regressão de segurança, é consistente com o resto do projeto.
+
+**Setup manual, uma vez só, pelo painel do Supabase** (SQL Editor → New query):
+
+```sql
+-- 1. Criar o bucket pelo painel: Storage → New bucket → nome "device-backups", Public bucket = OFF.
+
+-- 2. Policies do bucket (SQL Editor) — permitem escrita pela chave anon, sem leitura:
+create policy "device-backups: anon pode enviar"
+on storage.objects for insert
+to anon
+with check (bucket_id = 'device-backups');
+
+create policy "device-backups: anon pode sobrescrever"
+on storage.objects for update
+to anon
+using (bucket_id = 'device-backups')
+with check (bucket_id = 'device-backups');
+
+-- Nenhuma policy de SELECT/DELETE para "anon" é criada de propósito — sem elas, o app não
+-- consegue listar nem baixar nenhum arquivo do bucket, só escrever.
+```
+
 ## 🧩 Integração com `useLicenseGuard`
 
 ```ts

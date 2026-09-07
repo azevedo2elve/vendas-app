@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 6,
+  version: 7,
   tables: [
     tableSchema({
       name: 'clients',
@@ -70,6 +70,7 @@ export default appSchema({
         { name: 'license_expires_at', type: 'number' },
         { name: 'license_status', type: 'string' },
         { name: 'last_opened_at', type: 'number' },
+        { name: 'last_remote_backup_at', type: 'number', isOptional: true },
       ],
     }),
     tableSchema({

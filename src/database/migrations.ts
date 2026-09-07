@@ -3,6 +3,18 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export default schemaMigrations({
   migrations: [
     {
+      toVersion: 7,
+      steps: [
+        // Backup remoto automático (2026-09-07): guarda quando foi o último envio bem-sucedido
+        // do backup reduzido (catálogo + vendas dos últimos 30 dias) pro Supabase Storage, pra
+        // `remoteBackupService.syncRemoteBackupIfNeeded()` saber que já mandou hoje e não repetir.
+        addColumns({
+          table: 'license_control',
+          columns: [{ name: 'last_remote_backup_at', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
+    {
       toVersion: 6,
       steps: [
         // Foto do produto (apenas visual, nunca vai pro PDF): guarda o caminho do arquivo já
