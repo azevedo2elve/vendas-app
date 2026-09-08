@@ -28,10 +28,10 @@ Aplicativo mobile focado em força de vendas para microempreendedores. O app ope
 
 ### 2. Módulos do Sistema
 1. **Clientes:** Cadastro local (Nome, CPF/CNPJ, Telefone/WhatsApp, Endereço) com busca indexada.
-2. **Produtos:** Cadastro local (Nome, SKU, Preço de venda em BRL, Unidade de medida) com filtros.
+2. **Produtos:** Cadastro local (Nome, Categoria, Preço de venda em BRL, Unidade de medida, foto opcional — só visual, nunca vai pro PDF/backup) com filtros por categoria.
 3. **Ordem de Venda:** Seleção de cliente -> Carrinho de produtos (quantidade + desconto) -> Resumo com totais -> Persistência local no WatermelonDB.
 4. **PDF & WhatsApp:** Geração de documento PDF em formato A4 profissional (com tabela de itens e totais) disparado diretamente via menu nativo de compartilhamento.
-5. **Backup:** Exportação/Importação local em formato JSON.
+5. **Backup:** Exportação/Importação local em formato JSON (sob controle do vendedor, inclusive por e-mail pro suporte) **+** backup remoto automático e silencioso (produtos + vendas de 30 dias) pro Supabase Storage, como rede de segurança — ver [docs/04-sistema-licenca.md](./docs/04-sistema-licenca.md#-backup-remoto-automático-supabase-storage).
 
 ---
 
