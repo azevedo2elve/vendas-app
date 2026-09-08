@@ -1,13 +1,5 @@
 /// <reference types="jest" />
-import {
-  formatCurrencyBRL,
-  maskCep,
-  maskCpfCnpj,
-  maskDateBR,
-  maskPhone,
-  onlyDigits,
-  parseDateBR,
-} from '@/utils/masks';
+import { formatCurrencyBRL, maskCep, maskCpfCnpj, maskDateBR, maskPhone, onlyDigits, parseDateBR } from '@/utils/masks';
 
 describe('onlyDigits', () => {
   it('remove tudo que não é dígito', () => {

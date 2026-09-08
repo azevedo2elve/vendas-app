@@ -59,8 +59,16 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] Configurar estrutura de pastas conforme [docs/02-arquitetura.md](./02-arquitetura.md).
 - [x] Configurar alias de import `@/` no `tsconfig.json` e `babel.config.js`.
 - [x] Instalar e configurar React Navigation (`native-stack`).
-- [ ] Instalar React Hook Form + Zod + `@hookform/resolvers` (adiado para a Fase 3/4, quando os formulários de Clientes/Produtos entrarem em cena).
-- [ ] Configurar ESLint/Prettier alinhados aos padrões de código descritos em [docs/02-arquitetura.md](./02-arquitetura.md#-padrões-de-código).
+- [x] Instalar React Hook Form + Zod + `@hookform/resolvers` — feito na Fase 3 (`ClientFormScreen`), checkbox estava desatualizada.
+- [x] Configurar ESLint/Prettier alinhados aos padrões de código descritos em [docs/02-arquitetura.md](./02-arquitetura.md#-padrões-de-código) — implementado em 2026-09-08, ver entrada abaixo. **Fase 1 100% concluída.**
+
+### 2026-09-08 — ESLint + Prettier configurados, lints corrigidos — Fase 1 concluída
+- **Tipo:** chore / fix
+- **Resumo:** Última pendência da Fase 1. `npx expo lint` (comando oficial do Expo) configurou ESLint com `eslint-config-expo` (`eslint.config.js`, flat config). Prettier instalado à parte (`.prettierrc.json`: aspas simples, `printWidth: 120`, igual ao estilo que o código já seguia) — `.prettierignore` deixa `docs/`/`CLAUDE.md` de fora de propósito (markdown com tabelas/formatação cuidadosa à mão). Scripts novos: `npm run lint`, `npm run format`, `npm run format:check`.
+- **Achados do lint corrigidos (18 erros, 4 avisos):** a maioria era a regra nova `react-hooks/refs` ("Cannot access refs during render") pegando o padrão `useRef(new Animated.Value(x)).current` usado em `CollapsibleCard.tsx`, `Toast.tsx` e `OrderSuccessScreen.tsx` pra criar uma instância de `Animated.Value` estável uma única vez — trocado por `useState(() => new Animated.Value(x))[0]` (mesmo efeito, sem ler `.current` de um ref durante a renderização). `useLicenseGuard.ts` tinha um `setState` síncrono dentro de um `useEffect` (`react-hooks/set-state-in-effect`) — o efeito de montagem chamava `check()` inteiro, mas o reset síncrono pra `checking: true` que `check()` faz já é redundante nesse caso (o estado inicial já é esse); trocado por chamar `evaluateLicense()` direto nesse efeito específico (`check()` continua completo pra uso via `retry`, chamado de um handler de UI, não de um efeito). Resto: imports não usados (`View` em `ReadOnlyBanner.tsx`/`Toast.tsx`, `radii` em `OrderDetailScreen.tsx`) e um `Array<T>` → `T[]` em `remoteBackupService.ts`.
+- **`npx prettier --write .`** rodado uma vez em todo o código (29 arquivos, só formatação — nenhuma mudança de comportamento).
+- **Achado extra do checklist de conformidade (Fase 9):** `docs/02-arquitetura.md` tinha a mesma desatualização já corrigida em `docs/01` — a tabela "Pontos de integração externa" ainda listava só a licença como "único ponto de rede real", sem o backup remoto automático. Corrigido junto.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/06-changelog-tarefas.md`.
 
 ---
 
@@ -130,7 +138,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `OrderReviewScreen` (resumo, desconto geral, forma de pagamento, observações, confirmação e persistência) — nome final diferente do planejado (`OrderSummaryScreen`).
 - [x] `OrderListScreen` + `OrderDetailScreen` (listagem com filtro/busca + detalhe com cancelamento/exclusão) — substituiu o `OrderHistoryScreen` planejado, com escopo maior (inclui detalhe e ações de status).
 - [x] Cálculo de totais centralizado em `src/types/orderDraft.ts` (helpers puros) + `src/services/orderService.ts` — sem testes automatizados ainda (pendente, junto com o restante da suíte de testes — Fase 9).
-- [ ] Incluir `orders`/`order_items` no módulo de Backup — o módulo de Ordem de Venda agora existe, mas essa integração com `backupService.ts` (Fase 8) ainda não foi feita.
+- [x] Incluir `orders`/`order_items` no módulo de Backup — feito na Fase 8 em 2026-09-01 (checkbox estava desatualizada; ver entrada "Incluir `orders`/`order_items` no backup" na Fase 8).
 
 ---
 

@@ -174,7 +174,12 @@ export async function exportBackup(): Promise<ExportResult> {
     });
   }
 
-  return { file, clientsCount: data.clients.length, productsCount: data.products.length, ordersCount: data.orders.length };
+  return {
+    file,
+    clientsCount: data.clients.length,
+    productsCount: data.products.length,
+    ordersCount: data.orders.length,
+  };
 }
 
 // Abre o seletor de pastas do próprio sistema (Storage Access Framework no Android) e grava o
@@ -189,7 +194,12 @@ export async function saveBackupToDevice(): Promise<ExportResult | null> {
   }
 
   const { file, data } = await writeBackupFile(directory);
-  return { file, clientsCount: data.clients.length, productsCount: data.products.length, ordersCount: data.orders.length };
+  return {
+    file,
+    clientsCount: data.clients.length,
+    productsCount: data.products.length,
+    ordersCount: data.orders.length,
+  };
 }
 
 export type EmailBackupResult =

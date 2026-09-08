@@ -9,10 +9,7 @@ type CardProps = ViewProps & {
 
 export function Card({ elevated, padded = true, style, children, ...rest }: CardProps) {
   return (
-    <View
-      style={[styles.card, padded ? styles.padded : null, elevated ? shadows.card : null, style]}
-      {...rest}
-    >
+    <View style={[styles.card, padded ? styles.padded : null, elevated ? shadows.card : null, style]} {...rest}>
       {children}
     </View>
   );

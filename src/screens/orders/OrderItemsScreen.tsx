@@ -218,7 +218,11 @@ function OrderItemsScreenBase({
                 </View>
               )}
               ListEmptyComponent={
-                <EmptyState icon="cart-outline" title="Carrinho vazio" message="Toque em um produto para adicioná-lo." />
+                <EmptyState
+                  icon="cart-outline"
+                  title="Carrinho vazio"
+                  message="Toque em um produto para adicioná-lo."
+                />
               }
             />
 

@@ -49,7 +49,11 @@ jest.mock('@/services/api', () => ({
   isSupabaseConfigured: jest.fn(() => false),
   SUPABASE_REST_URL: 'https://fake.supabase.co/rest/v1',
   SUPABASE_ANON_KEY: 'fake-anon-key',
-  supabaseHeaders: () => ({ apikey: 'fake-anon-key', Authorization: 'Bearer fake-anon-key', 'Content-Type': 'application/json' }),
+  supabaseHeaders: () => ({
+    apikey: 'fake-anon-key',
+    Authorization: 'Bearer fake-anon-key',
+    'Content-Type': 'application/json',
+  }),
 }));
 
 const fakeDatabase = database as unknown as { __setRecords: (records: any[]) => void };
@@ -148,7 +152,9 @@ describe('licenseService.evaluateLicense', () => {
       const record = seedLicense();
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
-        json: async () => [{ device_id: record.deviceId, license_expires_at: new Date().toISOString(), license_status: 'blocked' }],
+        json: async () => [
+          { device_id: record.deviceId, license_expires_at: new Date().toISOString(), license_status: 'blocked' },
+        ],
       });
 
       const result = await evaluateLicense();

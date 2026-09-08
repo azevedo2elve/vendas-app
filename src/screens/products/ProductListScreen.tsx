@@ -131,7 +131,10 @@ function ProductListScreenBase({
         />
       </View>
 
-      <Fab accessibilityLabel="Novo produto" onPress={() => guard(() => navigation.navigate('ProductForm', undefined))} />
+      <Fab
+        accessibilityLabel="Novo produto"
+        onPress={() => guard(() => navigation.navigate('ProductForm', undefined))}
+      />
     </View>
   );
 }

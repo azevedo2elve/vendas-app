@@ -215,7 +215,11 @@ export function HomeScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title="Últimos pedidos" actionLabel="Ver todos" onAction={() => navigation.navigate('OrderList')} />
+        <SectionHeader
+          title="Últimos pedidos"
+          actionLabel="Ver todos"
+          onAction={() => navigation.navigate('OrderList')}
+        />
 
         {data.recentOrders.length === 0 ? (
           <Card>

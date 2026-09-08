@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from './Card';
@@ -25,7 +25,10 @@ export function CollapsibleCard({
   onToggle,
   children,
 }: CollapsibleCardProps) {
-  const rotation = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  // useState com inicializador preguiçoso em vez de useRef — mesmo efeito de "instância estável
+  // criada uma única vez", mas sem ler `.current` de um ref durante a renderização (proibido
+  // pela regra react-hooks/refs, pensando em concorrência futura do React).
+  const [rotation] = useState(() => new Animated.Value(expanded ? 1 : 0));
 
   useEffect(() => {
     Animated.timing(rotation, { toValue: expanded ? 1 : 0, duration: 200, useNativeDriver: true }).start();

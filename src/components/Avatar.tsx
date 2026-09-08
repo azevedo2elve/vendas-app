@@ -28,12 +28,7 @@ export function Avatar({ name, size = 44 }: AvatarProps) {
   const fontSize = Math.round(size * 0.38);
 
   return (
-    <View
-      style={[
-        styles.avatar,
-        { width: size, height: size, borderRadius: radii.pill, backgroundColor },
-      ]}
-    >
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: radii.pill, backgroundColor }]}>
       <Text style={[styles.initials, { fontSize }]}>{getInitials(name)}</Text>
     </View>
   );

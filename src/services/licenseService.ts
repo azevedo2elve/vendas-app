@@ -128,7 +128,11 @@ export async function testSupabaseFetch(): Promise<{ ok: boolean; deviceId: stri
     return { ok: true, deviceId: license.deviceId, message: `status=${status}, expira em ${expiresAtLabel}` };
   } catch (error) {
     if (error instanceof DeviceNotRegisteredError) {
-      return { ok: false, deviceId: license.deviceId, message: 'Dispositivo não encontrado na tabela licenses (array vazio).' };
+      return {
+        ok: false,
+        deviceId: license.deviceId,
+        message: 'Dispositivo não encontrado na tabela licenses (array vazio).',
+      };
     }
     if (error instanceof LicenseRenewalRejectedError) {
       return { ok: false, deviceId: license.deviceId, message: `Rejeitado pelo Supabase: ${error.message}` };
@@ -160,7 +164,12 @@ export async function evaluateLicense(): Promise<LicenseCheckResult> {
   // e depois avançar o relógio de novo para "limpar" o rastro do último uso legítimo.
   if (now < license.lastOpenedAt.getTime()) {
     await persistStatus(license, 'blocked');
-    return { status: 'blocked', reason: 'clock_tampered', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
+    return {
+      status: 'blocked',
+      reason: 'clock_tampered',
+      deviceId: license.deviceId,
+      expiresAt: license.licenseExpiresAt,
+    };
   }
 
   // Sempre tenta validar com o servidor quando possível — na abertura do app e a cada 5 min
@@ -175,11 +184,21 @@ export async function evaluateLicense(): Promise<LicenseCheckResult> {
     } catch (error) {
       if (error instanceof DeviceNotRegisteredError) {
         await persistStatus(license, 'blocked', now);
-        return { status: 'blocked', reason: 'not_registered', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
+        return {
+          status: 'blocked',
+          reason: 'not_registered',
+          deviceId: license.deviceId,
+          expiresAt: license.licenseExpiresAt,
+        };
       }
       if (error instanceof LicenseRenewalRejectedError) {
         await persistStatus(license, 'blocked', now);
-        return { status: 'blocked', reason: 'server_rejected', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
+        return {
+          status: 'blocked',
+          reason: 'server_rejected',
+          deviceId: license.deviceId,
+          expiresAt: license.licenseExpiresAt,
+        };
       }
       // Falha de rede/timeout apesar do NetInfo dizer online: trata como offline abaixo, sem
       // mostrar erro nenhum pro vendedor.
@@ -196,7 +215,12 @@ export async function evaluateLicense(): Promise<LicenseCheckResult> {
 
   if (isPastGraceDay(license.licenseExpiresAt, nowDate)) {
     await persistStatus(license, 'blocked', now);
-    return { status: 'blocked', reason: 'grace_period_exceeded', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
+    return {
+      status: 'blocked',
+      reason: 'grace_period_exceeded',
+      deviceId: license.deviceId,
+      expiresAt: license.licenseExpiresAt,
+    };
   }
 
   await persistStatus(license, 'expired', now);

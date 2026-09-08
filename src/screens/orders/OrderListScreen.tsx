@@ -40,7 +40,10 @@ function observeOrders(searchQuery: string, status: OrderStatus | null) {
     clauses.push(Q.on('clients', Q.where('name', Q.like(`%${Q.sanitizeLikeString(trimmed)}%`))));
   }
 
-  return database.get<Order>('orders').query(...clauses).observe();
+  return database
+    .get<Order>('orders')
+    .query(...clauses)
+    .observe();
 }
 
 type OrderRowProps = { order: Order; onPress: () => void };

@@ -43,7 +43,7 @@ type RemoteBackupPayload = {
   exported_at: string;
   device_id: string;
   sales_window_days: number;
-  products: Array<{ name: string; category_name?: string; price: number; unit: string }>;
+  products: { name: string; category_name?: string; price: number; unit: string }[];
   orders: RemoteBackupOrder[];
 };
 
@@ -71,14 +71,22 @@ async function buildRemoteBackupPayload(deviceId: string): Promise<RemoteBackupP
   const [products, categories, orders] = await Promise.all([
     database.get<Product>('products').query().fetch(),
     database.get<Category>('categories').query().fetch(),
-    database.get<Order>('orders').query(Q.where('created_at', Q.gte(windowStart))).fetch(),
+    database
+      .get<Order>('orders')
+      .query(Q.where('created_at', Q.gte(windowStart)))
+      .fetch(),
   ]);
 
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
 
   const clientIds = [...new Set(orders.map((order) => order.clientId))];
   const clients =
-    clientIds.length > 0 ? await database.get<Client>('clients').query(Q.where('id', Q.oneOf(clientIds))).fetch() : [];
+    clientIds.length > 0
+      ? await database
+          .get<Client>('clients')
+          .query(Q.where('id', Q.oneOf(clientIds)))
+          .fetch()
+      : [];
   const clientById = new Map(clients.map((client) => [client.id, client]));
 
   const orderPayloads = await Promise.all(
@@ -123,16 +131,19 @@ async function buildRemoteBackupPayload(deviceId: string): Promise<RemoteBackupP
 }
 
 async function uploadRemoteBackup(deviceId: string, payload: RemoteBackupPayload): Promise<void> {
-  const response = await fetch(`${supabaseStorageBaseUrl()}/storage/v1/object/${REMOTE_BACKUP_BUCKET}/${deviceId}.json`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_ANON_KEY ?? '',
-      Authorization: `Bearer ${SUPABASE_ANON_KEY ?? ''}`,
-      'Content-Type': 'application/json',
-      'x-upsert': 'true',
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await fetch(
+    `${supabaseStorageBaseUrl()}/storage/v1/object/${REMOTE_BACKUP_BUCKET}/${deviceId}.json`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY ?? '',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY ?? ''}`,
+        'Content-Type': 'application/json',
+        'x-upsert': 'true',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`Supabase Storage respondeu ${response.status}`);

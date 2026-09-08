@@ -17,7 +17,7 @@ import { shareOrderPdf } from '@/services/pdfService';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, PAYMENT_METHOD_LABELS } from '@/types/database';
-import { colors, radii, spacing } from '@/theme';
+import { colors, spacing } from '@/theme';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetail'>;
@@ -178,7 +178,12 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
         />
       ) : null}
       {order.status !== 'cancelled' ? (
-        <PrimaryButton label="Cancelar pedido" variant="outline" onPress={handleCancel} disabled={updating || readOnly} />
+        <PrimaryButton
+          label="Cancelar pedido"
+          variant="outline"
+          onPress={handleCancel}
+          disabled={updating || readOnly}
+        />
       ) : null}
       <PrimaryButton
         label="Excluir pedido"

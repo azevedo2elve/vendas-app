@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -28,8 +28,12 @@ const TONE_ICON_COLOR: Record<ToastTone, string> = {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(16)).current;
+  // useState com inicializador preguiçoso em vez de useRef pra `opacity`/`translateY` — mesmo
+  // efeito de instância estável criada uma única vez, sem ler `.current` de um ref durante a
+  // renderização (regra react-hooks/refs). `timeoutRef` abaixo continua um ref de verdade: só é
+  // lido/escrito dentro de callbacks (showToast/dismiss), nunca durante a renderização.
+  const [opacity] = useState(() => new Animated.Value(0));
+  const [translateY] = useState(() => new Animated.Value(16));
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
 

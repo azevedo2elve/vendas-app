@@ -110,7 +110,10 @@ export function SettingsScreen({ navigation }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [settings, licenseSnapshot] = await Promise.all([getOrCreateCompanySettings(), getCurrentLicenseSnapshot()]);
+      const [settings, licenseSnapshot] = await Promise.all([
+        getOrCreateCompanySettings(),
+        getCurrentLicenseSnapshot(),
+      ]);
       if (cancelled) return;
       reset({
         razaoSocial: settings.razaoSocial,
@@ -303,7 +306,6 @@ export function SettingsScreen({ navigation }: Props) {
         expanded={expandedSection === 'company'}
         onToggle={() => toggleSection('company')}
       >
-
         <Controller
           control={control}
           name="razaoSocial"
@@ -515,7 +517,13 @@ export function SettingsScreen({ navigation }: Props) {
           control={control}
           name="addressZip"
           render={({ field }) => (
-            <MaskedInput label="CEP" mask="cep" placeholder="00000-000" value={field.value ?? ''} onChangeText={field.onChange} />
+            <MaskedInput
+              label="CEP"
+              mask="cep"
+              placeholder="00000-000"
+              value={field.value ?? ''}
+              onChangeText={field.onChange}
+            />
           )}
         />
 
@@ -550,7 +558,6 @@ export function SettingsScreen({ navigation }: Props) {
         expanded={expandedSection === 'system'}
         onToggle={() => toggleSection('system')}
       >
-
         <View>
           <Text style={styles.sectionLabel}>ID do Dispositivo</Text>
           <View style={styles.deviceIdBox}>
@@ -591,11 +598,7 @@ export function SettingsScreen({ navigation }: Props) {
             <Ionicons name={isOnline ? 'wifi' : 'cloud-offline-outline'} size={16} color={colors.slate500} />
             <Text style={styles.infoLabel}>Conexão</Text>
           </View>
-          <Badge
-            label={isOnline ? 'Online' : 'Modo Offline'}
-            tone={isOnline ? 'success' : 'warning'}
-            dot
-          />
+          <Badge label={isOnline ? 'Online' : 'Modo Offline'} tone={isOnline ? 'success' : 'warning'} dot />
         </View>
 
         <View style={styles.infoRow}>
@@ -637,7 +640,6 @@ export function SettingsScreen({ navigation }: Props) {
         expanded={expandedSection === 'data'}
         onToggle={() => toggleSection('data')}
       >
-
         {summary ? (
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -699,7 +701,12 @@ export function SettingsScreen({ navigation }: Props) {
         />
       </CollapsibleCard>
 
-      <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
+      <Modal
+        visible={confirmClearVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmClearVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <View style={styles.modalIconCircle}>
@@ -707,8 +714,8 @@ export function SettingsScreen({ navigation }: Props) {
             </View>
             <Text style={styles.modalTitle}>Limpar todos os pedidos?</Text>
             <Text style={styles.modalMessage}>
-              Esta ação remove permanentemente {summary?.ordersCount ?? 0} ordem(ns) de venda e seus itens. Clientes
-              e produtos cadastrados não são afetados. Esta ação não pode ser desfeita.
+              Esta ação remove permanentemente {summary?.ordersCount ?? 0} ordem(ns) de venda e seus itens. Clientes e
+              produtos cadastrados não são afetados. Esta ação não pode ser desfeita.
             </Text>
             <View style={styles.modalActions}>
               <View style={styles.modalActionButton}>

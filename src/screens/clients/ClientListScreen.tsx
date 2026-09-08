@@ -85,7 +85,10 @@ function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps
         />
       </View>
 
-      <Fab accessibilityLabel="Novo cliente" onPress={() => guard(() => navigation.navigate('ClientForm', undefined))} />
+      <Fab
+        accessibilityLabel="Novo cliente"
+        onPress={() => guard(() => navigation.navigate('ClientForm', undefined))}
+      />
     </View>
   );
 }
