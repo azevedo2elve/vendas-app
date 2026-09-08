@@ -85,7 +85,50 @@ WatermelonDB depende de código nativo (módulo JSI, resolvido automaticamente p
 | `preview` | Build "de verdade" (sem o client de dev) pra testar em dispositivo físico antes de liberar — ex: mandar pro cliente avaliar. | `internal` (APK) |
 | `production` | Build final para a loja (`autoIncrement: true` — incrementa o `versionCode`/`buildNumber` automaticamente a cada build, sem precisar editar `app.json` na mão). | Loja (via `eas submit`, perfil `production` também configurado) |
 
-> ⚠️ **Pendências antes do primeiro build real:** (1) `eas.json` sozinho não basta — é preciso rodar `eas login`/`eas init` (ou `eas build:configure`) pra vincular o projeto a uma conta Expo/EAS e gerar o `extra.eas.projectId` em `app.json`, passo que não foi feito aqui (sem acesso a uma conta Expo neste ambiente). (2) `android.package` em `app.json` ainda está com o valor padrão do template (`com.anonymous.vendasapp`) — trocar para o identificador definitivo da empresa antes de submeter à Play Store, já que esse valor não pode mais mudar depois do primeiro upload.
+`android.package` em `app.json` já é o identificador definitivo (`com.gabrielazevedo.vendasapp`, definido em 2026-09-08 — não muda mais, esse valor é permanente a partir do primeiro APK instalado em qualquer aparelho). Segue pendente só o vínculo com uma conta Expo/EAS de verdade (`eas login`/`eas init`, gera o `extra.eas.projectId` em `app.json`) — não foi feito porque não há acesso a uma conta Expo neste ambiente; é o único passo que só o usuário consegue fazer, quando/se decidir usar o build em nuvem.
+
+### 🖥️ Build local (sem EAS, sem conta) — usado pra gerar o primeiro APK
+
+Como o app depende de código nativo (WatermelonDB), dá pra gerar um APK completamente local, sem conta Expo nenhuma, **desde que a máquina tenha o Android SDK instalado** (Android Studio, ou só o `cmdline-tools` + `platform-tools`/`build-tools`/NDK via `sdkmanager`):
+
+```bash
+npx expo prebuild --platform android --clean   # gera/regenera a pasta android/ (gitignored)
+cd android
+./gradlew assembleDebug     # rápido, assinado com a chave debug padrão — só pra testar que compila
+./gradlew assembleRelease   # o que de fato deve ser instalado no cliente
+```
+
+- **`assembleDebug`** empacota todas as arquiteturas sem compressão (~180-190MB) e inclui ferramentas de dev — serve só pra validar que o ambiente compila, não pra entregar pra ninguém.
+- **`assembleRelease`** é bem menor e é o artefato certo pra instalar no celular do cliente (habilitar "fontes desconhecidas" nas configurações do Android pra instalar um `.apk` fora da Play Store).
+- **Assinatura do release:** por padrão, o template do Expo assina o `release` com a mesma chave `debug` (comentário no próprio `android/app/build.gradle`: "Caution! In production, you need to generate your own keystore"). Gerada uma chave de release de verdade em 2026-09-08 (`keytool`, RSA 2048, validade 10.000 dias) — guardada em `/keystore/vendas-app-release.keystore` **na raiz do projeto** (não dentro de `android/`, que é apagada e regenerada a cada `expo prebuild`), com as credenciais em `/keystore.properties`, também na raiz. Ambos no `.gitignore` — nunca vão pro Git, e foram entregues diretamente pro usuário (mesma lógica do `.env`, mas para um segredo ainda mais crítico).
+  ```gradle
+  // android/app/build.gradle — keystoreProperties lido de ../../keystore.properties (raiz do
+  // projeto, fora do android/). Sem esse arquivo, cai pra chave debug automaticamente, sem quebrar.
+  def keystorePropertiesFile = rootProject.file("../keystore.properties")
+  def keystoreProperties = new Properties()
+  if (keystorePropertiesFile.exists()) {
+      keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+  }
+  // ...dentro de android { }:
+  signingConfigs {
+      if (keystorePropertiesFile.exists()) {
+          release {
+              storeFile file(keystoreProperties['storeFile']) // ../../keystore/vendas-app-release.keystore
+              storePassword keystoreProperties['storePassword']
+              keyAlias keystoreProperties['keyAlias']
+              keyPassword keystoreProperties['keyPassword']
+          }
+      }
+  }
+  buildTypes {
+      release {
+          signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+      }
+  }
+  ```
+  > ⚠️ **`android/app/build.gradle` é regenerado do zero a cada `expo prebuild`** (a pasta inteira é gitignorada, não é código versionado) — só o arquivo da chave (`/keystore/`) e as credenciais (`/keystore.properties`) sobrevivem, por estarem fora de `android/`. **O trecho de código acima precisa ser colado de novo em `android/app/build.gradle` depois de qualquer `expo prebuild --clean` futuro**, antes de rodar `./gradlew assembleRelease` — sem isso, o release volta a ser assinado com a chave debug (não quebra o build, mas gera um APK com assinatura diferente da que já está no aparelho do cliente, impedindo atualizar por cima).
+  >
+  > **Guardar a chave em local seguro** (gerenciador de senhas, backup privado) — se for perdida, nenhuma atualização futura do app consegue ser instalada por cima da versão já no aparelho do cliente (precisaria desinstalar e reinstalar do zero, perdendo os dados locais dele).
 
 ## 🔑 Variáveis de ambiente
 
