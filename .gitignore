@@ -40,3 +40,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# PDFs de origem do catálogo (só material de referência pra gerar o JSON de import — não
+# precisa do app, e são grandes demais pra versionar). O JSON gerado (catalogo-produtos.json)
+# continua versionado normalmente.
+assets/catalogo/*.pdf
