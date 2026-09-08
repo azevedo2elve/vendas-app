@@ -322,33 +322,41 @@ Não existe um "relógio" rodando com o app fechado — nenhuma solução no Exp
 
 `remoteBackupService.syncRemoteBackupIfNeeded()` só efetivamente faz alguma coisa se: (1) ainda não enviou hoje (`license_control.last_remote_backup_at` não é do mesmo dia local) **e** (2) há internet no momento (`NetInfo.fetch()`) — sem internet, não tenta e não é erro, só espera a próxima chamada. Na prática, cobre bem um app de vendas usado diariamente: se o vendedor abrir o app em algum momento do dia com internet, o backup daquele dia é enviado; dias sem abrir o app ou sem internet nenhuma vez simplesmente não geram backup daquele dia (o próximo envio bem-sucedido sobrescreve o arquivo mesmo assim). Falhas (offline, Supabase fora do ar) são silenciosas — nunca aparece erro pro vendedor, é uma ação de bundle, não dele.
 
-### Segurança — só escreve, nunca lê
+### Segurança — escrita liberada, leitura também (trade-off aceito, ver histórico abaixo)
 
-O app usa a mesma chave **anon/publishable** já usada pra licença (não existe login/autenticação de usuário nesse app) — por isso não dá pra restringir por RLS "cada dispositivo só grava no próprio arquivo" de forma criptograficamente garantida (todo app instalado compartilha a mesma chave). A mitigação adotada:
-- O nome do arquivo é o próprio `device_id` (UUID, não é exposto em nenhuma tela nem é sequencial/adivinhável) — sem uma forma de descobrir o nome do arquivo de outro vendedor, não dá pra mirar nele.
-- A policy do bucket permite **INSERT/UPDATE** para a role `anon`, mas **nenhum SELECT/list** — ou seja, mesmo alguém extraindo a chave anon do app (ela é pública por natureza), não consegue **listar nem baixar** nenhum arquivo, só sobrescrever um caminho que já conheça. Só o dono do projeto (painel do Supabase, que usa a `service_role` por trás e ignora RLS) consegue navegar/baixar os arquivos.
-- Esse é o mesmo nível de proteção que a tabela `licenses` já tem hoje (a chave anon permite `SELECT` filtrando por `device_id`, sem nada impedindo consultar o `device_id` de outro dispositivo se alguém o soubesse) — não é uma regressão de segurança, é consistente com o resto do projeto.
+O app usa a mesma chave **anon/publishable** já usada pra licença (não existe login/autenticação de usuário nesse app) — por isso não dá pra restringir por RLS "cada dispositivo só acessa o próprio arquivo" de forma criptograficamente garantida (todo app instalado compartilha a mesma chave).
+
+> ⚠️ **Descoberto durante o setup (2026-09-07):** a intenção original era bloquear totalmente leitura/listagem pra `anon` (só INSERT/UPDATE), deixando só o dono do projeto (painel do Supabase, via `service_role`) ver os arquivos. Na prática isso **não funciona** com o Postgres/Storage do Supabase: qualquer operação que precise "encontrar" um objeto que já existe — sobrescrever (upload com `x-upsert`), `UPDATE` explícito (`PUT`) e até `DELETE` — faz uma checagem de visibilidade equivalente a um `SELECT` internamente (confirmado lendo os Postgres Logs: mesmo um `INSERT ... ON CONFLICT (name, bucket_id) DO UPDATE` simples já basta pra exigir isso). Sem nenhuma policy de `SELECT`, **toda tentativa de sobrescrever o backup do dia seguinte falhava** com `"new row violates row-level security policy"` — só a criação de um arquivo novo (primeiro dia) funcionava. Como o RLS do Postgres não diferencia "buscar um arquivo específico que eu já sei o nome" de "listar tudo" (a mesma policy de `SELECT` vale pras duas formas de consulta), não tem como liberar só o suficiente pra permitir sobrescrever sem também permitir listar/baixar qualquer arquivo do bucket com a chave anon.
+>
+> **Decisão tomada:** liberar `SELECT` pra todo o bucket (`to public`), aceitando o risco de que alguém que extraia a chave anon do app (ela é pública por natureza, embutida no bundle) consiga listar e baixar o backup de **qualquer** vendedor, não só o próprio. Mesma classe de risco que a tabela `licenses` já aceita hoje (a chave anon permite consultar `device_id`s à vontade, sem isolamento por dispositivo) — só que aqui o conteúdo é dado de venda de verdade, não só status de licença, então é um risco um pouco maior. Alternativa mais correta descartada por ora (complexidade maior que o cliente considerou não valer a pena agora): dar a cada aparelho uma identidade própria via **Supabase Anonymous Auth** e isolar por `auth.uid()` no caminho do arquivo — revisitar se o volume de clientes/sensibilidade dos dados justificar no futuro.
+> - O nome do arquivo continua sendo o `device_id` (UUID não exposto em nenhuma tela) — não impede leitura via `list()`, mas ainda evita que alguém "adivinhe" o nome de um arquivo específico sem antes listar o bucket inteiro.
 
 **Setup manual, uma vez só, pelo painel do Supabase** (SQL Editor → New query):
 
 ```sql
 -- 1. Criar o bucket pelo painel: Storage → New bucket → nome "device-backups", Public bucket = OFF.
 
--- 2. Policies do bucket (SQL Editor) — permitem escrita pela chave anon, sem leitura:
+-- 2. Policies do bucket (SQL Editor):
 create policy "device-backups: anon pode enviar"
 on storage.objects for insert
-to anon
+to public
 with check (bucket_id = 'device-backups');
 
 create policy "device-backups: anon pode sobrescrever"
 on storage.objects for update
-to anon
+to public
 using (bucket_id = 'device-backups')
 with check (bucket_id = 'device-backups');
 
--- Nenhuma policy de SELECT/DELETE para "anon" é criada de propósito — sem elas, o app não
--- consegue listar nem baixar nenhum arquivo do bucket, só escrever.
+-- Necessária pro upload com x-upsert (sobrescrita) funcionar — sem ela, todo envio a partir do
+-- 2º dia falha com "new row violates row-level security policy" (ver nota acima).
+create policy "device-backups: leitura liberada para permitir sobrescrever"
+on storage.objects for select
+to public
+using (bucket_id = 'device-backups');
 ```
+
+> As policies usam `to public` em vez de `to anon`: em testes, `to anon` não bateu de forma confiável com a chave `sb_publishable_...` (o formato novo de chave do Supabase) no serviço de Storage — `to public` (aplica a qualquer role) contornou isso sem abrir nada além do que `to anon` já abriria neste projeto, já que não existe nenhum usuário autenticado (`authenticated`) aqui.
 
 ## 🧩 Integração com `useLicenseGuard`
 
