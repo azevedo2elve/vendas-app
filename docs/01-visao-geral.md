@@ -13,17 +13,19 @@ O app resolve um problema muito concreto: vendedor visita cliente, monta o pedid
 | Internet instável em áreas rurais/periferia | Banco de dados 100% local (WatermelonDB/SQLite) — nenhuma operação do dia a dia depende de rede |
 | Pedido feito no caderno, perdido ou ilegível | Cadastro estruturado de clientes/produtos com carrinho e cálculo automático de totais e descontos |
 | Cliente pede confirmação imediata do pedido | PDF profissional gerado na hora, compartilhado via WhatsApp/e-mail direto do celular |
-| Medo de perder dados do celular | Backup/restore local em JSON, sob controle do próprio usuário |
+| Medo de perder dados do celular | Backup/restore local em JSON, sob controle do próprio usuário — **e** um backup remoto automático e silencioso (produtos + vendas de 30 dias), como rede de segurança pro suporte |
 | Softwares de gestão são caros e complexos | App enxuto, focado no fluxo essencial: cliente → produto → pedido → PDF |
 
 ## 🔑 Princípio central: Offline-first
 
-Diferente de apps que são "online com cache", este app é **offline por padrão** e só toca a rede para um único fim: validar/renovar a licença de uso (ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md)). Todo o restante — cadastro de clientes, produtos, montagem de pedidos, geração de PDF — funciona sem qualquer chamada de rede. **Atualizado em 2026-09-01:** essa checagem de licença deixou de acontecer só no vencimento — agora tenta validar sempre que possível (na abertura do app e a cada 5 minutos), mesmo com a licença longe de vencer, pra renovar proativamente. Continua **tolerante à ausência de internet**: sem conexão, o app segue funcionando normalmente até o dia seguinte ao do vencimento — só bloqueia depois disso.
+Diferente de apps que são "online com cache", este app é **offline por padrão** — nenhuma tela ou ação do dia a dia (cadastro de clientes/produtos, montagem de pedidos, geração de PDF) depende de rede pra funcionar. A rede é tocada só em segundo plano, para dois fins específicos, nenhum deles bloqueante:
+1. **Validar/renovar a licença de uso** (ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md)). **Atualizado em 2026-09-01:** deixou de acontecer só no vencimento — agora tenta validar sempre que possível (na abertura do app e a cada 5 minutos), mesmo com a licença longe de vencer, pra renovar proativamente. Continua **tolerante à ausência de internet**: sem conexão, o app segue funcionando normalmente até o dia seguinte ao do vencimento — só bloqueia depois disso.
+2. **Backup remoto automático e silencioso** (adicionado em 2026-09-07): uma vez por dia, se houver internet, o app envia um recorte reduzido dos dados (catálogo de produtos + vendas dos últimos 30 dias) pro Supabase Storage — só como rede de segurança pro suporte restaurar em caso de problema no aparelho, nunca como fonte de verdade operacional. Ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-backup-remoto-automático-supabase-storage).
 
 Isso implica decisões de arquitetura específicas:
-- Banco local (WatermelonDB) como única fonte de verdade em tempo de uso — não há sincronização com backend nos módulos de negócio.
+- Banco local (WatermelonDB) continua sendo a **única fonte de verdade em tempo de uso** — nenhuma tela lê ou depende de dado vindo da rede; os dois pontos de rede acima são unidirecionais (licença: só leitura; backup remoto: só escrita, "fire and forget") e nunca bloqueiam o uso do app.
 - PDF gerado localmente no dispositivo (`expo-print`), não em um serviço remoto.
-- Compartilhamento via intents nativos do sistema operacional (`expo-sharing`), não via API própria de envio.
+- Compartilhamento via intents nativos do sistema operacional (`expo-sharing`/`expo-mail-composer`), não via API própria de envio.
 
 ## 👤 Persona principal
 
