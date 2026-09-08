@@ -19,24 +19,14 @@ export function OrderProgressBar({ step }: OrderProgressBarProps) {
         return (
           <View key={label} style={styles.stepWrap}>
             <View style={styles.stepRow}>
-              <View
-                style={[
-                  styles.circle,
-                  isCurrent ? styles.circleCurrent : null,
-                  isDone ? styles.circleDone : null,
-                ]}
-              >
+              <View style={[styles.circle, isCurrent ? styles.circleCurrent : null, isDone ? styles.circleDone : null]}>
                 {isDone ? (
                   <Ionicons name="checkmark" size={14} color={colors.white} />
                 ) : (
-                  <Text style={[styles.circleText, isCurrent ? styles.circleTextCurrent : null]}>
-                    {stepNumber}
-                  </Text>
+                  <Text style={[styles.circleText, isCurrent ? styles.circleTextCurrent : null]}>{stepNumber}</Text>
                 )}
               </View>
-              {stepNumber < STEPS.length ? (
-                <View style={[styles.line, isDone ? styles.lineDone : null]} />
-              ) : null}
+              {stepNumber < STEPS.length ? <View style={[styles.line, isDone ? styles.lineDone : null]} /> : null}
             </View>
             <Text style={[styles.label, isCurrent ? styles.labelCurrent : null]}>{label}</Text>
           </View>

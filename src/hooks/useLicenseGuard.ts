@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { evaluateLicense, type LicenseCheckResult } from '@/services/licenseService';
 
-export type LicenseGuardState =
-  | { checking: true; result: null }
-  | { checking: false; result: LicenseCheckResult };
+export type LicenseGuardState = { checking: true; result: null } | { checking: false; result: LicenseCheckResult };
 
 // Reavalia a licença periodicamente enquanto o app fica aberto (não só na abertura) — é o que
 // permite renovar proativamente (mesmo longe do vencimento), pegar a virada de dia após o
@@ -21,8 +19,13 @@ export function useLicenseGuard() {
   }, []);
 
   useEffect(() => {
-    check();
-  }, [check]);
+    // Checagem silenciosa na montagem — não chama check() aqui de propósito: o estado inicial
+    // já é `{ checking: true, result: null }`, então o `setState` síncrono que check() faz logo
+    // no início seria redundante nesse caso e a regra react-hooks/set-state-in-effect não deixa
+    // passar um setState síncrono direto dentro de um efeito. `check()` continua completo (com
+    // esse reset) para o uso via `retry`, chamado a partir de um handler de UI, não de um efeito.
+    evaluateLicense().then((result) => setState({ checking: false, result }));
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {

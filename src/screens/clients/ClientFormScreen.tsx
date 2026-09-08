@@ -223,7 +223,12 @@ export function ClientFormScreen({ navigation, route }: Props) {
         control={control}
         name="addressStreet"
         render={({ field }) => (
-          <MaskedInput label="Rua / Logradouro" placeholder="Rua, avenida..." value={field.value ?? ''} onChangeText={field.onChange} />
+          <MaskedInput
+            label="Rua / Logradouro"
+            placeholder="Rua, avenida..."
+            value={field.value ?? ''}
+            onChangeText={field.onChange}
+          />
         )}
       />
 
@@ -232,7 +237,9 @@ export function ClientFormScreen({ navigation, route }: Props) {
           <Controller
             control={control}
             name="addressNumber"
-            render={({ field }) => <MaskedInput label="Número" value={field.value ?? ''} onChangeText={field.onChange} />}
+            render={({ field }) => (
+              <MaskedInput label="Número" value={field.value ?? ''} onChangeText={field.onChange} />
+            )}
           />
         </View>
         <View style={styles.formRowItemWide}>
@@ -240,7 +247,12 @@ export function ClientFormScreen({ navigation, route }: Props) {
             control={control}
             name="addressComplement"
             render={({ field }) => (
-              <MaskedInput label="Complemento" placeholder="Opcional" value={field.value ?? ''} onChangeText={field.onChange} />
+              <MaskedInput
+                label="Complemento"
+                placeholder="Opcional"
+                value={field.value ?? ''}
+                onChangeText={field.onChange}
+              />
             )}
           />
         </View>
@@ -251,7 +263,9 @@ export function ClientFormScreen({ navigation, route }: Props) {
           <Controller
             control={control}
             name="addressCity"
-            render={({ field }) => <MaskedInput label="Cidade" value={field.value ?? ''} onChangeText={field.onChange} />}
+            render={({ field }) => (
+              <MaskedInput label="Cidade" value={field.value ?? ''} onChangeText={field.onChange} />
+            )}
           />
         </View>
         <View style={styles.formRowItem}>
@@ -277,11 +291,19 @@ export function ClientFormScreen({ navigation, route }: Props) {
         control={control}
         name="addressZip"
         render={({ field }) => (
-          <MaskedInput label="CEP" mask="cep" placeholder="00000-000" value={field.value ?? ''} onChangeText={field.onChange} />
+          <MaskedInput
+            label="CEP"
+            mask="cep"
+            placeholder="00000-000"
+            value={field.value ?? ''}
+            onChangeText={field.onChange}
+          />
         )}
       />
 
-      {readOnly ? <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, não é possível salvar.</Text> : null}
+      {readOnly ? (
+        <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, não é possível salvar.</Text>
+      ) : null}
 
       <PrimaryButton
         label="Salvar"

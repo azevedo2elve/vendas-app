@@ -160,13 +160,21 @@ screens/  ──depende de──>  hooks/ ──depende de──>  services/ ─
 | Imports | Absolutos via alias `@/` apontando para `src/` (configurado em `tsconfig.json` + `babel.config.js`) |
 | Estilo | `StyleSheet.create` por componente/tela; evitar estilos inline exceto casos triviais |
 
+**Lint/formatação (Fase 1, configurado em 2026-09-08):** ESLint (`eslint-config-expo`, config flat em `eslint.config.js`) + Prettier (`.prettierrc.json` — aspas simples, ponto e vírgula, `printWidth: 120`, já alinhado ao estilo que o código todo já seguia). Markdown (`docs/`, `CLAUDE.md`) fica fora do Prettier de propósito (`.prettierignore`) — são documentos com tabelas/formatação cuidadosa à mão, reformatação automática só geraria diff sem valor.
+```bash
+npm run lint           # expo lint (eslint-config-expo)
+npm run format          # prettier --write .
+npm run format:check    # prettier --check . (usado antes de commit/PR)
+```
+
 ## 🔌 Pontos de integração externa (mínimos, por design)
 
-O app é offline-first, então há apenas **um** ponto de rede real no sistema:
+O app é offline-first — todas as telas e ações do dia a dia (clientes, produtos, pedidos, PDF) rodam 100% no dispositivo, sem chamada HTTP nenhuma. Só dois pontos tocam rede, e nenhum bloqueia o uso do app:
 
 | Integração | Quando é chamada | Serviço responsável |
 |---|---|---|
-| API de licença (renovação) | Somente quando `agora >= license_expires_at` | `services/licenseService.ts` |
+| API de licença (validação/renovação) | Na abertura do app e a cada 5 min enquanto fica aberto (não só perto do vencimento — ver [docs/04](./04-sistema-licenca.md)) | `services/licenseService.ts` |
+| Backup remoto automático (Supabase Storage) | Uma vez por dia, se houver internet (silencioso, nunca bloqueia — ver [docs/04](./04-sistema-licenca.md#-backup-remoto-automático-supabase-storage)) | `services/remoteBackupService.ts` |
 
 Todo o resto (PDF, compartilhamento, banco de dados) roda 100% no dispositivo, sem chamadas HTTP.
 

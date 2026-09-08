@@ -108,8 +108,8 @@ export function BackupScreen() {
         </Text>
         <PrimaryButton label="Compartilhar backup" icon="share-outline" onPress={handleExport} loading={exporting} />
         <Text style={styles.description}>
-          Se o menu de compartilhamento não tiver uma opção para salvar direto no aparelho (comum em
-          emuladores), use o botão abaixo para escolher uma pasta (ex: Downloads) e salvar ali.
+          Se o menu de compartilhamento não tiver uma opção para salvar direto no aparelho (comum em emuladores), use o
+          botão abaixo para escolher uma pasta (ex: Downloads) e salvar ali.
         </Text>
         <PrimaryButton
           label="Salvar no dispositivo"
@@ -129,11 +129,13 @@ export function BackupScreen() {
         </View>
         <Text style={styles.description}>
           Restaura Clientes, Categorias, Produtos e Ordens de Venda a partir de um arquivo de backup exportado
-          anteriormente. Registros já existentes (mesmo CPF/CNPJ, nome, ou cliente+número do pedido) são ignorados
-          — não duplica dados. A data de criação original dos pedidos não é preservada (vira a data da importação).
+          anteriormente. Registros já existentes (mesmo CPF/CNPJ, nome, ou cliente+número do pedido) são ignorados — não
+          duplica dados. A data de criação original dos pedidos não é preservada (vira a data da importação).
         </Text>
         {readOnly ? (
-          <Text style={styles.readOnlyNotice}>Licença expirada — importação indisponível (exportar continua liberado).</Text>
+          <Text style={styles.readOnlyNotice}>
+            Licença expirada — importação indisponível (exportar continua liberado).
+          </Text>
         ) : null}
         <PrimaryButton
           label="Escolher arquivo de backup"
@@ -161,7 +163,9 @@ export function BackupScreen() {
             </Text>
             <Text style={styles.previewRow}>
               • {preview.newOrders} pedido(s) novo(s)
-              {preview.skippedOrders > 0 ? ` (${preview.skippedOrders} ignorados — já existem ou cliente não encontrado)` : ''}
+              {preview.skippedOrders > 0
+                ? ` (${preview.skippedOrders} ignorados — já existem ou cliente não encontrado)`
+                : ''}
             </Text>
             <View style={styles.previewActions}>
               <PrimaryButton

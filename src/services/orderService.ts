@@ -74,10 +74,7 @@ export async function deleteOrder(orderId: string): Promise<void> {
   const items = await order.items.fetch();
 
   await database.write(async () => {
-    await database.batch(
-      ...items.map((item) => item.prepareMarkAsDeleted()),
-      order.prepareMarkAsDeleted()
-    );
+    await database.batch(...items.map((item) => item.prepareMarkAsDeleted()), order.prepareMarkAsDeleted());
   });
 }
 

@@ -13,12 +13,10 @@ type LicenseBlockedScreenProps = {
 };
 
 const MESSAGES: Record<string, string> = {
-  offline:
-    'Sua licença venceu e não conseguimos renovar automaticamente. Conecte-se à internet e tente novamente.',
+  offline: 'Sua licença venceu e não conseguimos renovar automaticamente. Conecte-se à internet e tente novamente.',
   clock_tampered:
     'Detectamos uma alteração incomum na data do dispositivo. Ajuste o relógio para a data e hora corretas e tente novamente.',
-  server_rejected:
-    'Sua licença não pôde ser renovada. Entre em contato com o suporte para regularizar o acesso.',
+  server_rejected: 'Sua licença não pôde ser renovada. Entre em contato com o suporte para regularizar o acesso.',
   not_registered:
     'Não encontramos este dispositivo em nosso sistema de licenças. Entre em contato com o suporte informando o ID do dispositivo para liberar o acesso.',
   grace_period_exceeded:
@@ -96,7 +94,12 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
         </View>
       ) : null}
 
-      <TouchableOpacity style={styles.exportButton} onPress={handleExportBackup} disabled={exporting} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={styles.exportButton}
+        onPress={handleExportBackup}
+        disabled={exporting}
+        activeOpacity={0.8}
+      >
         {exporting ? (
           <ActivityIndicator color={colors.slate700} />
         ) : (

@@ -95,8 +95,15 @@ export async function saveCompanySettings(input: CompanySettingsInput): Promise<
 
 // Nome exibido no cumprimento da HomeScreen (substitui "Bom dia"/"Boa tarde"): nome do vendedor,
 // senão o nome da empresa, senão o nome do próprio app.
-export function resolveDisplayName(settings: Pick<CompanySettings, 'vendedorNome' | 'nomeFantasia' | 'razaoSocial'> | null): string {
-  return settings?.vendedorNome?.trim() || settings?.nomeFantasia?.trim() || settings?.razaoSocial?.trim() || APP_DISPLAY_NAME;
+export function resolveDisplayName(
+  settings: Pick<CompanySettings, 'vendedorNome' | 'nomeFantasia' | 'razaoSocial'> | null
+): string {
+  return (
+    settings?.vendedorNome?.trim() ||
+    settings?.nomeFantasia?.trim() ||
+    settings?.razaoSocial?.trim() ||
+    APP_DISPLAY_NAME
+  );
 }
 
 // Abre o seletor de arquivos do sistema filtrado por imagem (mesma API já usada em

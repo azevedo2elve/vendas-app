@@ -46,12 +46,7 @@ export const MaskedInput = forwardRef<TextInput, MaskedInputProps>(function Mask
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TextInput
         ref={ref}
-        style={[
-          styles.input,
-          focused ? styles.inputFocused : null,
-          error ? styles.inputError : null,
-          style,
-        ]}
+        style={[styles.input, focused ? styles.inputFocused : null, error ? styles.inputError : null, style]}
         value={formatForDisplay(mask, value)}
         onChangeText={handleChangeText}
         keyboardType={mask ? 'numeric' : rest.keyboardType}

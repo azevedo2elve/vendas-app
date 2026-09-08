@@ -28,9 +28,7 @@ const UNITS = ['UN', 'KG', 'CX', 'L', 'PC'] as const;
 const productSchema = z.object({
   name: z.string().trim().min(2, 'Nome muito curto'),
   categoryId: z.string().min(1, 'Selecione uma categoria'),
-  price: z
-    .string()
-    .refine((value) => Number(value) > 0, 'Preço deve ser maior que zero'),
+  price: z.string().refine((value) => Number(value) > 0, 'Preço deve ser maior que zero'),
   unit: z.enum(UNITS),
 });
 
@@ -346,7 +344,9 @@ export function ProductFormScreen({ navigation, route }: Props) {
         )}
       />
 
-      {readOnly ? <Text style={styles.errorText}>Licença expirada — somente leitura, não é possível salvar.</Text> : null}
+      {readOnly ? (
+        <Text style={styles.errorText}>Licença expirada — somente leitura, não é possível salvar.</Text>
+      ) : null}
 
       <PrimaryButton
         label="Salvar"

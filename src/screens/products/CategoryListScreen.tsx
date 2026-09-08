@@ -30,11 +30,7 @@ function CategoryRow({ category }: RowProps) {
   const { readOnly } = useLicenseAccess();
 
   useEffect(() => {
-    database
-      .get<Product>('products')
-      .query(Q.where('category_id', category.id))
-      .fetchCount()
-      .then(setProductsCount);
+    database.get<Product>('products').query(Q.where('category_id', category.id)).fetchCount().then(setProductsCount);
   }, [category.id]);
 
   async function handleSave() {
@@ -132,13 +128,15 @@ function CategoryRow({ category }: RowProps) {
         <Text style={styles.rowName} numberOfLines={1}>
           {category.name}
         </Text>
-        <Text style={styles.rowCount}>
-          {productsCount === null ? '...' : `${productsCount} produto(s)`}
-        </Text>
+        <Text style={styles.rowCount}>{productsCount === null ? '...' : `${productsCount} produto(s)`}</Text>
       </View>
       {readOnly ? null : (
         <>
-          <TouchableOpacity style={styles.iconButton} onPress={() => setEditing(true)} accessibilityLabel="Renomear categoria">
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => setEditing(true)}
+            accessibilityLabel="Renomear categoria"
+          >
             <Ionicons name="pencil-outline" size={18} color={colors.slate600} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconButton} onPress={handleDelete} accessibilityLabel="Excluir categoria">
@@ -180,7 +178,9 @@ function CategoryListScreenBase({ categories }: ListProps) {
     <View style={styles.container}>
       <View style={styles.content}>
         {readOnly ? (
-          <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, gestão de categorias indisponível.</Text>
+          <Text style={styles.readOnlyNotice}>
+            Licença expirada — somente leitura, gestão de categorias indisponível.
+          </Text>
         ) : (
           <View style={styles.addRow}>
             <TextInput
@@ -192,7 +192,13 @@ function CategoryListScreenBase({ categories }: ListProps) {
               onSubmitEditing={handleAdd}
               returnKeyType="done"
             />
-            <PrimaryButton label="Adicionar" onPress={handleAdd} loading={adding} disabled={!newName.trim()} style={styles.addButton} />
+            <PrimaryButton
+              label="Adicionar"
+              onPress={handleAdd}
+              loading={adding}
+              disabled={!newName.trim()}
+              style={styles.addButton}
+            />
           </View>
         )}
 
