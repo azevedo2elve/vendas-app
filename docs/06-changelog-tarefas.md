@@ -28,7 +28,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
 | **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟢 Concluído (testes automatizados de `evaluateLicense()` adicionados em 2026-09-08) |
 | **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟢 Concluído |
-| **Fase 9** | Polimento, testes e preparação para build (EAS) | 🟡 Em andamento (testes automatizados e checklist de conformidade com `docs/` concluídos em 2026-09-08; falta só `eas login`/`eas init` numa conta Expo real e definir o `android.package` definitivo — ação do usuário, sem acesso a conta neste ambiente) |
+| **Fase 9** | Polimento, testes e preparação para build (EAS) | 🟢 Concluído (primeiro APK gerado via build local em 2026-09-08, sem depender de conta EAS — ver entrada abaixo). `eas login`/`eas init` numa conta Expo real seguem como ação exclusiva do usuário **só se/quando** ele quiser passar a usar o build em nuvem em vez do local — não é mais um bloqueio pra ter um APK instalável. |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
@@ -288,9 +288,20 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Gap conhecido, não corrigido aqui:** o JSON de importação do catálogo de produtos (PR #18, aberto aguardando revisão do usuário, ainda não mergeado em `hml`) não tem entrada de changelog nem menção em `docs/`, porque as mudanças vivem numa branch separada desta. Revisitar quando aquele PR for mergeado.
 - **Docs afetados:** `docs/01-visao-geral.md`, `CLAUDE.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-08 — Primeiro APK gerado via build local (sem EAS) + `android.package` definitivo
+- **Tipo:** feature / chore
+- **Resumo:** Descoberta durante a conversa: este ambiente de desenvolvimento tem o Android SDK completo instalado (`ANDROID_HOME`, build-tools, NDK, licenças já aceitas) — então, ao contrário do que a entrada de `eas.json` (2026-09-01) registrou, **dá pra gerar um APK sem conta Expo/EAS nenhuma**, usando `expo prebuild` + Gradle direto (ver "Build local" em `docs/02-arquitetura.md`).
+  - `android.package` definido como definitivo: **`com.gabrielazevedo.vendasapp`** (escolhido pelo usuário), substituindo o placeholder `com.anonymous.vendasapp`.
+  - `npx expo prebuild --platform android --clean` gerou a pasta `android/` (gitignorada).
+  - `./gradlew assembleDebug` (build de validação, ~8 min, 187MB — confirmou que o ambiente compila do zero sem erro) e depois `./gradlew assembleRelease` (~13 min, 78MB) — o artefato de verdade.
+  - Gerada uma chave de assinatura de release própria (`keytool`, RSA 2048, PKCS12, validade ~27 anos) — guardada em `/keystore/vendas-app-release.keystore` **na raiz do projeto** (não em `android/`, que é regenerada a cada `prebuild`), com credenciais em `/keystore.properties`, ambos no `.gitignore` e entregues diretamente pro usuário (nunca ficaram só neste ambiente). `android/app/build.gradle` ajustado pra usar essa chave quando o arquivo de properties existe, caindo pra chave debug (sem quebrar) se não existir — ver snippet completo em `docs/02-arquitetura.md`.
+  - Assinatura do APK final verificada com `apksigner verify --print-certs` — confirmado que bate com a chave de release gerada (SHA-256 `09:37:77:5E:89...`), não com a chave debug.
+- **Limitação registrada:** como `android/app/build.gradle` é regenerado do zero a cada `expo prebuild`, o trecho de código que liga o build à chave de release **precisa ser colado de novo** depois de qualquer `prebuild --clean` futuro, antes de gerar outro release — só o arquivo da chave em si (fora de `android/`) sobrevive automaticamente.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] Revisão de UX em telas críticas (carrinho, bloqueio de licença) — antecipada pelo redesign da Fase 10.
-- [x] Configuração de build via EAS (`eas.json`) — falta ainda vincular a uma conta EAS de verdade (`eas init`) e definir o `android.package` definitivo antes do primeiro build de produção. **Confirmado em 2026-09-08:** `npx eas-cli whoami` retorna "Not logged in" neste ambiente — não há como logar numa conta Expo real aqui (precisa de credenciais/2FA do próprio usuário). Ação do usuário: rodar `eas login` e depois `eas init` na própria máquina/conta quando for preparar o primeiro build de produção; definir o `android.package` definitivo em `app.json` antes disso (não pode mudar depois de publicado).
+- [x] Configuração de build via EAS (`eas.json`) — **`android.package` definitivo definido em 2026-09-08** (`com.gabrielazevedo.vendasapp`). `eas login`/`eas init` numa conta EAS de verdade seguem pendentes, mas só são necessários **se/quando** o usuário quiser passar a usar build em nuvem — o primeiro APK já foi gerado por build local (ver entrada acima), sem depender disso.
 - [x] Testes automatizados — framework decidido e configurado na Fase 7 (Jest + `jest-expo`); cobertura expandida nesta entrada (utils puros + cálculo de carrinho). Cobertura de `orderService`/`backupService`/models do WatermelonDB (que exigiriam mockar banco de forma mais elaborada) e testes de tela (React Native Testing Library) continuam pendentes — próximo passo natural se quiser aprofundar, mas não bloqueiam o release.
 - [x] Checklist final de conformidade com `docs/` antes do release — feito nesta entrada (achados e correções acima).
 

@@ -41,6 +41,11 @@ yarn-error.*
 /ios
 /android
 
+# Chave de assinatura do release Android (build local, fora do EAS) — NUNCA versionar. Ver
+# docs/02-arquitetura.md ("Build local"). Entregue diretamente pro usuário, fora do Git.
+/keystore/
+/keystore.properties
+
 # Material de referência de catálogo (PDFs de fornecedor) — só usado uma vez pra gerar o JSON
 # de importação; o JSON final não fica no repositório, o vendedor guarda o arquivo por fora
 # (entregue diretamente) e usa a tela de Importar/Restaurar Backup pra cadastrar num aparelho novo.
