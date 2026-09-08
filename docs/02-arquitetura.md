@@ -182,11 +182,13 @@ Todo o resto (PDF, compartilhamento, banco de dados) roda 100% no dispositivo, s
 
 Fluxo: `feature/*` → PR/merge em `hml` → testes de homologação → PR/merge de `hml` em `main`. Branches `feature/*` já mergeadas devem ser excluídas (local e remota) para manter o repositório limpo — o GitHub já faz isso automaticamente ao mergear um PR, nesse repositório.
 
-## 🧪 Estratégia de testes (diretriz)
+## 🧪 Estratégia de testes
 
-- **Services** (`licenseService`, `pdfService`, `backupService`): unidade, com foco em regras de negócio puras (cálculo de totais, regras de data da licença, geração do payload do PDF).
-- **Models/Schema do WatermelonDB**: testes de integração usando o adapter SQLite em memória.
-- **Screens**: testes de fluxo (React Native Testing Library) para os caminhos críticos: criar ordem, gerar PDF, tela de bloqueio de licença.
+**Framework:** [Jest](https://jestjs.io/) com o preset [`jest-expo`](https://www.npmjs.com/package/jest-expo) (padrão oficial do Expo — já traz os mocks de módulos nativos e o transform via `babel.config.js` do próprio projeto, então o alias `@/` funciona nos testes sem configuração extra). `npm test` roda a suíte uma vez; `npm run test:watch` fica observando mudanças. Configuração em `package.json` (chave `"jest"`), adotada na Fase 7 (2026-09-08) — primeira suíte real do projeto: `src/services/__tests__/licenseService.test.ts`, cobrindo `evaluateLicense()` (anti-fraude de relógio, validação remota via Supabase — sucesso/`not_registered`/`server_rejected`/falha de rede —, e os três desfechos offline: ativo, `expired` no dia do vencimento, `blocked` após o dia de tolerância).
+
+- **Services** (`licenseService`, e futuramente `pdfService`/`backupService`/`orderService`): unidade, mockando `@/database` por uma "tabela" em memória simples (`jest.mock('@/database', ...)` com um array + `get()/write()` fake) em vez de um adapter SQLite real — mais rápido e suficiente pra testar a regra de negócio em si, já que o WatermelonDB (ORM) não é o que está sendo validado. Dependências externas (`@react-native-community/netinfo`, `expo-crypto`, `@/services/api`, `fetch` global) também são mockadas por teste, controláveis via `jest.fn()`.
+- **Nota de tooling:** arquivos de teste precisam de `/// <reference types="jest" />` (e `"node"` quando usam `global`/`process` fora do que já é coberto pelos tipos do RN) no topo — por algum motivo a inclusão automática de pacotes `@types/*` do TypeScript não está pegando esses dois neste projeto (mesmo sem nenhuma restrição explícita via `types`/`typeRoots` no `tsconfig.json` ou em `expo/tsconfig.base`); a referência tripla-barra contorna isso de forma local ao arquivo, sem mexer no `tsconfig.json` global.
+- **Models/Schema do WatermelonDB** e **Screens** (React Native Testing Library): ainda não têm suíte própria — ver pendência na Fase 9.
 
 ## 📎 Documentos relacionados
 

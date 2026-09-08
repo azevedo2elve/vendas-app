@@ -26,7 +26,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
-| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (validação contínua, escalonamento pra `blocked`, aviso de vencimento e status detalhado na HomeScreen implementados em 2026-09-01; falta só cobertura de testes automatizados) |
+| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟢 Concluído (testes automatizados de `evaluateLicense()` adicionados em 2026-09-08) |
 | **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟢 Concluído |
 | **Fase 9** | Polimento, testes e preparação para build (EAS) | 🟡 Em andamento (`eas.json` criado em 2026-09-01; faltam testes automatizados e checklist final de release) |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
@@ -181,7 +181,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `screens/License/LicenseBlockedScreen.tsx`.
 - [x] Integração com `@react-native-community/netinfo`.
 - [x] Validação/renovação remota real via Supabase (`fetchLicenseFromSupabase`), substituindo o endpoint placeholder.
-- [ ] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementação manual feita, cobertura de testes ainda pendente (Fase 9).
+- [x] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementado em 2026-09-08, ver entrada abaixo. Última pendência da fase — **Fase 7 concluída**.
 - [x] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — implementado em 2026-09-01 (ver entrada acima).
 
 ### 2026-09-01 — Renovação proativa, tolerância de 1 dia para `blocked` e aviso de vencimento próximo
@@ -207,6 +207,13 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Tipo:** fix
 - **Resumo:** A entrada anterior implementou só 3 faixas fixas (5/2/1 dia), então o rótulo pulava de "Faltam 5 dias" direto pra "Faltam 2 dias" (nunca mostrava "4" ou "3"). Pedido do usuário: a contagem deve diminuir dia a dia a partir de 5 dias restantes. `HomeScreen.tsx` (`licenseStatusLabel()`) e `LicenseExpiryBanner.tsx` (`currentReminderLabel()`, renomeada de `currentThreshold()`) recalculados para `Math.ceil(remainingMs / ONE_DAY_MS)` em vez de comparar contra 3 limiares fixos — mostram "Faltam 5/4/3/2 dias" e "Falta 1 dia" (singular corrigido) continuamente. No banner, as duas faixas de hora (2h/1h) continuam como estavam; só a faixa de dias (5→1) passou a ser contínua. A chave de "aviso fechado" do banner mudou de um valor de limiar fixo para o próprio rótulo do dia — fechar em "3 dias" não esconde mais o aviso de "2 dias" no dia seguinte.
 - **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-08 — Testes automatizados de `evaluateLicense()` (Jest + jest-expo) — Fase 7 concluída
+- **Tipo:** feature / chore
+- **Resumo:** Última pendência da Fase 7. Configurado Jest pela primeira vez no projeto (`jest-expo` como preset — mock automático de módulos nativos + reaproveita o `babel.config.js` do próprio app, então o alias `@/` funciona nos testes sem config extra). `npm test`/`npm run test:watch` adicionados ao `package.json`. Nova suíte `src/services/__tests__/licenseService.test.ts` (10 casos) cobrindo `evaluateLicense()`: anti-fraude de relógio (`clock_tampered`), criação da licença na primeira execução (trial de 15 dias), validação remota com Supabase — renovação bem-sucedida, `not_registered` (array vazio), `server_rejected` (status não-ativo ou HTTP de erro), e fallback silencioso pro tratamento local se o `fetch` falhar apesar do `NetInfo` dizer "online" — e os três desfechos offline: `active` (ainda não venceu), `expired`/`offline` (venceu no mesmo dia) e `blocked`/`grace_period_exceeded` (já passou 1 dia inteiro do vencimento).
+- **Abordagem de mock:** em vez de rodar o WatermelonDB de verdade (precisa de adapter SQLite nativo, que não existe em ambiente Node/Jest), `@/database` é mockado por uma "tabela" em memória mínima (`jest.mock` com um array + `get()/write()`/`update()` fake) — testa a regra de negócio do `licenseService`, não o ORM. `@react-native-community/netinfo`, `expo-crypto`, `@/services/api` e o `fetch` global também são mockados, controláveis por teste.
+- **Detalhe de tooling:** a inclusão automática de pacotes `@types/*` do TypeScript não estava pegando `@types/jest`/`@types/node` neste projeto (sem nenhuma restrição explícita via `types`/`typeRoots` em nenhum `tsconfig` da cadeia) — contornado com `/// <reference types="jest" />`/`"node"` no topo do arquivo de teste, sem mexer no `tsconfig.json` global.
+- **Docs afetados:** `docs/02-arquitetura.md` (seção "Estratégia de testes" reescrita de diretriz planejada para o que existe de fato), `docs/06-changelog-tarefas.md`.
 
 ---
 
