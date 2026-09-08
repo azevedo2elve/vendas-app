@@ -40,3 +40,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Material de referência de catálogo (PDFs de fornecedor) — só usado uma vez pra gerar o JSON
+# de importação; o JSON final não fica no repositório, o vendedor guarda o arquivo por fora
+# (entregue diretamente) e usa a tela de Importar/Restaurar Backup pra cadastrar num aparelho novo.
+assets/catalogo/
