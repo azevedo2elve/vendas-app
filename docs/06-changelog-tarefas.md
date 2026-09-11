@@ -33,6 +33,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
 | **Fase 13** | PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente | 🟢 Concluído |
+| **Fase 14** | Preenchimento automático de cadastro (CNPJ e CEP) — backlog, versão futura | ⚪ Não iniciado |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -408,6 +409,27 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Tipo:** feature
 - **Resumo:** A pedido do cliente, a `delivery_date` (adicionada mais cedo nesta mesma fase) passou a aparecer nos cards de pedido onde antes só existia no PDF e no detalhe: nos "Últimos pedidos" da `HomeScreen` e na listagem `OrderListScreen`. Em ambos, uma linha "Entrega em dd/mm/aaaa" (ícone `cube-outline`, cor de destaque) aparece só quando o pedido tem data de entrega definida — omitida por completo quando não há.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+---
+
+## Fase 14 — Preenchimento automático de cadastro (CNPJ e CEP) — backlog, versão futura
+
+> Pedido do cliente em 2026-09-11, registrado aqui como referência para uma versão futura — **não é prioridade para o release atual**, ainda não iniciada.
+
+### Ideia
+1. **Busca por CNPJ:** ao cadastrar um cliente pessoa jurídica, digitar o CNPJ e preencher automaticamente razão social, nome fantasia e endereço, via [BrasilAPI](https://brasilapi.com.br/) (`GET /api/cnpj/v1/{cnpj}`) — API pública, gratuita, sem necessidade de chave/cadastro, dados oficiais da Receita Federal. **Só se aplica a CNPJ** — não existe (nem pode existir, por restrição legal de privacidade) uma consulta pública equivalente para CPF que devolva nome/endereço de pessoa física.
+2. **Busca por CEP:** ao digitar o CEP no formulário de endereço (`address_zip`), preencher automaticamente `address_street`/bairro/`address_city`/`address_state` via [ViaCEP](https://viacep.com.br/) (`GET /ws/{cep}/json/`) — mesmo perfil de API (pública, gratuita, sem chave), padrão de mercado em apps brasileiros. O vendedor só completaria `address_number` e `address_complement` manualmente.
+
+### Restrição de arquitetura a respeitar na implementação
+O app é **100% offline** por princípio central (ver `CLAUDE.md`). As duas buscas acima dependem de internet, então devem ser tratadas como *melhorias oportunistas*, no mesmo padrão já usado pela validação de licença e pelo backup remoto automático (ver [docs/02-arquitetura.md](./02-arquitetura.md#-pontos-de-integração-externa)):
+- Só tenta a busca se houver conectividade no momento (`@react-native-community/netinfo`, já usado no projeto).
+- Falha, timeout ou ausência de internet **nunca bloqueia nem exibe erro** — o formulário permanece editável manualmente, exatamente como funciona hoje.
+- Os campos preenchidos automaticamente continuam editáveis pelo vendedor antes de salvar (a API pode ter dados desatualizados).
+
+### Escopo estimado (não detalhado, só para dimensionar)
+- Dois novos serviços simples (`cnpjLookupService.ts`, `cepLookupService.ts`) — cada um só um `fetch` + parse da resposta, sem dependência nova (fetch nativo já é suficiente, mesmo padrão do `licenseService`/`remoteBackupService`).
+- Ajuste no `ClientFormScreen`: botão/ação de busca ao lado do campo CNPJ e do campo CEP, com indicador de carregamento.
+- Passaria a ser um **terceiro** ponto de rede real do app (além de licença e backup remoto) — atualizar `docs/01-visao-geral.md` e `docs/02-arquitetura.md` quando implementado.
 
 ---
 
