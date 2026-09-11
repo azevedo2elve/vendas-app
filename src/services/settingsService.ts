@@ -4,11 +4,17 @@ import CompanySettings from '@/database/models/CompanySettings';
 import { APP_DISPLAY_NAME } from '@/utils/appInfo';
 
 const MAX_LOGO_FILE_BYTES = 2 * 1024 * 1024; // 2MB — evita um data URI gigante no SQLite
-const LOGO_MIME_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-};
+
+// Detecta o tipo real da imagem pelos bytes (assinatura mágica), não pela extensão do nome do
+// arquivo — vários seletores do Android (galeria/Fotos, Google Drive, etc.) devolvem um
+// content:// URI sem nome/extensão utilizável, o que fazia essa checagem rejeitar até PNG/JPEG
+// genuínos. Os prefixos abaixo são os primeiros bytes do PNG/JPEG já codificados em base64
+// (determinísticos, sempre os mesmos independente do resto do arquivo).
+export function detectImageMimeType(base64: string): string | null {
+  if (base64.startsWith('iVBORw0K')) return 'image/png'; // 89 50 4E 47 0D 0A 1A 0A
+  if (base64.startsWith('/9j/')) return 'image/jpeg'; // FF D8 FF
+  return null;
+}
 
 function companySettingsCollection() {
   return database.get<CompanySettings>('company_settings');
@@ -118,11 +124,11 @@ export async function pickCompanyLogo(): Promise<string | null> {
     throw new Error('Imagem muito grande. Escolha um arquivo de até 2MB.');
   }
 
-  const mimeType = LOGO_MIME_TYPES[file.extension.toLowerCase()];
+  const base64 = await file.base64();
+  const mimeType = detectImageMimeType(base64);
   if (!mimeType) {
     throw new Error('Formato não suportado. Escolha um arquivo PNG ou JPG.');
   }
 
-  const base64 = await file.base64();
   return `data:${mimeType};base64,${base64}`;
 }
