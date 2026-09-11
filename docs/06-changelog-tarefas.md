@@ -266,6 +266,13 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Nenhuma mudança de código:** `remoteBackupService.ts` já estava correto desde a implementação original (`x-upsert: true` é exatamente o que gera o `ON CONFLICT DO UPDATE`); o problema era só a configuração das policies no painel do Supabase.
 - **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-11 — Fix: reimportar o próprio backup exportado falhava sempre que havia campo opcional vazio
+- **Tipo:** fix
+- **Resumo:** Bug reportado pelo cliente durante testes de HML: exportar um backup ("Salvar no dispositivo") e tentar reimportar esse mesmo arquivo, sem editar nada, dava "Arquivo inválido: não é um backup reconhecível do app." **Causa raiz:** o WatermelonDB devolve `null` em tempo de execução para colunas SQLite vazias, mesmo em campos que os models declaram como `string | undefined` no TypeScript (ex: `Client.addressComplement`, `Order.notes` — ver `database/models/`). `buildBackupData()` exporta esse `null` de verdade no JSON, mas o schema Zod de importação só aceitava `.optional()` (`string | undefined`), rejeitando `null` explícito — na prática, isso quebrava a reimportação de **qualquer** backup real (basta um cliente sem complemento/CEP, ou um pedido sem observações, ambos os casos mais comuns que o oposto).
+- **Fix:** `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` (cliente), `category_name` (produto) e `notes` (pedido) passaram a `.nullable().optional()` no schema — mesmo padrão já usado corretamente só em `delivery_date` desde a Fase 13. `importBackup()` normaliza `null → undefined` (`?? undefined`) ao gravar nesses campos nos models, mesmo padrão já usado em `ClientFormScreen`. O catch genérico de `pickAndPreviewBackupFile()` também passou a logar a causa real (`console.warn`) antes de mostrar a mensagem genérica pro usuário — sem isso, esse tipo de bug vira uma investigação às cegas (foi exatamente o caso aqui: só foi possível achar a causa validando o JSON exportado à mão contra o schema real).
+- **Testes:** novo `backupService.test.ts` (2 testes) — round-trip com campos `null` explícitos (formato real exportado pelo app) e com campos ausentes (`undefined`), ambos devem validar. `backupSchema` exportado só para esse teste.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] `services/backupService.ts` (exportação JSON via `expo-file-system`) — limitado a `clients`/`products` por enquanto.
 - [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".

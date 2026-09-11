@@ -13,16 +13,23 @@ import type { OrderStatus, PaymentMethod } from '@/types/database';
 
 const BACKUP_APP_VERSION = '1.0.0';
 
+// `.nullable()` nos campos abaixo (além de `.optional()`) é necessário porque o WatermelonDB
+// devolve `null` em tempo de execução para colunas SQLite vazias, mesmo em campos que o
+// TypeScript declara como `string | undefined` nos models (ver `database/models/Client.ts`) —
+// `buildBackupData()` exporta esse `null` de verdade no JSON. Sem `.nullable()` aqui, reimportar
+// o próprio backup que o app acabou de exportar falhava sempre que um cliente não tinha
+// complemento/CEP preenchido (o caso mais comum), com "Arquivo inválido: não é um backup
+// reconhecível do app." escondendo o motivo real.
 const backupClientSchema = z.object({
   name: z.string(),
   document: z.string(),
   phone: z.string(),
-  address_street: z.string().optional(),
-  address_number: z.string().optional(),
-  address_complement: z.string().optional(),
-  address_city: z.string().optional(),
-  address_state: z.string().optional(),
-  address_zip: z.string().optional(),
+  address_street: z.string().nullable().optional(),
+  address_number: z.string().nullable().optional(),
+  address_complement: z.string().nullable().optional(),
+  address_city: z.string().nullable().optional(),
+  address_state: z.string().nullable().optional(),
+  address_zip: z.string().nullable().optional(),
 });
 
 const backupCategorySchema = z.object({
@@ -32,8 +39,8 @@ const backupCategorySchema = z.object({
 const backupProductSchema = z.object({
   name: z.string(),
   // Categoria referenciada por nome, não por id — um id gerado localmente não faz sentido ao
-  // restaurar o backup em outro dispositivo.
-  category_name: z.string().optional(),
+  // restaurar o backup em outro dispositivo. `.nullable()`: mesmo motivo do backupClientSchema.
+  category_name: z.string().nullable().optional(),
   price: z.number(),
   unit: z.string(),
 });
@@ -54,7 +61,8 @@ const backupOrderSchema = z.object({
   discount_total: z.number(),
   total_net: z.number(),
   payment_method: z.string(),
-  notes: z.string().optional(),
+  // `.nullable()`: mesmo motivo do backupClientSchema.
+  notes: z.string().nullable().optional(),
   order_number: z.number(),
   delivery_date: z.string().nullable().optional(),
   // Só informativo — o WatermelonDB grava `created_at` como a data da importação, não dá pra
@@ -63,7 +71,9 @@ const backupOrderSchema = z.object({
   items: z.array(backupOrderItemSchema),
 });
 
-const backupSchema = z.object({
+// Exportado só para o teste de regressão do round-trip exportar→importar (ver
+// __tests__/backupService.test.ts) — não usado fora deste arquivo em código de produção.
+export const backupSchema = z.object({
   exported_at: z.string(),
   app_version: z.string(),
   clients: z.array(backupClientSchema),
@@ -300,7 +310,11 @@ export async function pickAndPreviewBackupFile(): Promise<BackupPreview | null> 
   try {
     const text = await picked.result.text();
     parsed = backupSchema.parse(JSON.parse(text));
-  } catch {
+  } catch (error) {
+    // Mensagem pro usuário fica genérica de propósito (não é acionável pra quem não é dev), mas
+    // loga a causa real — sem isso, todo problema de formato vira uma investigação às cegas (foi
+    // exatamente o que aconteceu com o bug do `.nullable()` ausente nos campos opcionais).
+    console.warn('[backupService] Falha ao ler/validar arquivo de backup:', error);
     throw new InvalidBackupFileError('Arquivo inválido: não é um backup reconhecível do app.');
   }
 
@@ -370,12 +384,12 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
       newClient.name = client.name;
       newClient.document = client.document;
       newClient.phone = client.phone;
-      newClient.addressStreet = client.address_street;
-      newClient.addressNumber = client.address_number;
-      newClient.addressComplement = client.address_complement;
-      newClient.addressCity = client.address_city;
-      newClient.addressState = client.address_state;
-      newClient.addressZip = client.address_zip;
+      newClient.addressStreet = client.address_street ?? undefined;
+      newClient.addressNumber = client.address_number ?? undefined;
+      newClient.addressComplement = client.address_complement ?? undefined;
+      newClient.addressCity = client.address_city ?? undefined;
+      newClient.addressState = client.address_state ?? undefined;
+      newClient.addressZip = client.address_zip ?? undefined;
     });
     clientDocumentToId.set(client.document, record.id);
     return record;
@@ -432,7 +446,7 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
       record.discountTotal = order.discount_total;
       record.totalNet = order.total_net;
       record.paymentMethod = order.payment_method as PaymentMethod;
-      record.notes = order.notes;
+      record.notes = order.notes ?? undefined;
       record.orderNumber = order.order_number;
       record.deliveryDate = order.delivery_date ? new Date(order.delivery_date) : null;
       // `created_at` não pode ser definido aqui (@readonly) — nasce com a data da importação.
