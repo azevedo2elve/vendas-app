@@ -12,25 +12,25 @@ const RECHECK_INTERVAL_MS = 5 * 60 * 1000;
 export function useLicenseGuard() {
   const [state, setState] = useState<LicenseGuardState>({ checking: true, result: null });
 
+  // Reavaliação silenciosa: nunca passa por `checking: true` — só atualiza `result` quando
+  // termina. `checking` só é `true` no estado inicial (antes do 1º resultado existir), nunca de
+  // novo depois disso: o RootNavigator desmonta a árvore de navegação inteira (perdendo estado de
+  // formulário/scroll de qualquer tela) sempre que `checking` é `true`, então um `retry` manual
+  // (botão "Verificar Licença Agora" nas Configurações, banners, tela de bloqueio) preservar
+  // `checking: false` é o que evita esse "piscar" da tela inteira — cada chamador já mostra seu
+  // próprio indicador de carregamento local enquanto aguarda.
   const check = useCallback(async () => {
-    setState({ checking: true, result: null });
     const result = await evaluateLicense();
     setState({ checking: false, result });
+    return result;
   }, []);
 
   useEffect(() => {
-    // Checagem silenciosa na montagem — não chama check() aqui de propósito: o estado inicial
-    // já é `{ checking: true, result: null }`, então o `setState` síncrono que check() faz logo
-    // no início seria redundante nesse caso e a regra react-hooks/set-state-in-effect não deixa
-    // passar um setState síncrono direto dentro de um efeito. `check()` continua completo (com
-    // esse reset) para o uso via `retry`, chamado a partir de um handler de UI, não de um efeito.
     evaluateLicense().then((result) => setState({ checking: false, result }));
   }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // Reavaliação silenciosa: não passa por `checking: true` (evita piscar uma tela de
-      // loading no meio do uso normal do app) — só atualiza o resultado quando terminar.
       evaluateLicense().then((result) => setState({ checking: false, result }));
     }, RECHECK_INTERVAL_MS);
 

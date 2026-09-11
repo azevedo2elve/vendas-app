@@ -9,7 +9,7 @@ type LicenseBlockedScreenProps = {
   status: Exclude<LicenseCheckResult['status'], 'active'>;
   reason: LicenseCheckResult['reason'];
   deviceId?: string;
-  onRetry: () => Promise<void>;
+  onRetry: () => Promise<LicenseCheckResult>;
 };
 
 const MESSAGES: Record<string, string> = {

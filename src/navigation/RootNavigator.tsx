@@ -52,7 +52,7 @@ export function RootNavigator() {
   }
 
   return (
-    <LicenseAccessProvider readOnly={readOnly} expiresAt={expiresAt}>
+    <LicenseAccessProvider readOnly={readOnly} expiresAt={expiresAt} retry={retry}>
       <View style={{ flex: 1 }}>
         {readOnly ? <ReadOnlyBanner onRetry={handleRetry} retrying={retrying} /> : null}
         {!readOnly && expiresAt ? (

@@ -163,6 +163,29 @@ describe('licenseService.evaluateLicense', () => {
       expect(result.reason).toBe('server_rejected');
     });
 
+    // Regressão: sem o job pg_cron de sincronização configurado no Supabase (ver docs/04), a
+    // coluna license_status pode continuar 'active' mesmo depois de license_expires_at passar —
+    // o cliente não pode confiar cegamente nela, senão uma licença vencida nunca bloquearia
+    // online.
+    it('bloqueia com server_rejected quando o Supabase diz "active" mas license_expires_at já passou', async () => {
+      const record = seedLicense();
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            device_id: record.deviceId,
+            license_expires_at: new Date(Date.now() - ONE_DAY_MS).toISOString(),
+            license_status: 'active',
+          },
+        ],
+      });
+
+      const result = await evaluateLicense();
+
+      expect(result.status).toBe('blocked');
+      expect(result.reason).toBe('server_rejected');
+    });
+
     it('bloqueia com server_rejected quando o Supabase responde com HTTP de erro', async () => {
       seedLicense();
       (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
