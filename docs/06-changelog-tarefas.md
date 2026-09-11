@@ -33,7 +33,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
 | **Fase 13** | PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente | 🟢 Concluído |
-| **Fase 14** | Preenchimento automático de cadastro (CNPJ e CEP) — backlog, versão futura | ⚪ Não iniciado |
+| **Fase 14** | Preenchimento automático de cadastro (CNPJ e CEP) | 🟢 Concluído |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -412,24 +412,18 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 
 ---
 
-## Fase 14 — Preenchimento automático de cadastro (CNPJ e CEP) — backlog, versão futura
+## Fase 14 — Preenchimento automático de cadastro (CNPJ e CEP)
 
-> Pedido do cliente em 2026-09-11, registrado aqui como referência para uma versão futura — **não é prioridade para o release atual**, ainda não iniciada.
-
-### Ideia
-1. **Busca por CNPJ:** ao cadastrar um cliente pessoa jurídica, digitar o CNPJ e preencher automaticamente razão social, nome fantasia e endereço, via [BrasilAPI](https://brasilapi.com.br/) (`GET /api/cnpj/v1/{cnpj}`) — API pública, gratuita, sem necessidade de chave/cadastro, dados oficiais da Receita Federal. **Só se aplica a CNPJ** — não existe (nem pode existir, por restrição legal de privacidade) uma consulta pública equivalente para CPF que devolva nome/endereço de pessoa física.
-2. **Busca por CEP:** ao digitar o CEP no formulário de endereço (`address_zip`), preencher automaticamente `address_street`/bairro/`address_city`/`address_state` via [ViaCEP](https://viacep.com.br/) (`GET /ws/{cep}/json/`) — mesmo perfil de API (pública, gratuita, sem chave), padrão de mercado em apps brasileiros. O vendedor só completaria `address_number` e `address_complement` manualmente.
-
-### Restrição de arquitetura a respeitar na implementação
-O app é **100% offline** por princípio central (ver `CLAUDE.md`). As duas buscas acima dependem de internet, então devem ser tratadas como *melhorias oportunistas*, no mesmo padrão já usado pela validação de licença e pelo backup remoto automático (ver [docs/02-arquitetura.md](./02-arquitetura.md#-pontos-de-integração-externa)):
-- Só tenta a busca se houver conectividade no momento (`@react-native-community/netinfo`, já usado no projeto).
-- Falha, timeout ou ausência de internet **nunca bloqueia nem exibe erro** — o formulário permanece editável manualmente, exatamente como funciona hoje.
-- Os campos preenchidos automaticamente continuam editáveis pelo vendedor antes de salvar (a API pode ter dados desatualizados).
-
-### Escopo estimado (não detalhado, só para dimensionar)
-- Dois novos serviços simples (`cnpjLookupService.ts`, `cepLookupService.ts`) — cada um só um `fetch` + parse da resposta, sem dependência nova (fetch nativo já é suficiente, mesmo padrão do `licenseService`/`remoteBackupService`).
-- Ajuste no `ClientFormScreen`: botão/ação de busca ao lado do campo CNPJ e do campo CEP, com indicador de carregamento.
-- Passaria a ser um **terceiro** ponto de rede real do app (além de licença e backup remoto) — atualizar `docs/01-visao-geral.md` e `docs/02-arquitetura.md` quando implementado.
+### 2026-09-11 — Busca de dados da empresa por CNPJ e endereço por CEP no cadastro de cliente
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente em 2026-09-11, priorizado e implementado no mesmo dia (o registro de backlog original desta fase foi substituído por esta entrada).
+  - **`src/services/cnpjLookupService.ts`** (novo): `lookupCnpj(cnpj)` consulta a [BrasilAPI](https://brasilapi.com.br/) (`GET /api/cnpj/v1/{cnpj}`, pública, gratuita, sem chave, dados oficiais da Receita Federal) e devolve razão social, telefone e endereço completo (rua montada a partir de `descricao_tipo_de_logradouro` + `logradouro`, ex.: "AVENIDA PAULISTA"). Só aceita 14 dígitos — não existe (nem pode existir, por restrição legal de privacidade) consulta pública equivalente para CPF.
+  - **`src/services/cepLookupService.ts`** (novo): `lookupCep(cep)` consulta o [ViaCEP](https://viacep.com.br/) (`GET /ws/{cep}/json/`) e devolve rua, cidade e UF. Só aceita 8 dígitos.
+  - Ambos seguem o mesmo contrato: checam conectividade primeiro (`NetInfo.fetch()`, mesmo padrão de `remoteBackupService.ts`) e retornam `null` — nunca lançam erro — em qualquer cenário de falha (offline, CNPJ/CEP inexistente, HTTP não-ok, erro de rede). Nenhum campo tem "bairro" no schema de `clients` (ver [docs/03](./03-banco-de-dados.md#-tabela-clients)), então esse dado (retornado por ambas as APIs) é ignorado, sem forçar em outro campo.
+  - **`ClientFormScreen`:** dois links de busca opcionais (nunca automáticos, só por toque) — "Buscar dados da empresa pelo CNPJ" (visível quando o Documento é um CNPJ com dígito verificador válido, `isValidCNPJ`) e "Buscar endereço pelo CEP" (visível com 8 dígitos no CEP). Em caso de falha, toast informativo ("Preencha manualmente"), nunca um erro bloqueante — os campos continuam 100% editáveis antes e depois da busca. Usa `useWatch` (não `watch()` de `useForm()`) para os dois campos observados, evitando o aviso do React Compiler sobre memoização de funções do React Hook Form.
+  - Passa a ser o **terceiro** ponto de rede real do app (além de licença e backup remoto) — `docs/01-visao-geral.md` e `docs/02-arquitetura.md` atualizados.
+- **Testes:** 11 novos testes (`cnpjLookupService.test.ts`, `cepLookupService.test.ts`) cobrindo entrada inválida, offline, sucesso, CNPJ/CEP não encontrado, HTTP não-ok e falha de rede — mesmo padrão de mock de `NetInfo`/`global.fetch` já usado em `licenseService.test.ts`. Suíte completa: 59 testes, todos passando. `tsc --noEmit` e `expo lint` limpos (0 erros, 0 warnings); `expo export --platform android` compila o bundle sem erro.
+- **Docs afetados:** `docs/01-visao-geral.md`, `docs/02-arquitetura.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
 ---
 
