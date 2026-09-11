@@ -18,12 +18,13 @@ O app resolve um problema muito concreto: vendedor visita cliente, monta o pedid
 
 ## 🔑 Princípio central: Offline-first
 
-Diferente de apps que são "online com cache", este app é **offline por padrão** — nenhuma tela ou ação do dia a dia (cadastro de clientes/produtos, montagem de pedidos, geração de PDF) depende de rede pra funcionar. A rede é tocada só em segundo plano, para dois fins específicos, nenhum deles bloqueante:
+Diferente de apps que são "online com cache", este app é **offline por padrão** — nenhuma tela ou ação do dia a dia (cadastro de clientes/produtos, montagem de pedidos, geração de PDF) depende de rede pra funcionar. A rede é tocada só em segundo plano ou por ação explícita do vendedor, para três fins específicos, nenhum deles bloqueante:
 1. **Validar/renovar a licença de uso** (ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md)). **Atualizado em 2026-09-01:** deixou de acontecer só no vencimento — agora tenta validar sempre que possível (na abertura do app e a cada 5 minutos), mesmo com a licença longe de vencer, pra renovar proativamente. Continua **tolerante à ausência de internet**: sem conexão, o app segue funcionando normalmente até o dia seguinte ao do vencimento — só bloqueia depois disso.
 2. **Backup remoto automático e silencioso** (adicionado em 2026-09-07): uma vez por dia, se houver internet, o app envia um recorte reduzido dos dados (catálogo de produtos + vendas dos últimos 30 dias) pro Supabase Storage — só como rede de segurança pro suporte restaurar em caso de problema no aparelho, nunca como fonte de verdade operacional. Ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-backup-remoto-automático-supabase-storage).
+3. **Preenchimento automático de cadastro** (adicionado em 2026-09-11, Fase 14): no formulário de cliente, o vendedor pode opcionalmente buscar dados da empresa por CNPJ (BrasilAPI) ou o endereço por CEP (ViaCEP) — sempre por ação explícita (um toque), nunca automático. Sem internet ou em caso de falha, simplesmente não preenche nada e o formulário segue 100% editável manualmente, sem erro. Ver [docs/05-modulos-telas.md](./05-modulos-telas.md#-módulo-clientes).
 
 Isso implica decisões de arquitetura específicas:
-- Banco local (WatermelonDB) continua sendo a **única fonte de verdade em tempo de uso** — nenhuma tela lê ou depende de dado vindo da rede; os dois pontos de rede acima são unidirecionais (licença: só leitura; backup remoto: só escrita, "fire and forget") e nunca bloqueiam o uso do app.
+- Banco local (WatermelonDB) continua sendo a **única fonte de verdade em tempo de uso** — nenhuma tela lê ou depende de dado vindo da rede; os três pontos de rede acima são unidirecionais (licença: só leitura; backup remoto: só escrita, "fire and forget"; preenchimento automático: só leitura, sob ação do vendedor) e nunca bloqueiam o uso do app.
 - PDF gerado localmente no dispositivo (`expo-print`), não em um serviço remoto.
 - Compartilhamento via intents nativos do sistema operacional (`expo-sharing`/`expo-mail-composer`), não via API própria de envio.
 

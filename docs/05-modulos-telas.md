@@ -81,6 +81,10 @@ const clientSchema = z.object({
 - Modo edição carrega o registro via `database.get('clients').find(id)` e usa `reset()` do React Hook Form para popular o formulário.
 - Botão "Excluir cliente" (só em modo edição) com `Alert.alert` de confirmação antes de chamar `markAsDeleted()`.
 - **Modo somente-leitura (Fases 7/8):** botões "Salvar"/"Excluir cliente" ficam `disabled` quando `useLicenseAccess().readOnly`, com um aviso acima deles — os campos continuam visíveis (o cliente pode ser consultado normalmente), só não dá pra persistir mudanças.
+- **Preenchimento automático por CNPJ/CEP (Fase 14, 2026-09-11):** dois links de busca opcionais, sempre por toque explícito do vendedor:
+  - "Buscar dados da empresa pelo CNPJ" aparece só quando o campo Documento contém um CNPJ com dígito verificador válido (`isValidCNPJ`). Consulta a [BrasilAPI](https://brasilapi.com.br/) (`services/cnpjLookupService.ts`) e preenche nome/razão social, telefone e endereço completo.
+  - "Buscar endereço pelo CEP" aparece quando o campo CEP tem 8 dígitos. Consulta o [ViaCEP](https://viacep.com.br/) (`services/cepLookupService.ts`) e preenche rua, cidade e UF (número/complemento continuam manuais).
+  - Ambas as buscas checam conectividade antes de tentar (`NetInfo`) e falham silenciosamente (toast informativo, sem bloquear) se estiverem offline, o CNPJ/CEP não existir, ou a API estiver fora do ar — todos os campos continuam editáveis manualmente antes e depois da busca. Só se aplica a CNPJ, não a CPF (não existe consulta pública equivalente para pessoa física).
 - **Não implementado nesta fase:** atalho "Salvar e criar pedido" (mencionado em versões anteriores deste doc) — depende do módulo de Ordem de Venda, que é a Fase 5.
 
 ---

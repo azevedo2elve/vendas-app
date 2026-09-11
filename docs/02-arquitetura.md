@@ -217,12 +217,13 @@ npm run format:check    # prettier --check . (usado antes de commit/PR)
 
 ## 🔌 Pontos de integração externa (mínimos, por design)
 
-O app é offline-first — todas as telas e ações do dia a dia (clientes, produtos, pedidos, PDF) rodam 100% no dispositivo, sem chamada HTTP nenhuma. Só dois pontos tocam rede, e nenhum bloqueia o uso do app:
+O app é offline-first — todas as telas e ações do dia a dia (clientes, produtos, pedidos, PDF) rodam 100% no dispositivo, sem chamada HTTP nenhuma. Só três pontos tocam rede, e nenhum bloqueia o uso do app:
 
 | Integração | Quando é chamada | Serviço responsável |
 |---|---|---|
 | API de licença (validação/renovação) | Na abertura do app e a cada 5 min enquanto fica aberto (não só perto do vencimento — ver [docs/04](./04-sistema-licenca.md)) | `services/licenseService.ts` |
 | Backup remoto automático (Supabase Storage) | Uma vez por dia, se houver internet (silencioso, nunca bloqueia — ver [docs/04](./04-sistema-licenca.md#-backup-remoto-automático-supabase-storage)) | `services/remoteBackupService.ts` |
+| Preenchimento automático de cliente (CNPJ/CEP) | Só sob ação explícita do vendedor no `ClientFormScreen` (nunca automático) — Fase 14, 2026-09-11 | `services/cnpjLookupService.ts`, `services/cepLookupService.ts` |
 
 Todo o resto (PDF, compartilhamento, banco de dados) roda 100% no dispositivo, sem chamadas HTTP.
 

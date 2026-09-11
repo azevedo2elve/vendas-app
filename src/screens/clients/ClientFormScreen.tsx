@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Controller, useForm } from 'react-hook-form';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { Q } from '@nozbe/watermelondb';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,8 +15,10 @@ import { useToast } from '@/components/Toast';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, spacing } from '@/theme';
+import { lookupCep } from '@/services/cepLookupService';
+import { lookupCnpj } from '@/services/cnpjLookupService';
 import { onlyDigits } from '@/utils/masks';
-import { isValidCpfOuCnpj } from '@/utils/validators';
+import { isValidCNPJ, isValidCpfOuCnpj } from '@/utils/validators';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ClientForm'>;
 
@@ -58,16 +61,65 @@ export function ClientFormScreen({ navigation, route }: Props) {
   const { showToast } = useToast();
   const { readOnly } = useLicenseAccess();
 
+  const [cnpjLookupLoading, setCnpjLookupLoading] = useState(false);
+  const [cepLookupLoading, setCepLookupLoading] = useState(false);
+
   const {
     control,
     handleSubmit,
     reset,
     setError,
+    setValue,
+    getValues,
     formState: { errors },
   } = useForm<ClientFormValues>({
     resolver: zodResolver(clientSchema),
     defaultValues: EMPTY_FORM,
   });
+
+  const documentValue = useWatch({ control, name: 'document' });
+  const zipValue = useWatch({ control, name: 'addressZip' });
+  const canLookupCnpj = isValidCNPJ(documentValue);
+  const canLookupCep = onlyDigits(zipValue ?? '').length === 8;
+
+  async function handleLookupCnpj() {
+    setCnpjLookupLoading(true);
+    try {
+      const result = await lookupCnpj(getValues('document'));
+      if (!result) {
+        showToast('Não foi possível buscar o CNPJ agora. Preencha manualmente.', 'info');
+        return;
+      }
+      if (result.name) setValue('name', result.name);
+      if (result.phone.length >= 10) setValue('phone', result.phone);
+      if (result.addressStreet) setValue('addressStreet', result.addressStreet);
+      if (result.addressNumber) setValue('addressNumber', result.addressNumber);
+      if (result.addressComplement) setValue('addressComplement', result.addressComplement);
+      if (result.addressCity) setValue('addressCity', result.addressCity);
+      if (result.addressState) setValue('addressState', result.addressState);
+      if (result.addressZip) setValue('addressZip', result.addressZip);
+      showToast('Dados da empresa preenchidos.', 'success');
+    } finally {
+      setCnpjLookupLoading(false);
+    }
+  }
+
+  async function handleLookupCep() {
+    setCepLookupLoading(true);
+    try {
+      const result = await lookupCep(getValues('addressZip') ?? '');
+      if (!result) {
+        showToast('Não foi possível buscar o CEP agora. Preencha manualmente.', 'info');
+        return;
+      }
+      if (result.street) setValue('addressStreet', result.street);
+      if (result.city) setValue('addressCity', result.city);
+      if (result.state) setValue('addressState', result.state);
+      showToast('Endereço preenchido.', 'success');
+    } finally {
+      setCepLookupLoading(false);
+    }
+  }
 
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? 'Editar cliente' : 'Novo cliente' });
@@ -202,6 +254,17 @@ export function ClientFormScreen({ navigation, route }: Props) {
         )}
       />
 
+      {canLookupCnpj ? (
+        <TouchableOpacity style={styles.lookupLink} onPress={handleLookupCnpj} disabled={cnpjLookupLoading}>
+          {cnpjLookupLoading ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons name="search-outline" size={16} color={colors.accent} />
+          )}
+          <Text style={styles.lookupLinkText}>Buscar dados da empresa pelo CNPJ</Text>
+        </TouchableOpacity>
+      ) : null}
+
       <Controller
         control={control}
         name="phone"
@@ -301,6 +364,17 @@ export function ClientFormScreen({ navigation, route }: Props) {
         )}
       />
 
+      {canLookupCep ? (
+        <TouchableOpacity style={styles.lookupLink} onPress={handleLookupCep} disabled={cepLookupLoading}>
+          {cepLookupLoading ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons name="search-outline" size={16} color={colors.accent} />
+          )}
+          <Text style={styles.lookupLinkText}>Buscar endereço pelo CEP</Text>
+        </TouchableOpacity>
+      ) : null}
+
       {readOnly ? (
         <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, não é possível salvar.</Text>
       ) : null}
@@ -356,6 +430,18 @@ const styles = StyleSheet.create({
   },
   formRowItemWide: {
     flex: 2,
+  },
+  lookupLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+    marginTop: -4,
+  },
+  lookupLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
   },
   deleteButton: {
     marginTop: 4,

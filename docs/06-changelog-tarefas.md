@@ -33,6 +33,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
 | **Fase 13** | PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente | 🟢 Concluído |
+| **Fase 14** | Preenchimento automático de cadastro (CNPJ e CEP) | 🟢 Concluído |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -409,6 +410,21 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Tipo:** feature
 - **Resumo:** A pedido do cliente, a `delivery_date` (adicionada mais cedo nesta mesma fase) passou a aparecer nos cards de pedido onde antes só existia no PDF e no detalhe: nos "Últimos pedidos" da `HomeScreen` e na listagem `OrderListScreen`. Em ambos, uma linha "Entrega em dd/mm/aaaa" (ícone `cube-outline`, cor de destaque) aparece só quando o pedido tem data de entrega definida — omitida por completo quando não há.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+---
+
+## Fase 14 — Preenchimento automático de cadastro (CNPJ e CEP)
+
+### 2026-09-11 — Busca de dados da empresa por CNPJ e endereço por CEP no cadastro de cliente
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente em 2026-09-11, priorizado e implementado no mesmo dia (o registro de backlog original desta fase foi substituído por esta entrada).
+  - **`src/services/cnpjLookupService.ts`** (novo): `lookupCnpj(cnpj)` consulta a [BrasilAPI](https://brasilapi.com.br/) (`GET /api/cnpj/v1/{cnpj}`, pública, gratuita, sem chave, dados oficiais da Receita Federal) e devolve razão social, telefone e endereço completo (rua montada a partir de `descricao_tipo_de_logradouro` + `logradouro`, ex.: "AVENIDA PAULISTA"). Só aceita 14 dígitos — não existe (nem pode existir, por restrição legal de privacidade) consulta pública equivalente para CPF.
+  - **`src/services/cepLookupService.ts`** (novo): `lookupCep(cep)` consulta o [ViaCEP](https://viacep.com.br/) (`GET /ws/{cep}/json/`) e devolve rua, cidade e UF. Só aceita 8 dígitos.
+  - Ambos seguem o mesmo contrato: checam conectividade primeiro (`NetInfo.fetch()`, mesmo padrão de `remoteBackupService.ts`) e retornam `null` — nunca lançam erro — em qualquer cenário de falha (offline, CNPJ/CEP inexistente, HTTP não-ok, erro de rede). Nenhum campo tem "bairro" no schema de `clients` (ver [docs/03](./03-banco-de-dados.md#-tabela-clients)), então esse dado (retornado por ambas as APIs) é ignorado, sem forçar em outro campo.
+  - **`ClientFormScreen`:** dois links de busca opcionais (nunca automáticos, só por toque) — "Buscar dados da empresa pelo CNPJ" (visível quando o Documento é um CNPJ com dígito verificador válido, `isValidCNPJ`) e "Buscar endereço pelo CEP" (visível com 8 dígitos no CEP). Em caso de falha, toast informativo ("Preencha manualmente"), nunca um erro bloqueante — os campos continuam 100% editáveis antes e depois da busca. Usa `useWatch` (não `watch()` de `useForm()`) para os dois campos observados, evitando o aviso do React Compiler sobre memoização de funções do React Hook Form.
+  - Passa a ser o **terceiro** ponto de rede real do app (além de licença e backup remoto) — `docs/01-visao-geral.md` e `docs/02-arquitetura.md` atualizados.
+- **Testes:** 11 novos testes (`cnpjLookupService.test.ts`, `cepLookupService.test.ts`) cobrindo entrada inválida, offline, sucesso, CNPJ/CEP não encontrado, HTTP não-ok e falha de rede — mesmo padrão de mock de `NetInfo`/`global.fetch` já usado em `licenseService.test.ts`. Suíte completa: 59 testes, todos passando. `tsc --noEmit` e `expo lint` limpos (0 erros, 0 warnings); `expo export --platform android` compila o bundle sem erro.
+- **Docs afetados:** `docs/01-visao-geral.md`, `docs/02-arquitetura.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
 ---
 
