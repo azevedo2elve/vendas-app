@@ -95,11 +95,16 @@ Como o app depende de código nativo (WatermelonDB), dá pra gerar um APK comple
 npx expo prebuild --platform android --clean   # gera/regenera a pasta android/ (gitignored)
 cd android
 ./gradlew assembleDebug     # rápido, assinado com a chave debug padrão — só pra testar que compila
-./gradlew assembleRelease   # o que de fato deve ser instalado no cliente
+
+# release de distribuição de verdade — ver flags abaixo
+./gradlew assembleRelease \
+  -PreactNativeArchitectures=arm64-v8a \
+  -Pandroid.enableMinifyInReleaseBuilds=true \
+  -Pandroid.enableShrinkResourcesInReleaseBuilds=true
 ```
 
 - **`assembleDebug`** empacota todas as arquiteturas sem compressão (~180-190MB) e inclui ferramentas de dev — serve só pra validar que o ambiente compila, não pra entregar pra ninguém.
-- **`assembleRelease`** é bem menor e é o artefato certo pra instalar no celular do cliente (habilitar "fontes desconhecidas" nas configurações do Android pra instalar um `.apk` fora da Play Store).
+- **`assembleRelease`** é o artefato certo pra instalar no celular do cliente (habilitar "fontes desconhecidas" nas configurações do Android pra instalar um `.apk` fora da Play Store). Sem as flags, o template padrão do Expo gera um `.apk` universal (todas as arquiteturas, ~78MB) com R8/shrinkResources desligados. Com as três flags acima — `arm64-v8a` (cobre praticamente todo Android moderno; trocar por `armeabi-v7a` só pra aparelhos bem antigos) + minify + shrinkResources — o mesmo build cai pra **~27MB**, e é a configuração recomendada mesmo fora de qualquer restrição de tamanho (código/recursos não usados removidos de verdade, não é só uma economia de espaço).
 - **Assinatura do release:** por padrão, o template do Expo assina o `release` com a mesma chave `debug` (comentário no próprio `android/app/build.gradle`: "Caution! In production, you need to generate your own keystore"). Gerada uma chave de release de verdade em 2026-09-08 (`keytool`, RSA 2048, validade 10.000 dias) — guardada em `/keystore/vendas-app-release.keystore` **na raiz do projeto** (não dentro de `android/`, que é apagada e regenerada a cada `expo prebuild`), com as credenciais em `/keystore.properties`, também na raiz. Ambos no `.gitignore` — nunca vão pro Git, e foram entregues diretamente pro usuário (mesma lógica do `.env`, mas para um segredo ainda mais crítico).
   ```gradle
   // android/app/build.gradle — keystoreProperties lido de ../../keystore.properties (raiz do
