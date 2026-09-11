@@ -12,6 +12,7 @@ import {
   saveBackupToDevice,
   type BackupPreview,
 } from '@/services/backupService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 
 type FeedbackState = { type: 'success' | 'error'; message: string };
 
@@ -23,6 +24,7 @@ export function BackupScreen() {
   const [preview, setPreview] = useState<BackupPreview | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   async function handleExport() {
     setExporting(true);
@@ -31,7 +33,7 @@ export function BackupScreen() {
       const result = await exportBackup();
       setFeedback({
         type: 'success',
-        message: `Backup gerado com ${result.clientsCount} cliente(s) e ${result.productsCount} produto(s). Escolha onde salvar/enviar no menu que abriu.`,
+        message: `Backup gerado com ${result.clientsCount} cliente(s), ${result.productsCount} produto(s) e ${result.ordersCount} pedido(s). Escolha onde salvar/enviar no menu que abriu.`,
       });
     } catch (error) {
       setFeedback({ type: 'error', message: `Não foi possível exportar o backup: ${String(error)}` });
@@ -48,7 +50,7 @@ export function BackupScreen() {
       if (result) {
         setFeedback({
           type: 'success',
-          message: `Backup salvo com ${result.clientsCount} cliente(s) e ${result.productsCount} produto(s) na pasta escolhida.`,
+          message: `Backup salvo com ${result.clientsCount} cliente(s), ${result.productsCount} produto(s) e ${result.ordersCount} pedido(s) na pasta escolhida.`,
         });
       }
     } catch (error) {
@@ -81,7 +83,7 @@ export function BackupScreen() {
       const result = await importBackup(preview.data);
       setFeedback({
         type: 'success',
-        message: `Importação concluída: ${result.clientsImported} cliente(s) e ${result.productsImported} produto(s) adicionados.`,
+        message: `Importação concluída: ${result.clientsImported} cliente(s), ${result.productsImported} produto(s) e ${result.ordersImported} pedido(s) adicionados.`,
       });
       showToast('Importação concluída com sucesso!', 'success');
       setPreview(null);
@@ -102,12 +104,12 @@ export function BackupScreen() {
           <Text style={styles.cardTitle}>Exportar backup</Text>
         </View>
         <Text style={styles.description}>
-          Gera um arquivo JSON com todos os Clientes e Produtos cadastrados.
+          Gera um arquivo JSON com todos os Clientes, Categorias, Produtos e Ordens de Venda cadastrados.
         </Text>
         <PrimaryButton label="Compartilhar backup" icon="share-outline" onPress={handleExport} loading={exporting} />
         <Text style={styles.description}>
-          Se o menu de compartilhamento não tiver uma opção para salvar direto no aparelho (comum em
-          emuladores), use o botão abaixo para escolher uma pasta (ex: Downloads) e salvar ali.
+          Se o menu de compartilhamento não tiver uma opção para salvar direto no aparelho (comum em emuladores), use o
+          botão abaixo para escolher uma pasta (ex: Downloads) e salvar ali.
         </Text>
         <PrimaryButton
           label="Salvar no dispositivo"
@@ -126,15 +128,22 @@ export function BackupScreen() {
           <Text style={styles.cardTitle}>Importar backup</Text>
         </View>
         <Text style={styles.description}>
-          Restaura Clientes, Categorias e Produtos a partir de um arquivo de backup exportado anteriormente.
-          Registros já existentes (mesmo CPF/CNPJ ou mesmo nome) são ignorados — não duplica dados.
+          Restaura Clientes, Categorias, Produtos e Ordens de Venda a partir de um arquivo de backup exportado
+          anteriormente. Registros já existentes (mesmo CPF/CNPJ, nome, ou cliente+número do pedido) são ignorados — não
+          duplica dados. A data de criação original dos pedidos não é preservada (vira a data da importação).
         </Text>
+        {readOnly ? (
+          <Text style={styles.readOnlyNotice}>
+            Licença expirada — importação indisponível (exportar continua liberado).
+          </Text>
+        ) : null}
         <PrimaryButton
           label="Escolher arquivo de backup"
           variant="outline"
           icon="folder-open-outline"
           onPress={handlePickFile}
           loading={picking}
+          disabled={readOnly}
         />
 
         {preview ? (
@@ -152,12 +161,23 @@ export function BackupScreen() {
               • {preview.newProducts} produto(s) novo(s)
               {preview.duplicateProducts > 0 ? ` (${preview.duplicateProducts} já existem, serão ignorados)` : ''}
             </Text>
+            <Text style={styles.previewRow}>
+              • {preview.newOrders} pedido(s) novo(s)
+              {preview.skippedOrders > 0
+                ? ` (${preview.skippedOrders} ignorados — já existem ou cliente não encontrado)`
+                : ''}
+            </Text>
             <View style={styles.previewActions}>
               <PrimaryButton
                 label="Confirmar importação"
                 onPress={handleConfirmImport}
                 loading={importing}
-                disabled={preview.newClients === 0 && preview.newCategories === 0 && preview.newProducts === 0}
+                disabled={
+                  preview.newClients === 0 &&
+                  preview.newCategories === 0 &&
+                  preview.newProducts === 0 &&
+                  preview.newOrders === 0
+                }
                 style={styles.previewActionButton}
               />
               <PrimaryButton
@@ -228,6 +248,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 19,
+  },
+  readOnlyNotice: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.warningStrong,
   },
   previewBox: {
     backgroundColor: colors.slate50,

@@ -19,18 +19,19 @@ Aplicativo mobile focado em força de vendas para microempreendedores. O app ope
 
 ### 1. Sistema de Licença Offline com Renovação no Vencimento
 - **Campos Locais:** `device_id` (UUID), `license_expires_at` (ISO timestamp), `license_status` ('active' | 'expired' | 'blocked'), `last_opened_at` (ISO timestamp).
-- **Modo Offline:** Enquanto `agora < license_expires_at` e `agora >= last_opened_at`, o app funciona 100% offline sem fazer chamadas de rede.
-- **Chegada do Vencimento:** Quando `agora >= license_expires_at`, o app deve validar a renovação:
-  - **Com internet:** Faz fetch na API de licença, atualiza o novo `license_expires_at` e segue operando.
-  - **Sem internet (ou status bloqueado):** Bloqueia a emissão de pedidos e apresenta tela de bloqueio com aviso e botão de retry.
+- **Validação contínua (atualizado 2026-09-01):** o app tenta validar a licença com o servidor sempre que possível — na abertura e a cada 5 minutos enquanto fica aberto — mesmo com `agora` bem antes de `license_expires_at`. Sem internet, isso nunca gera erro nem bloqueia por si só: o app segue funcionando 100% offline normalmente enquanto `license_expires_at` for hoje ou uma data futura.
+- **Chegada do Vencimento:** Quando `agora >= license_expires_at`:
+  - **Com internet:** Faz fetch na API de licença; se validar, atualiza o novo `license_expires_at` e segue operando; se a validação vier negativa (dispositivo não cadastrado ou licença recusada), bloqueia.
+  - **Sem internet, ainda no mesmo dia do vencimento:** segue em modo somente leitura (não bloqueia).
+  - **Sem internet, e já passou pelo menos 1 dia inteiro desde o vencimento:** bloqueia a emissão de pedidos e apresenta tela de bloqueio com aviso e botão de retry.
 - **Anti-fraude de relógio:** Se a data atual for menor que `last_opened_at`, bloqueia imediatamente.
 
 ### 2. Módulos do Sistema
 1. **Clientes:** Cadastro local (Nome, CPF/CNPJ, Telefone/WhatsApp, Endereço) com busca indexada.
-2. **Produtos:** Cadastro local (Nome, SKU, Preço de venda em BRL, Unidade de medida) com filtros.
+2. **Produtos:** Cadastro local (Nome, Categoria, Preço de venda em BRL, Unidade de medida, foto opcional — só visual, nunca vai pro PDF/backup) com filtros por categoria.
 3. **Ordem de Venda:** Seleção de cliente -> Carrinho de produtos (quantidade + desconto) -> Resumo com totais -> Persistência local no WatermelonDB.
 4. **PDF & WhatsApp:** Geração de documento PDF em formato A4 profissional (com tabela de itens e totais) disparado diretamente via menu nativo de compartilhamento.
-5. **Backup:** Exportação/Importação local em formato JSON.
+5. **Backup:** Exportação/Importação local em formato JSON (sob controle do vendedor, inclusive por e-mail pro suporte) **+** backup remoto automático e silencioso (produtos + vendas de 30 dias) pro Supabase Storage, como rede de segurança — ver [docs/04-sistema-licenca.md](./docs/04-sistema-licenca.md#-backup-remoto-automático-supabase-storage).
 
 ---
 

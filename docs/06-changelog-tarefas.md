@@ -21,17 +21,19 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 |---|---|---|
 | **Fase 0** | Estruturação inicial e documentação | 🟢 Concluído |
 | **Fase 1** | Setup do projeto (Expo, TypeScript, navegação base) | 🟢 Concluído |
-| **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟡 Em andamento (schema v1 + models prontos; `migrations.ts` só entra na 1ª alteração pós-v1) |
+| **Fase 2** | Banco de dados local (WatermelonDB: schema, migrations, models) | 🟢 Concluído (`migrations.ts` existe e está em uso desde a Fase 5, hoje na v5 — status estava desatualizado, corrigido em 2026-09-01) |
 | **Fase 3** | Módulo Clientes (CRUD + busca indexada) | 🟢 Concluído |
 | **Fase 4** | Módulo Produtos (CRUD + filtros) | 🟢 Concluído |
 | **Fase 5** | Módulo Ordem de Venda (carrinho, cálculo, persistência) | 🟢 Concluído |
 | **Fase 6** | Geração de PDF e compartilhamento (WhatsApp/e-mail) | 🟢 Concluído (implementado na Fase 10, junto com o redesign visual) |
-| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟡 Em andamento (`licenseService` + `useLicenseGuard` + `LicenseBlockedScreen` prontos; acesso somente-leitura em `expired` depende das Fases 3/4/8) |
-| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟡 Em andamento (Clientes + Produtos prontos; falta incluir `orders`/`order_items` agora que a Fase 5 existe; acesso mesmo com licença `expired` ainda não implementado) |
-| **Fase 9** | Polimento, testes e preparação para build (EAS) | ⚪ Não iniciado (revisão visual das telas críticas antecipada pela Fase 10; faltam testes automatizados e build EAS) |
+| **Fase 7** | Sistema de Licença Offline (validação, renovação, tela de bloqueio) | 🟢 Concluído (testes automatizados de `evaluateLicense()` adicionados em 2026-09-08) |
+| **Fase 8** | Módulo Backup (exportação/importação JSON) | 🟢 Concluído |
+| **Fase 9** | Polimento, testes e preparação para build (EAS) | 🟢 Concluído (primeiro APK gerado via build local em 2026-09-08, sem depender de conta EAS — ver entrada abaixo). `eas login`/`eas init` numa conta Expo real seguem como ação exclusiva do usuário **só se/quando** ele quiser passar a usar o build em nuvem em vez do local — não é mais um bloqueio pra ter um APK instalável. |
 | **Fase 10** | Redesign visual comercial (design system, dashboard, PDF, tablet) | 🟢 Concluído |
 | **Fase 11** | Tela de Configurações (empresa/vendedor, dispositivo/licença, backup, dados) | 🟢 Concluído |
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
+| **Fase 13** | PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente | 🟢 Concluído |
+| **Fase 14** | Preenchimento automático de cadastro (CNPJ e CEP) | 🟢 Concluído |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -58,18 +60,31 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] Configurar estrutura de pastas conforme [docs/02-arquitetura.md](./02-arquitetura.md).
 - [x] Configurar alias de import `@/` no `tsconfig.json` e `babel.config.js`.
 - [x] Instalar e configurar React Navigation (`native-stack`).
-- [ ] Instalar React Hook Form + Zod + `@hookform/resolvers` (adiado para a Fase 3/4, quando os formulários de Clientes/Produtos entrarem em cena).
-- [ ] Configurar ESLint/Prettier alinhados aos padrões de código descritos em [docs/02-arquitetura.md](./02-arquitetura.md#-padrões-de-código).
+- [x] Instalar React Hook Form + Zod + `@hookform/resolvers` — feito na Fase 3 (`ClientFormScreen`), checkbox estava desatualizada.
+- [x] Configurar ESLint/Prettier alinhados aos padrões de código descritos em [docs/02-arquitetura.md](./02-arquitetura.md#-padrões-de-código) — implementado em 2026-09-08, ver entrada abaixo. **Fase 1 100% concluída.**
+
+### 2026-09-08 — ESLint + Prettier configurados, lints corrigidos — Fase 1 concluída
+- **Tipo:** chore / fix
+- **Resumo:** Última pendência da Fase 1. `npx expo lint` (comando oficial do Expo) configurou ESLint com `eslint-config-expo` (`eslint.config.js`, flat config). Prettier instalado à parte (`.prettierrc.json`: aspas simples, `printWidth: 120`, igual ao estilo que o código já seguia) — `.prettierignore` deixa `docs/`/`CLAUDE.md` de fora de propósito (markdown com tabelas/formatação cuidadosa à mão). Scripts novos: `npm run lint`, `npm run format`, `npm run format:check`.
+- **Achados do lint corrigidos (18 erros, 4 avisos):** a maioria era a regra nova `react-hooks/refs` ("Cannot access refs during render") pegando o padrão `useRef(new Animated.Value(x)).current` usado em `CollapsibleCard.tsx`, `Toast.tsx` e `OrderSuccessScreen.tsx` pra criar uma instância de `Animated.Value` estável uma única vez — trocado por `useState(() => new Animated.Value(x))[0]` (mesmo efeito, sem ler `.current` de um ref durante a renderização). `useLicenseGuard.ts` tinha um `setState` síncrono dentro de um `useEffect` (`react-hooks/set-state-in-effect`) — o efeito de montagem chamava `check()` inteiro, mas o reset síncrono pra `checking: true` que `check()` faz já é redundante nesse caso (o estado inicial já é esse); trocado por chamar `evaluateLicense()` direto nesse efeito específico (`check()` continua completo pra uso via `retry`, chamado de um handler de UI, não de um efeito). Resto: imports não usados (`View` em `ReadOnlyBanner.tsx`/`Toast.tsx`, `radii` em `OrderDetailScreen.tsx`) e um `Array<T>` → `T[]` em `remoteBackupService.ts`.
+- **`npx prettier --write .`** rodado uma vez em todo o código (29 arquivos, só formatação — nenhuma mudança de comportamento).
+- **Achado extra do checklist de conformidade (Fase 9):** `docs/02-arquitetura.md` tinha a mesma desatualização já corrigida em `docs/01` — a tabela "Pontos de integração externa" ainda listava só a licença como "único ponto de rede real", sem o backup remoto automático. Corrigido junto.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/06-changelog-tarefas.md`.
 
 ---
 
 ## Fase 2 — Banco de dados local
 
+### 2026-09-01 — Auditoria: status da fase estava desatualizado (sem mudança de código)
+- **Tipo:** docs
+- **Resumo:** Revisão pedida pelo usuário: conferir se a Fase 2 (banco de dados local) foi implementada corretamente e se a documentação reflete o estado real. Validado item a item — `src/database/schema.ts` (v5, 7 tabelas), `src/database/migrations.ts` (histórico v2→v5 completo, sem gaps), os 7 models (`Client`, `Category`, `Product`, `Order`, `OrderItem`, `LicenseControl`, `CompanySettings`, todos com campos batendo exatamente com as colunas do schema) e o registro de todos em `modelClasses` (`src/database/index.ts`) — tudo correto, sem nenhuma alteração de código necessária. O único problema era a tabela de fases e a checklist abaixo, que ainda diziam "`migrations.ts` não criado" — desatualizado desde a Fase 5 (2026-08-23), quando esse arquivo foi criado e vem sendo usado normalmente a cada schema novo (v3 na Fase 11, v4 na Fase 12, v5 na Fase 13). Também comparado o bloco de código do schema em [docs/03](./03-banco-de-dados.md#-definição-do-schema-srcdatabaseschemats) contra o arquivo real via `diff` — idêntico.
+- **Docs afetados:** `docs/06-changelog-tarefas.md` (esta entrada + status/checklist abaixo).
+
 ### Tarefas planejadas
 - [x] Instalar `@nozbe/watermelondb` e adapter SQLite.
 - [x] Implementar `src/database/schema.ts` conforme [docs/03-banco-de-dados.md](./03-banco-de-dados.md).
-- [x] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl`.
-- [ ] Configurar `src/database/migrations.ts` — não criado ainda; schema está na v1 inicial, migrations só são necessárias a partir da 1ª alteração de schema.
+- [x] Implementar models: `Client`, `Product`, `Order`, `OrderItem`, `LicenseControl` — ganharam mais 2 desde então (`Category`, Fase 12; `CompanySettings`, Fase 11).
+- [x] Configurar `src/database/migrations.ts` — criado na Fase 5 (schema v1 → v2); checkbox estava desatualizada, o arquivo existe e está em uso normal desde então.
 - [x] Dados reativos nas listagens — decidido usar `withObservables` (`@nozbe/watermelondb/react`) direto nas telas de lista (Fase 3/4), em vez de um hook `useWatermelonData` customizado. `withObservables` já é a forma idiomática do WatermelonDB de conectar uma query observável a props de componente; um hook próprio seria uma camada redundante por cima disso sem necessidade concreta ainda.
 
 ---
@@ -100,6 +115,12 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `ProductListScreen` com busca por nome/SKU (filtro por categoria descartado — sem coluna `category` no schema).
 - [x] `ProductFormScreen` com máscara de preço (BRL, em centavos) e validação de SKU único.
 
+### 2026-09-01 — Foto do produto (visual apenas, não entra no PDF)
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: poder cadastrar uma foto por produto para facilitar a visualização ao montar o pedido, sem impactar o PDF nem o armazenamento. Adicionada coluna `products.photo_path` (schema v6, `src/database/migrations.ts`) guardando só o **caminho** de um arquivo de imagem — nunca a foto em si no banco. Novo `src/services/productPhotoService.ts` (`expo-image-picker` + `expo-image-manipulator` + a API nova do `expo-file-system`: `File`/`Directory`/`Paths`) tira foto ou escolhe da galeria, redimensiona para no máximo 640px de largura e recomprime em JPEG ~60%, salvando em `product-photos/` dentro de `Paths.document`; apaga o arquivo anterior ao trocar a foto e ao excluir o produto (nunca deixa arquivo órfão). `ProductFormScreen` ganhou um seletor de foto no topo do formulário (`Alert.alert` com Câmera/Galeria/Remover); `ProductListScreen` e `OrderItemsScreen` mostram a miniatura no card quando existe. Permissões de câmera/galeria configuradas em `app.json` (plugin `expo-image-picker`, mensagens em pt-BR).
+- **Decisão:** a foto **não** entra no PDF de pedido (`templates/orderTemplate.ts` não foi alterado) nem no backup JSON (`backupService.ts` não exporta `photoPath`) — é só uma conveniência visual local, evitando inflar o PDF e o arquivo de backup.
+- **Docs afetados:** `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Fase 5 — Módulo Ordem de Venda
@@ -118,7 +139,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `OrderReviewScreen` (resumo, desconto geral, forma de pagamento, observações, confirmação e persistência) — nome final diferente do planejado (`OrderSummaryScreen`).
 - [x] `OrderListScreen` + `OrderDetailScreen` (listagem com filtro/busca + detalhe com cancelamento/exclusão) — substituiu o `OrderHistoryScreen` planejado, com escopo maior (inclui detalhe e ações de status).
 - [x] Cálculo de totais centralizado em `src/types/orderDraft.ts` (helpers puros) + `src/services/orderService.ts` — sem testes automatizados ainda (pendente, junto com o restante da suíte de testes — Fase 9).
-- [ ] Incluir `orders`/`order_items` no módulo de Backup — o módulo de Ordem de Venda agora existe, mas essa integração com `backupService.ts` (Fase 8) ainda não foi feita.
+- [x] Incluir `orders`/`order_items` no módulo de Backup — feito na Fase 8 em 2026-09-01 (checkbox estava desatualizada; ver entrada "Incluir `orders`/`order_items` no backup" na Fase 8).
 
 ---
 
@@ -154,14 +175,62 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Avaliamos duas formas de manter `license_status` sincronizado com `license_expires_at` no Supabase: (a) o app fazer o write-back a cada fetch, ou (b) um job `pg_cron` no banco. Optamos por (b): dar à chave `anon` permissão de `UPDATE` na tabela `licenses` (opção a) seria um risco de segurança sério, já que essa chave vem embutida no APK e não há autenticação por dispositivo — qualquer app instalado poderia reescrever o status de **qualquer** `device_id`, não só o próprio. O job `pg_cron` (`sync_license_statuses()`, substituindo o `expire_licenses()` anterior) agora sincroniza status nos dois sentidos (`active → expired` e `expired → active`, conforme a data), mas nunca sobrescreve `'blocked'` — que continua sendo um kill switch manual, independente da data. Nenhuma mudança de código neste repo; só SQL no Supabase (documentado em `docs/04`).
 - **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Acesso somente-leitura em `expired`, e backup liberado mesmo em `blocked`
+- **Tipo:** feature
+- **Resumo:** Revisão pedida pelo usuário ("revisar as fases em andamento"). Implementada a distinção de acesso que ficava pendente desde a Fase 1, agora que Clientes/Produtos/Backup (Fases 3, 4, 8) existem. `RootNavigator` deixou de ser binário:
+  - `blocked` continua mostrando só `LicenseBlockedScreen`, sem montar nenhuma tela de negócio — mas essa tela ganhou um botão **"Exportar meus dados (Backup)"**, chamando `backupService.exportBackup()` direto (decisão: liberado em **qualquer** motivo de bloqueio, revertendo uma indicação anterior deste doc que previa esconder o botão em `server_rejected`).
+  - `expired` passou a montar o app inteiro normalmente, envolto por um novo `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`) com `readOnly = true`, e uma faixa fixa (`ReadOnlyBanner`, novo componente) acima da navegação com aviso + retry.
+  - Novos hooks no mesmo arquivo: `useLicenseAccess()` (`{ readOnly }`, usado dentro de formulários/detalhes pra desabilitar botões de escrita) e `useReadOnlyGuard()` (`{ readOnly, guard }`, usado nos pontos de entrada de criação — FABs, "Nova Venda" — pra avisar e não navegar).
+  - Telas afetadas: `HomeScreen` (Nova Venda/Novo Cliente guardados; pill de licença deixou de ser estática), `ClientListScreen`/`ProductListScreen`/`OrderListScreen` (FABs guardados), `ClientFormScreen`/`ProductFormScreen`/`OrderDetailScreen`/`SettingsScreen` (botões de escrita desabilitados), `CategoryListScreen` (adicionar/renomear/excluir somem), `BackupScreen` (só a importação é desabilitada — exportar nunca é bloqueado).
+- **Docs afetados:** `docs/04-sistema-licenca.md` (tabela de regras atualizada de "planejado" para "implementado"), `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-11 — Fix: checagem de `license_expires_at` ausente no fetch remoto + "Verificar Licença Agora" demorava a bloquear a tela
+- **Tipo:** fix
+- **Resumo:** Dois bugs relacionados, achados pelo usuário testando licença em HML (mudou `license_expires_at` pra uma data passada direto no Supabase e observou comportamento inesperado no tablet):
+  1. **`fetchLicenseFromSupabase` não checava a data vencida.** A entrada de 2026-08-21 acima ("Botão de debug + `license_expires_at` como fonte da verdade") já tinha descrito essa checagem como implementada, mas o código atual só validava `license_status !== 'active'` — sem olhar `license_expires_at` nenhuma vez no caminho online. Na prática, sem o job `pg_cron` (`docs/04`) configurado no Supabase (passo manual, fácil de esquecer), uma licença vencida com `license_status` ainda `active` no banco ficaria válida pra sempre enquanto o app tivesse internet. Reintroduzida a checagem: `license_status === 'active'` **e** `license_expires_at` no futuro, os dois obrigatórios.
+  2. **Bloqueio detectado no botão "Verificar Licença Agora" (Configurações) demorava a travar a tela.** Esse botão chamava `evaluateLicense()` direto, só atualizando o snapshot local da própria tela de Configurações — o `RootNavigator`, que decide se mostra `LicenseBlockedScreen`, usa sua **própria** instância de `useLicenseGuard()`, reavaliada sozinha só a cada 5 min (`setInterval`). Resultado: o status no banco já tinha virado `blocked`, mas o app continuava navegável por até 5 minutos. Fix: `LicenseAccessContext` (`src/hooks/useLicenseAccess.tsx`) passou a expor o `retry` do `RootNavigator` (a mesma instância), e `SettingsScreen` chama esse `retry` compartilhado em vez de `evaluateLicense()` isolado. Efeito colateral também corrigido: `retry()` deixou de resetar `checking` pra `true` a cada chamada — isso desmontava a árvore de navegação **inteira** (perdendo scroll/formulário de qualquer tela) toda vez que qualquer botão de retry (banners, tela de bloqueio, agora também Configurações) era pressionado; passou a atualizar o resultado silenciosamente, mesmo padrão já usado pela reavaliação periódica.
+- **Testes:** novo teste de regressão em `licenseService.test.ts` (status `active` remoto + `license_expires_at` vencido → `blocked`/`server_rejected`).
+- **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] `services/licenseService.ts` implementando a árvore de decisão de [docs/04-sistema-licenca.md](./04-sistema-licenca.md).
 - [x] `hooks/useLicenseGuard.ts`.
 - [x] `screens/License/LicenseBlockedScreen.tsx`.
 - [x] Integração com `@react-native-community/netinfo`.
 - [x] Validação/renovação remota real via Supabase (`fetchLicenseFromSupabase`), substituindo o endpoint placeholder.
-- [ ] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementação manual feita, cobertura de testes ainda pendente (Fase 9).
-- [ ] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — depende das Fases 3, 4 e 8 existirem.
+- [x] Testes automatizados do anti-fraude de relógio e dos estados de licença (`active`/`expired`/`blocked` + motivos) — implementado em 2026-09-08, ver entrada abaixo. Última pendência da fase — **Fase 7 concluída**.
+- [x] Acesso somente-leitura em `expired` para Clientes/Produtos/Backup — implementado em 2026-09-01 (ver entrada acima).
+
+### 2026-09-01 — Renovação proativa, tolerância de 1 dia para `blocked` e aviso de vencimento próximo
+- **Tipo:** feature
+- **Resumo:** Pedido explícito do usuário: (1) validar a licença já no dia do vencimento, não só depois de vencer de fato; (2) se, mesmo assim, continuar sem renovar, bloquear o app (não deixar o modo somente-leitura durar pra sempre); (3) um aviso não-bloqueante avisando com antecedência (5/2/1 dia, 2/1 hora) que a licença vai vencer, com botão de validar na hora.
+  - `useLicenseGuard.ts` ganhou um `setInterval` reavaliando a licença (`evaluateLicense()`) enquanto o app fica aberto — antes só rodava uma vez, na abertura. Também passou a expor `expiresAt`. (Intervalo ajustado para 5 min no mesmo dia — ver entrada seguinte.)
+  - `licenseService.ts` (`evaluateLicense()`): no próprio dia calendário do vencimento (mesmo antes da hora exata vencer), tenta renovar em segundo plano, silenciosamente, se online — se conseguir, a licença já chega renovada sem o vendedor perceber nada. Depois que vence de fato, se ainda não conseguir renovar e **já virou o dia seguinte** (1 dia de tolerância excedido), o status vira `blocked` (novo `reason: 'grace_period_exceeded'`) em vez de continuar em `expired` somente-leitura indefinidamente — decisão confirmada com o usuário antes de implementar, já que mudava o comportamento da Fase 7/8 anterior.
+  - Novo componente `src/components/LicenseExpiryBanner.tsx`: faixa dispensável (✕) no topo do app, mostrada só quando `status === 'active'` e o vencimento está dentro de um dos 5 limiares (5d/2d/1d/2h/1h) — mostra sempre o mais apertado já cruzado, com data/hora exata do vencimento e um botão "Validar agora" (mesma função de retry usada na `ReadOnlyBanner`). Contagem regressiva só local (sem rede); quem reavalia de verdade é o `setInterval` do `useLicenseGuard`.
+  - `LicenseBlockedScreen.tsx`: nova mensagem para `grace_period_exceeded`; e um aviso inline *"Ainda não foi possível validar sua licença..."* aparece se o botão "Tentar novamente" for usado e a tela continuar montada depois (sinal de que a tentativa falhou, já que se tivesse dado certo o `RootNavigator` já teria trocado de tela).
+- **Docs afetados:** `docs/04-sistema-licenca.md` (árvore de decisão, diagrama de estados, nova seção do `LicenseExpiryBanner`), `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-01 — Validação sempre que possível (não só perto do vencimento) + status detalhado na HomeScreen
+- **Tipo:** feature
+- **Resumo:** Ajuste fino pedido pelo usuário sobre a entrada anterior, no mesmo dia: (1) validar a licença assim que o app abre e a cada **5 minutos** (antes eram 15) — não só no dia do vencimento, mas sempre que possível, mesmo com a licença longe de vencer; (2) offline nunca gera erro nenhum, só bloqueia se a data de validade já registrada for anterior a hoje; (3) 5 status distintos no card de licença da `HomeScreen`.
+  - `licenseService.ts` (`evaluateLicense()`): reestruturado para **sempre tentar validar com o servidor primeiro** (se online e Supabase configurado), independente de quantos dias faltam pro vencimento — removida a restrição anterior de só tentar renovação proativa "no dia do vencimento" (`isExpirationDay`/`tryRenewSilently` removidos, incorporados ao fluxo principal). Só cai no cálculo local por data (`agora < license_expires_at` → `active`; passou 1 dia do vencimento → `blocked`; senão → `expired`) quando não dá pra contatar o servidor (offline, Supabase não configurado, ou falha de rede). Essa é uma mudança deliberada em relação ao princípio original "100% offline enquanto ativa" do `CLAUDE.md` (atualizado nesta mesma entrada) — o app agora aproveita qualquer internet disponível pra manter a licença sempre confirmada, mas continua **nunca exigindo** conexão para funcionar dentro da validade.
+  - `useLicenseGuard.ts`: intervalo de reavaliação mudou de 15 para 5 minutos.
+  - `useLicenseAccess.tsx` (contexto): passou a carregar também `expiresAt` (antes só `readOnly`), propagado pelo `RootNavigator` — usado pela `HomeScreen` sem precisar de uma leitura própria.
+  - `HomeScreen.tsx`: pill de conectividade agora mostra exatamente **"Online"**/**"Offline"** (antes "Modo Offline Ativo"). Pill de licença ganhou `licenseStatusLabel()`, com 5 rótulos possíveis: **"Licença Inválida"** (modo somente-leitura), **"Faltam 5 dias - validade"**, **"Faltam 2 dias - validade"**, **"Faltam 1 dia - validade"** (o mais apertado já cruzado, mesma lógica de limiares do `LicenseExpiryBanner`, mas só em dias) e **"Licença Válida"** fora dessa janela.
+  - `CLAUDE.md` atualizado para refletir a regra de licenciamento real (validação contínua, não mais "100% offline até vencer").
+- **Docs afetados:** `CLAUDE.md`, `docs/01-visao-geral.md`, `docs/04-sistema-licenca.md` (árvore de decisão e diagrama reescritos), `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-01 — Fix: contagem de dias da licença pulava de 5 pra 2, agora é contínua
+- **Tipo:** fix
+- **Resumo:** A entrada anterior implementou só 3 faixas fixas (5/2/1 dia), então o rótulo pulava de "Faltam 5 dias" direto pra "Faltam 2 dias" (nunca mostrava "4" ou "3"). Pedido do usuário: a contagem deve diminuir dia a dia a partir de 5 dias restantes. `HomeScreen.tsx` (`licenseStatusLabel()`) e `LicenseExpiryBanner.tsx` (`currentReminderLabel()`, renomeada de `currentThreshold()`) recalculados para `Math.ceil(remainingMs / ONE_DAY_MS)` em vez de comparar contra 3 limiares fixos — mostram "Faltam 5/4/3/2 dias" e "Falta 1 dia" (singular corrigido) continuamente. No banner, as duas faixas de hora (2h/1h) continuam como estavam; só a faixa de dias (5→1) passou a ser contínua. A chave de "aviso fechado" do banner mudou de um valor de limiar fixo para o próprio rótulo do dia — fechar em "3 dias" não esconde mais o aviso de "2 dias" no dia seguinte.
+- **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-08 — Testes automatizados de `evaluateLicense()` (Jest + jest-expo) — Fase 7 concluída
+- **Tipo:** feature / chore
+- **Resumo:** Última pendência da Fase 7. Configurado Jest pela primeira vez no projeto (`jest-expo` como preset — mock automático de módulos nativos + reaproveita o `babel.config.js` do próprio app, então o alias `@/` funciona nos testes sem config extra). `npm test`/`npm run test:watch` adicionados ao `package.json`. Nova suíte `src/services/__tests__/licenseService.test.ts` (10 casos) cobrindo `evaluateLicense()`: anti-fraude de relógio (`clock_tampered`), criação da licença na primeira execução (trial de 15 dias), validação remota com Supabase — renovação bem-sucedida, `not_registered` (array vazio), `server_rejected` (status não-ativo ou HTTP de erro), e fallback silencioso pro tratamento local se o `fetch` falhar apesar do `NetInfo` dizer "online" — e os três desfechos offline: `active` (ainda não venceu), `expired`/`offline` (venceu no mesmo dia) e `blocked`/`grace_period_exceeded` (já passou 1 dia inteiro do vencimento).
+- **Abordagem de mock:** em vez de rodar o WatermelonDB de verdade (precisa de adapter SQLite nativo, que não existe em ambiente Node/Jest), `@/database` é mockado por uma "tabela" em memória mínima (`jest.mock` com um array + `get()/write()`/`update()` fake) — testa a regra de negócio do `licenseService`, não o ORM. `@react-native-community/netinfo`, `expo-crypto`, `@/services/api` e o `fetch` global também são mockados, controláveis por teste.
+- **Detalhe de tooling:** a inclusão automática de pacotes `@types/*` do TypeScript não estava pegando `@types/jest`/`@types/node` neste projeto (sem nenhuma restrição explícita via `types`/`typeRoots` em nenhum `tsconfig` da cadeia) — contornado com `/// <reference types="jest" />`/`"node"` no topo do arquivo de teste, sem mexer no `tsconfig.json` global.
+- **Docs afetados:** `docs/02-arquitetura.md` (seção "Estratégia de testes" reescrita de diretriz planejada para o que existe de fato), `docs/06-changelog-tarefas.md`.
 
 ---
 
@@ -178,21 +247,80 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** No emulador Pixel 7 (e potencialmente em aparelhos sem um app de "Arquivos" registrado), o menu de compartilhamento do Android (`expo-sharing`) só mostrava Nearby Share/Drive/Gmail — sem opção de salvar direto no aparelho, porque esse menu só lista apps que registram suporte a receber o tipo de conteúdo compartilhado. Adicionado `saveBackupToDevice()` em `backupService.ts`, usando `Directory.pickDirectoryAsync()` (Storage Access Framework via a API nova do `expo-file-system`) para o usuário escolher uma pasta (ex: Downloads) e gravar o backup ali diretamente — não depende de nenhum app de terceiros. `BackupScreen` ganhou um segundo botão, "Salvar no dispositivo", ao lado de "Compartilhar backup". Nome do arquivo passou a incluir hora/minuto/segundo (não só a data) para evitar colisão ao exportar mais de uma vez no mesmo dia.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-01 — Incluir `orders`/`order_items` no backup
+- **Tipo:** feature
+- **Resumo:** Revisão pedida pelo usuário. Última pendência da Fase 8, adiada desde a Fase 5 até o módulo de Ordem de Venda existir de fato. `backupService.ts`: `orders` referenciam o cliente por `client_document` (não `client_id` — mesmo raciocínio já usado pra categoria/produto) e carregam a lista de `items` (`product_name_snapshot`, preço, quantidade, desconto, subtotal — não `product_id`, que nunca é lido pela UI). Deduplicação por `client_document` + `order_number` (par único, já que `order_number` é sequencial por cliente, não global). Um pedido só é importado se o cliente resolver (já existente ou vindo no mesmo backup); `product_id` de cada item é resolvido por nome contra produtos existentes/recém-importados, best-effort (fica em branco se não achar — inofensivo, a relação nunca é lida). `BackupPreview`/`ImportResult` ganharam `newOrders`/`skippedOrders`/`ordersImported`; `ExportResult` ganhou `ordersCount`, propagado nas mensagens de `BackupScreen` e `SettingsScreen`.
+- **Limitação conhecida (documentada, não é bug):** `orders.created_at` não é preservado na importação — campo `@readonly` do WatermelonDB, sempre gravado como "agora" na criação do registro. Pedidos importados nascem com a data da importação, não a data original da venda. O restante dos dados (valores, status, `order_number`, `delivery_date`, itens) é preservado corretamente.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-01 — Envio de backup por e-mail ao suporte + atalho "Backup" removido da HomeScreen
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: tirar o atalho "Backup" da tela inicial (não é ação do dia a dia) deixando-o só em Configurações, e adicionar uma forma de mandar o backup por e-mail pro suporte quando o vendedor tiver problema — o próprio suporte usa esse arquivo pra restaurar depois. `HomeScreen.tsx`: removido o 3º atalho secundário ("Backup"); a linha de ações rápidas ficou só com "Novo Cliente"/"Catálogo" (a rota `Backup` continua existindo, só perdeu esse ponto de entrada). Nova função `backupService.emailBackup()` (`expo-mail-composer`, novo pacote): gera o mesmo JSON já usado por `exportBackup()`/`saveBackupToDevice()` e abre o app de e-mail do próprio celular com destinatário, assunto e o arquivo já anexados — o vendedor só confirma o envio. Não há servidor de e-mail próprio nem envio automático em segundo plano. Botão "Enviar backup por e-mail (suporte)" adicionado em `SettingsScreen` (seção "Dados, Backup e Armazenamento"), ao lado de "Exportar"/"Importar".
+- **Configuração:** endereço de destino em `EXPO_PUBLIC_SUPPORT_EMAIL` (`.env`, opcional — mesmo padrão já usado por `EXPO_PUBLIC_SUPPORT_WHATSAPP_PHONE`); botão fica `disabled` com aviso se ausente, ou se o celular não tiver nenhum app de e-mail configurado. `src/services/api.ts` ganhou `SUPPORT_EMAIL`/`isSupportEmailConfigured()`.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-07 — Backup remoto automático e silencioso (Supabase Storage)
+- **Tipo:** feature
+- **Resumo:** Revisão do plano de e-mail acima: o cliente pediu algo que rode sozinho, todo dia, sem o vendedor precisar tocar em nada — o que o e-mail não resolve (sempre depende de alguém confirmar o envio no app de e-mail). Novo `src/services/remoteBackupService.ts`: monta um JSON reduzido (catálogo de produtos completo + `orders` dos últimos 30 dias, com nome/documento do cliente embutido e os itens — sem `clients` completo, sem pedidos mais antigos, sem fotos) e envia via `fetch` direto pra API REST do Supabase Storage (`POST /storage/v1/object/device-backups/{device_id}.json`, `x-upsert: true` — sobrescreve sempre, nunca acumula histórico), usando a mesma chave anon já usada pra licença. Novo hook `src/hooks/useRemoteBackupSync.ts`, chamado incondicionalmente em `App.tsx` (roda mesmo com licença `expired`/`blocked` — é justamente pra esses casos que serve): tenta na abertura do app, a cada 15 min enquanto ele fica aberto, e ao reconectar à internet (`NetInfo`). `syncRemoteBackupIfNeeded()` só age se ainda não enviou hoje (novo campo `license_control.last_remote_backup_at`, schema v7) **e** há internet no momento — sem internet não é erro, só espera a próxima tentativa; nunca aparece nada pro vendedor (sucesso ou falha são silenciosos).
+- **Por que só produtos + vendas de 30 dias:** decisão do cliente pra caber folgado no plano gratuito do Supabase mesmo com vários vendedores compartilhando o mesmo projeto — 1 arquivo pequeno por dispositivo, sempre sobrescrito, é uma fração do que seria manter clientes completos ou o histórico inteiro de pedidos.
+- **Segurança:** sem login/autenticação de usuário no app, não dá pra restringir por RLS "cada dispositivo só grava no próprio arquivo" de forma garantida — a chave anon é compartilhada por todo mundo que instala o app. Mitigação: nome do arquivo é o `device_id` (UUID não exposto em nenhuma tela, não adivinhável) e a policy do bucket **não** dá nenhum SELECT/list pra `anon` — mesmo extraindo a chave do app, dá pra sobrescrever um caminho conhecido, mas nunca listar/baixar o backup de outro vendedor. Mesmo nível de exposição que a tabela `licenses` já tem hoje.
+- **Setup manual necessário (só uma vez, fora deste repo):** criar o bucket `device-backups` (privado) no Supabase Storage e rodar as duas policies SQL — ver `docs/04-sistema-licenca.md#-backup-remoto-automático-supabase-storage`. Sem isso, os uploads falham silenciosamente (comportamento seguro por design, mas o backup remoto não vai de fato acontecer até o bucket existir).
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/03-banco-de-dados.md`, `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-07 — Fix: policies do bucket `device-backups` (a intenção original "só escreve, nunca lê" não funciona)
+- **Tipo:** fix (setup no Supabase, sem mudança de código no app)
+- **Resumo:** Ao validar o setup do bucket junto com o usuário (bucket criado, policies de INSERT/UPDATE só pra `anon` conforme a entrada acima), todo envio a partir do 2º dia falhava com `"new row violates row-level security policy"`. Diagnosticado lendo os Postgres Logs do Supabase: a query real por trás do upload é `INSERT ... ON CONFLICT (name, bucket_id) DO UPDATE` — e esse tipo de "upsert em uma instrução" exige uma checagem de visibilidade equivalente a `SELECT` pra resolver o conflito, mesmo sem nenhum conflito de fato ocorrer. Testado e confirmado: `UPDATE`/`PUT` e `DELETE` têm a mesma exigência; só um `INSERT` de um arquivo que ainda não existe (1º dia) funciona sem `SELECT`. Como o RLS do Postgres não diferencia "buscar 1 arquivo específico" de "listar tudo" (mesma policy de `SELECT` cobre as duas formas de consulta via `storage.objects`), não existe meio-termo — pra sobrescrever, precisa liberar leitura do bucket inteiro.
+- **Decisão (usuário escolheu entre 2 opções):** liberar `SELECT` pra todo o bucket (`to public`), em vez da alternativa mais isolada (dar identidade própria a cada aparelho via Supabase Anonymous Auth, descartada por complexidade agora). Aceita o trade-off de que a chave anon extraída do app permite listar/baixar o backup de qualquer vendedor — mesma classe de risco que a tabela `licenses` já tem, agora também pro conteúdo de vendas. Terceira policy adicionada (`for select to public using (bucket_id = 'device-backups')`). As três policies passaram de `to anon` pra `to public` — a chave nova do Supabase (`sb_publishable_...`) não bateu de forma confiável com `to anon` no serviço de Storage nos testes.
+- **Nenhuma mudança de código:** `remoteBackupService.ts` já estava correto desde a implementação original (`x-upsert: true` é exatamente o que gera o `ON CONFLICT DO UPDATE`); o problema era só a configuração das policies no painel do Supabase.
+- **Docs afetados:** `docs/04-sistema-licenca.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-11 — Fix: reimportar o próprio backup exportado falhava sempre que havia campo opcional vazio
+- **Tipo:** fix
+- **Resumo:** Bug reportado pelo cliente durante testes de HML: exportar um backup ("Salvar no dispositivo") e tentar reimportar esse mesmo arquivo, sem editar nada, dava "Arquivo inválido: não é um backup reconhecível do app." **Causa raiz:** o WatermelonDB devolve `null` em tempo de execução para colunas SQLite vazias, mesmo em campos que os models declaram como `string | undefined` no TypeScript (ex: `Client.addressComplement`, `Order.notes` — ver `database/models/`). `buildBackupData()` exporta esse `null` de verdade no JSON, mas o schema Zod de importação só aceitava `.optional()` (`string | undefined`), rejeitando `null` explícito — na prática, isso quebrava a reimportação de **qualquer** backup real (basta um cliente sem complemento/CEP, ou um pedido sem observações, ambos os casos mais comuns que o oposto).
+- **Fix:** `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` (cliente), `category_name` (produto) e `notes` (pedido) passaram a `.nullable().optional()` no schema — mesmo padrão já usado corretamente só em `delivery_date` desde a Fase 13. `importBackup()` normaliza `null → undefined` (`?? undefined`) ao gravar nesses campos nos models, mesmo padrão já usado em `ClientFormScreen`. O catch genérico de `pickAndPreviewBackupFile()` também passou a logar a causa real (`console.warn`) antes de mostrar a mensagem genérica pro usuário — sem isso, esse tipo de bug vira uma investigação às cegas (foi exatamente o caso aqui: só foi possível achar a causa validando o JSON exportado à mão contra o schema real).
+- **Testes:** novo `backupService.test.ts` (2 testes) — round-trip com campos `null` explícitos (formato real exportado pelo app) e com campos ausentes (`undefined`), ambos devem validar. `backupSchema` exportado só para esse teste.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] `services/backupService.ts` (exportação JSON via `expo-file-system`) — limitado a `clients`/`products` por enquanto.
 - [x] Opção de salvar direto numa pasta escolhida pelo usuário (`saveBackupToDevice`), como alternativa ao menu de compartilhamento em ambientes sem app de "Arquivos".
 - [x] Importação com validação Zod e prévia (contagem de novos/duplicados) antes de confirmar.
-- [ ] `BackupScreen` acessível mesmo com licença `expired` — depende da distinção de acesso ainda não implementada no `RootNavigator` (ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
-- [ ] Incluir `orders`/`order_items` no backup — o módulo de Ordem de Venda (Fase 5) já existe agora; falta integrar em `backupService.ts`.
+- [x] `BackupScreen` acessível mesmo com licença `expired` (e a exportação também com `blocked`) — implementado em 2026-09-01, ver entrada na Fase 7 acima (mesma mudança, cross-cutting).
+- [x] Incluir `orders`/`order_items` no backup — implementado em 2026-09-01, ver entrada acima.
 
 ---
 
 ## Fase 9 — Polimento e build
 
+### 2026-09-01 — `eas.json` (scaffold de build)
+- **Tipo:** chore
+- **Resumo:** Revisão pedida pelo usuário. Criado `eas.json` com 3 perfis: `development` (dev client, `distribution: internal` — necessário pro app rodar fora do Expo Go, já que depende de WatermelonDB), `preview` (APK interno pra testar em dispositivo antes de liberar) e `production` (`autoIncrement: true`, mais um perfil `submit.production` pra `eas submit`). Só o arquivo de configuração — **não** foi rodado `eas login`/`eas init`/`eas build` (sem acesso a uma conta Expo/EAS neste ambiente), então o projeto ainda não está de fato vinculado a uma conta (falta `extra.eas.projectId` em `app.json`). `android.package` em `app.json` também segue com o valor padrão do template (`com.anonymous.vendasapp`) — precisa virar o identificador definitivo antes do primeiro build de produção enviado à loja, já que não pode mais mudar depois.
+- **Docs afetados:** `docs/02-arquitetura.md` (nova seção "Build (EAS)"), `docs/06-changelog-tarefas.md`.
+
+### 2026-09-08 — Testes automatizados (utils puros) + checklist de conformidade com docs/
+- **Tipo:** feature (testes) / docs
+- **Resumo:** Framework de testes já tinha sido decidido/configurado na Fase 7 (Jest + `jest-expo`, pra cobrir `evaluateLicense()`). Nesta entrada, expandida a cobertura pro que faltava de mais valioso e barato de testar — funções puras, sem precisar mockar banco: `src/utils/validators.ts` (CPF/CNPJ com dígito verificador — CPF/CNPJ de teste gerados programaticamente com o mesmo algoritmo do validador, não são de pessoa/empresa real), `src/utils/masks.ts` (máscaras de CPF/CNPJ/telefone/CEP, `formatCurrencyBRL`, `maskDateBR`/`parseDateBR` incluindo rejeição de datas inválidas tipo 31/02), `src/utils/address.ts` (formatação de endereço do cliente) e `src/types/orderDraft.ts` (`cartItemLineTotal`/`cartItemSubtotal`, inclusive o clamp em zero quando o desconto é maior que o total). Também `src/utils/whatsapp.ts` (`openWhatsApp`, mockando `Linking.openURL` do RN — já vem mockado por padrão no preset `jest-expo`), validando a regra de prefixar DDI 55 sem duplicar. Total: **38 novos testes** (48 no projeto todo, contando a suíte de licença da Fase 7).
+- **Checklist final de conformidade com `docs/`:** revisão comparando os docs contra o código atual. Achados corrigidos: `docs/01-visao-geral.md` ainda dizia que a rede só era tocada "para um único fim: validar a licença" e que "não há sincronização com backend nos módulos de negócio" — desatualizado desde o backup remoto automático (2026-09-07, ver Fase 8), que também toca rede (silenciosamente, sem bloquear nada) uma vez por dia; reescrito pra descrever os dois pontos de rede do app. `CLAUDE.md` ainda listava o módulo Produtos com campo "SKU" (removido na Fase 12, virou Categoria) e não mencionava foto de produto nem os dois canais extras de backup (e-mail, remoto automático); corrigido.
+- **Gap conhecido, não corrigido aqui:** o JSON de importação do catálogo de produtos (PR #18, aberto aguardando revisão do usuário, ainda não mergeado em `hml`) não tem entrada de changelog nem menção em `docs/`, porque as mudanças vivem numa branch separada desta. Revisitar quando aquele PR for mergeado.
+- **Docs afetados:** `docs/01-visao-geral.md`, `CLAUDE.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-08 — Primeiro APK gerado via build local (sem EAS) + `android.package` definitivo
+- **Tipo:** feature / chore
+- **Resumo:** Descoberta durante a conversa: este ambiente de desenvolvimento tem o Android SDK completo instalado (`ANDROID_HOME`, build-tools, NDK, licenças já aceitas) — então, ao contrário do que a entrada de `eas.json` (2026-09-01) registrou, **dá pra gerar um APK sem conta Expo/EAS nenhuma**, usando `expo prebuild` + Gradle direto (ver "Build local" em `docs/02-arquitetura.md`).
+  - `android.package` definido como definitivo: **`com.gabrielazevedo.vendasapp`** (escolhido pelo usuário), substituindo o placeholder `com.anonymous.vendasapp`.
+  - `npx expo prebuild --platform android --clean` gerou a pasta `android/` (gitignorada).
+  - `./gradlew assembleDebug` (build de validação, ~8 min, 187MB — confirmou que o ambiente compila do zero sem erro) e depois `./gradlew assembleRelease` (~13 min, 78MB, universal 4 ABIs) — primeira versão do artefato de verdade.
+  - Gerada uma chave de assinatura de release própria (`keytool`, RSA 2048, PKCS12, validade ~27 anos) — guardada em `/keystore/vendas-app-release.keystore` **na raiz do projeto** (não em `android/`, que é regenerada a cada `prebuild`), com credenciais em `/keystore.properties`, ambos no `.gitignore` e entregues diretamente pro usuário (nunca ficaram só neste ambiente). `android/app/build.gradle` ajustado pra usar essa chave quando o arquivo de properties existe, caindo pra chave debug (sem quebrar) se não existir — ver snippet completo em `docs/02-arquitetura.md`.
+  - **Build final entregue:** os 78MB do universal eram desnecessários (o dispositivo do cliente é um só) e o R8/shrinkResources vinham desligados por padrão do template Expo. Rebuild com `./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a -Pandroid.enableMinifyInReleaseBuilds=true -Pandroid.enableShrinkResourcesInReleaseBuilds=true` (arm64-v8a cobre praticamente todo Android moderno) reduziu pra **~26.9MB** (28.166.373 bytes) — não foi só um ajuste de tamanho, é a configuração recomendada de fato para builds de release de distribuição.
+  - Assinatura do APK final verificada com `apksigner verify --print-certs` — confirmado que bate com a chave de release gerada (SHA-256 `09:37:77:5E:89...`), não com a chave debug — reconferido de novo após o rebuild com minify, já que é um variant de build diferente.
+- **Limitação registrada:** como `android/app/build.gradle` é regenerado do zero a cada `expo prebuild`, o trecho de código que liga o build à chave de release **precisa ser colado de novo** depois de qualquer `prebuild --clean` futuro, antes de gerar outro release — só o arquivo da chave em si (fora de `android/`) sobrevive automaticamente.
+- **Docs afetados:** `docs/02-arquitetura.md`, `docs/06-changelog-tarefas.md`.
+
 ### Tarefas planejadas
 - [x] Revisão de UX em telas críticas (carrinho, bloqueio de licença) — antecipada pelo redesign da Fase 10.
-- [ ] Configuração de build via EAS (`eas.json`).
-- [ ] Checklist final de conformidade com `docs/` antes do release.
+- [x] Configuração de build via EAS (`eas.json`) — **`android.package` definitivo definido em 2026-09-08** (`com.gabrielazevedo.vendasapp`). `eas login`/`eas init` numa conta EAS de verdade seguem pendentes, mas só são necessários **se/quando** o usuário quiser passar a usar build em nuvem — o primeiro APK já foi gerado por build local (ver entrada acima), sem depender disso.
+- [x] Testes automatizados — framework decidido e configurado na Fase 7 (Jest + `jest-expo`); cobertura expandida nesta entrada (utils puros + cálculo de carrinho). Cobertura de `orderService`/`backupService`/models do WatermelonDB (que exigiriam mockar banco de forma mais elaborada) e testes de tela (React Native Testing Library) continuam pendentes — próximo passo natural se quiser aprofundar, mas não bloqueiam o release.
+- [x] Checklist final de conformidade com `docs/` antes do release — feito nesta entrada (achados e correções acima).
 
 ---
 
@@ -276,6 +404,62 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - [x] `backupService.ts` (+ `BackupScreen.tsx`): incluir `categories` no backup, trocar dedupe de produto de `sku` para `name`, resolver categoria por nome na importação.
 - [x] Validar com `tsc --noEmit` e `expo export --platform android`.
 - [ ] Testar em dispositivo/emulador real, partindo de dados pré-existentes (migração v3 → v4) — pendente, sem acesso a device físico neste ambiente.
+
+---
+
+## Fase 13 — PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente
+
+### 2026-09-01 — Cabeçalho do PDF com logo/vendedor, endereço estruturado, numeração por cliente e data de entrega
+- **Tipo:** feature / schema / fix
+- **Resumo:** Branch `feature/pdf-personalizado-e-endereco-cliente` (criada a partir de `hml`, primeira feature depois da adoção do fluxo `feature → hml → main` — ver [Processo](#processo--fluxo-de-branches-hml--main) abaixo). Schema **v4 → v5**:
+  - **`clients`:** campo único `address` (texto livre) substituído por endereço **estruturado** (`address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip`, todos opcionais) — necessário pro cabeçalho do PDF exibir endereço e cidade do cliente separadamente. `address` fica órfã no SQLite em instalações existentes (mesmo padrão do `sku` na Fase 12). Novo `src/utils/address.ts` (`formatClientStreetLine`, `formatClientCityLine`, `formatClientFullAddress`) centraliza a formatação, usado em `ClientListScreen`, `orderTemplate.ts` e no dedupe de `backupService.ts`.
+  - **`orders`:** `order_number` (obrigatório, sentinela `0` para pedidos pré-Fase 13) — número sequencial **por cliente** (1º, 2º, 3º pedido daquele cliente, não um id global), calculado em `orderService.createOrder()` como `(pedidos anteriores do cliente) + 1`; e `delivery_date` (opcional) — nova entrada de data (`MaskedInput mask="date"`, máscara nova `dd/mm/aaaa` + `parseDateBR()` em `utils/masks.ts`, validando que a data existe de verdade) em `OrderReviewScreen`.
+  - **`company_settings`:** `vendedor_nome` (novo campo no formulário da Seção 1 de Configurações) e `logo_base64` (logo da empresa como data URI, selecionada via `settingsService.pickCompanyLogo()` reaproveitando `File.pickFileAsync` do `expo-file-system` — mesma API já usada no Backup, para não instalar `expo-image-picker` só para isso; limite de 2MB, salva imediatamente ao selecionar, sem esperar o botão "Salvar").
+  - **Cabeçalho do PDF redesenhado** (`templates/orderTemplate.ts`, agora recebendo também `CompanySettings`): linha de cima com logo (ou nome da empresa em texto, se não houver logo) à esquerda e telefone/vendedor/data de emissão à direita; abaixo, duas colunas — esquerda com nome do cliente, data de entrega, endereço e forma de pagamento; direita com número do pedido do cliente, cidade e CPF/CNPJ. `pdfService.shareOrderPdf()` passou a buscar `CompanySettings` internamente (`getOrCreateCompanySettings()`), sem mudar a assinatura chamada por `OrderSuccessScreen`/`OrderDetailScreen`. Rodapé passou a citar o nome do app (`APP_DISPLAY_NAME = 'Vendas App'`, novo em `utils/appInfo.ts`) em vez do nome fixo "Força de Vendas" hardcoded até então.
+  - **`HomeScreen`:** saudação "Bom dia"/"Boa tarde"/"Boa noite" (`getGreeting()`) removida — no lugar, mostra o nome do vendedor/empresa (`settingsService.resolveDisplayName()`: `vendedor_nome` → `nome_fantasia` → `razao_social` → `"Vendas App"`), a pedido do cliente.
+  - **Fix:** `ProductFormScreen` só permitia criar categoria pelo formulário quando a lista estava **vazia** (link que sumia assim que a 1ª categoria existisse) — bug reportado pelo cliente. Agora um chip "Nova categoria" fica sempre disponível (mesmo com categorias já cadastradas), abrindo uma linha inline de criação sem sair da tela. Lógica de duplicidade/criação (`isCategoryNameTaken`, `createCategory`) extraída para `src/services/categoryService.ts`, compartilhada entre `ProductFormScreen` e `CategoryListScreen` (antes duplicada).
+- **Docs afetados:** `docs/02-arquitetura.md` (branch usada nesta fase), `docs/03-banco-de-dados.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+- **Validação:** `tsc --noEmit` sem erros e `expo export --platform android` (bundle Metro completo) sem erros. **Não foi possível testar em dispositivo/emulador real** neste ambiente — recomenda-se validar antes do release: a migração v4→v5 partindo de dados reais (clientes com `address` preenchido, pedidos antigos com `order_number = 0`), a seleção de logo (`File.pickFileAsync` filtrado por imagem, em vez do seletor de galeria nativo — ver decisão acima), e a renderização do cabeçalho do PDF com e sem logo.
+
+### 2026-09-01 — Data de entrega visível nos cards de pedido
+- **Tipo:** feature
+- **Resumo:** A pedido do cliente, a `delivery_date` (adicionada mais cedo nesta mesma fase) passou a aparecer nos cards de pedido onde antes só existia no PDF e no detalhe: nos "Últimos pedidos" da `HomeScreen` e na listagem `OrderListScreen`. Em ambos, uma linha "Entrega em dd/mm/aaaa" (ícone `cube-outline`, cor de destaque) aparece só quando o pedido tem data de entrega definida — omitida por completo quando não há.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-11 — Fix: seleção de logo rejeitava PNG/JPEG genuínos vindos da galeria do Android
+- **Tipo:** fix
+- **Resumo:** Bug reportado pelo cliente: ao tentar definir a logo da empresa a partir de um print/imagem escolhido pela galeria do Android, o app recusava com "Formato não suportado. Escolha um arquivo PNG ou JPG." mesmo o arquivo sendo um PNG válido de verdade (confirmado byte a byte). **Causa raiz:** `settingsService.pickCompanyLogo()` validava o formato olhando só a **extensão do nome do arquivo** (`file.extension`, ex: `.png`) — mas o seletor de arquivos do Android (galeria/Fotos, Google Drive, etc.) frequentemente devolve um `content://` URI sem nome/extensão utilizável, mesmo quando o conteúdo é uma imagem válida das que o próprio seletor já filtrou (`mimeTypes: ['image/png', 'image/jpeg']`). **Fix:** `detectImageMimeType()` passou a checar a **assinatura mágica dos bytes reais do arquivo** (lida a partir do prefixo do base64 já carregado, sem I/O extra) em vez de confiar no nome — `iVBORw0K...` para PNG, `/9j/...` para JPEG —, robusto independente de qual app/seletor de origem foi usado.
+- **Testes:** novo `settingsService.test.ts` (4 testes) cobrindo PNG, JPEG, GIF (rejeitado) e string vazia. Suíte completa: 63 testes.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
+---
+
+## Fase 14 — Preenchimento automático de cadastro (CNPJ e CEP)
+
+### 2026-09-11 — Busca de dados da empresa por CNPJ e endereço por CEP no cadastro de cliente
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente em 2026-09-11, priorizado e implementado no mesmo dia (o registro de backlog original desta fase foi substituído por esta entrada).
+  - **`src/services/cnpjLookupService.ts`** (novo): `lookupCnpj(cnpj)` consulta a [BrasilAPI](https://brasilapi.com.br/) (`GET /api/cnpj/v1/{cnpj}`, pública, gratuita, sem chave, dados oficiais da Receita Federal) e devolve razão social, telefone e endereço completo (rua montada a partir de `descricao_tipo_de_logradouro` + `logradouro`, ex.: "AVENIDA PAULISTA"). Só aceita 14 dígitos — não existe (nem pode existir, por restrição legal de privacidade) consulta pública equivalente para CPF.
+  - **`src/services/cepLookupService.ts`** (novo): `lookupCep(cep)` consulta o [ViaCEP](https://viacep.com.br/) (`GET /ws/{cep}/json/`) e devolve rua, cidade e UF. Só aceita 8 dígitos.
+  - Ambos seguem o mesmo contrato: checam conectividade primeiro (`NetInfo.fetch()`, mesmo padrão de `remoteBackupService.ts`) e retornam `null` — nunca lançam erro — em qualquer cenário de falha (offline, CNPJ/CEP inexistente, HTTP não-ok, erro de rede). Nenhum campo tem "bairro" no schema de `clients` (ver [docs/03](./03-banco-de-dados.md#-tabela-clients)), então esse dado (retornado por ambas as APIs) é ignorado, sem forçar em outro campo.
+  - **`ClientFormScreen`:** dois links de busca opcionais (nunca automáticos, só por toque) — "Buscar dados da empresa pelo CNPJ" (visível quando o Documento é um CNPJ com dígito verificador válido, `isValidCNPJ`) e "Buscar endereço pelo CEP" (visível com 8 dígitos no CEP). Em caso de falha, toast informativo ("Preencha manualmente"), nunca um erro bloqueante — os campos continuam 100% editáveis antes e depois da busca. Usa `useWatch` (não `watch()` de `useForm()`) para os dois campos observados, evitando o aviso do React Compiler sobre memoização de funções do React Hook Form.
+  - Passa a ser o **terceiro** ponto de rede real do app (além de licença e backup remoto) — `docs/01-visao-geral.md` e `docs/02-arquitetura.md` atualizados.
+- **Testes:** 11 novos testes (`cnpjLookupService.test.ts`, `cepLookupService.test.ts`) cobrindo entrada inválida, offline, sucesso, CNPJ/CEP não encontrado, HTTP não-ok e falha de rede — mesmo padrão de mock de `NetInfo`/`global.fetch` já usado em `licenseService.test.ts`. Suíte completa: 59 testes, todos passando. `tsc --noEmit` e `expo lint` limpos (0 erros, 0 warnings); `expo export --platform android` compila o bundle sem erro.
+- **Docs afetados:** `docs/01-visao-geral.md`, `docs/02-arquitetura.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+---
+
+## Processo — Fluxo de branches (`hml` → `main`)
+
+### 2026-09-01 — Adotado fluxo de homologação via branch `hml`
+- **Tipo:** chore
+- **Resumo:** A partir de agora, `feature/*` deixam de ser mergeadas direto em `main` (produção). Nova branch `hml` (criada a partir de `main`, logo após o merge da Fase 12) passa a ser o destino intermediário: `feature/*` → `hml` (testes de homologação) → `main` (produção). A branch `feature/categorias-produtos-sem-sku` (Fase 12, já mergeada em `main`) foi excluída local e remotamente.
+- **Docs afetados:** `docs/02-arquitetura.md` (nova seção "Estratégia de branches"), `docs/06-changelog-tarefas.md`.
+
+### 2026-09-11 — Primeira promoção `hml` → `main`: v1.0.0 em produção
+- **Tipo:** chore (release)
+- **Resumo:** Primeira vez que `hml` é promovida para `main` desde a adoção do fluxo (2026-09-01) — até aqui, `main` seguia parada na Fase 12. Testado pelo usuário em HML (checklist completo: instalação, Fase 14, fix da logo, fluxo essencial, offline, configurações/backup — ver entradas de 2026-09-08 a 2026-09-11 acima), com 3 bugs reais encontrados e corrigidos durante os testes (reimportação de backup, seleção de logo, validação remota de licença — PRs #26/#27/#28). PRs #24–#28 mergeados em `hml` (5 PRs, `--merge`, branches excluídas) e `hml` promovida para `main` em seguida. `android.package` definitivo (`com.gabrielazevedo.vendasapp`), `versionCode 1` / `versionName "1.0.0"` — release de produção de verdade, mesma chave de assinatura usada nos builds de teste (para instalações futuras poderem atualizar por cima, sem precisar desinstalar).
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
 ---
 

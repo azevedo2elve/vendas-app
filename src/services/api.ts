@@ -15,10 +15,25 @@ export function isSupportPhoneConfigured(): boolean {
   return Boolean(SUPPORT_WHATSAPP_PHONE);
 }
 
+// E-mail do suporte para onde o vendedor envia o backup quando precisa de ajuda (ex: aparelho
+// com problema) — o próprio suporte usa esse backup pra restaurar em outro aparelho.
+export const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
+
+export function isSupportEmailConfigured(): boolean {
+  return Boolean(SUPPORT_EMAIL);
+}
+
 export function supabaseHeaders(): Record<string, string> {
   return {
     apikey: SUPABASE_ANON_KEY ?? '',
     Authorization: `Bearer ${SUPABASE_ANON_KEY ?? ''}`,
     'Content-Type': 'application/json',
   };
+}
+
+// A API de Storage do Supabase vive na raiz do projeto (`/storage/v1/...`), não em `/rest/v1`
+// como a API do PostgREST usada pela licença — deriva a raiz a partir de `SUPABASE_REST_URL`
+// pra não precisar de uma segunda variável de ambiente só pra isso.
+export function supabaseStorageBaseUrl(): string {
+  return (SUPABASE_REST_URL ?? '').replace(/\/rest\/v1\/?$/, '');
 }

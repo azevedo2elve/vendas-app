@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Animated, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +24,7 @@ export function OrderSuccessScreen({ route, navigation }: Props) {
   const [data, setData] = useState<Loaded | null>(null);
   const [sharing, setSharing] = useState(false);
   const { showToast } = useToast();
-  const scale = useRef(new Animated.Value(0)).current;
+  const [scale] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +105,12 @@ export function OrderSuccessScreen({ route, navigation }: Props) {
             onPress={handleShare}
             loading={sharing}
           />
-          <PrimaryButton label="Voltar para o Início" variant="outline" icon="home-outline" onPress={handleBackToHome} />
+          <PrimaryButton
+            label="Voltar para o Início"
+            variant="outline"
+            icon="home-outline"
+            onPress={handleBackToHome}
+          />
         </View>
       </View>
     </View>

@@ -4,6 +4,7 @@ import { Q } from '@nozbe/watermelondb';
 import type { Clause } from '@nozbe/watermelondb/QueryDescription';
 import { withObservables } from '@nozbe/watermelondb/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { database } from '@/database';
 import Order from '@/database/models/Order';
 import Client from '@/database/models/Client';
@@ -11,6 +12,7 @@ import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, type OrderStatus } from '@/types/database';
@@ -38,7 +40,10 @@ function observeOrders(searchQuery: string, status: OrderStatus | null) {
     clauses.push(Q.on('clients', Q.where('name', Q.like(`%${Q.sanitizeLikeString(trimmed)}%`))));
   }
 
-  return database.get<Order>('orders').query(...clauses).observe();
+  return database
+    .get<Order>('orders')
+    .query(...clauses)
+    .observe();
 }
 
 type OrderRowProps = { order: Order; onPress: () => void };
@@ -51,6 +56,12 @@ function OrderRowBase({ order, client, itemCount, onPress }: OrderRowProps & { c
         <Badge label={ORDER_STATUS_LABELS[order.status]} tone={ORDER_STATUS_TONE[order.status]} />
       </View>
       <Text style={styles.cardClient}>{client?.name ?? '—'}</Text>
+      {order.deliveryDate ? (
+        <View style={styles.deliveryRow}>
+          <Ionicons name="cube-outline" size={13} color={colors.accent} />
+          <Text style={styles.deliveryText}>Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}</Text>
+        </View>
+      ) : null}
       <View style={styles.cardFooter}>
         <Text style={styles.cardMeta}>
           {order.createdAt.toLocaleString('pt-BR')} · {itemCount} {itemCount === 1 ? 'item' : 'itens'}
@@ -78,6 +89,8 @@ type ListProps = Props & {
 };
 
 function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter, onStatusChange }: ListProps) {
+  const { guard } = useReadOnlyGuard();
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -112,7 +125,7 @@ function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter,
         />
       </View>
 
-      <Fab accessibilityLabel="Nova ordem de venda" onPress={() => navigation.navigate('NewOrder')} />
+      <Fab accessibilityLabel="Nova ordem de venda" onPress={() => guard(() => navigation.navigate('NewOrder'))} />
     </View>
   );
 }
@@ -195,6 +208,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.textPrimary,
+  },
+  deliveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  deliveryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
   },
   cardFooter: {
     flexDirection: 'row',

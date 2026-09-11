@@ -39,9 +39,7 @@ export function OrderDraftProvider({ children }: { children: ReactNode }) {
     setItems((current) => {
       const existing = current.find((item) => item.productId === product.id);
       if (existing) {
-        return current.map((item) =>
-          item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+        return current.map((item) => (item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item));
       }
       return [
         ...current,

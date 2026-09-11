@@ -75,6 +75,66 @@ WatermelonDB depende de código nativo (módulo JSI, resolvido automaticamente p
 2. **`tsconfig.json`** — `experimentalDecorators: true` (para o `tsc` aceitar a sintaxe) e `paths: { "@/*": ["./src/*"] }` (sem `baseUrl`, deprecado a partir do TypeScript 6 — `paths` sozinho já resolve relativo ao `tsconfig.json` com `moduleResolution: "bundler"`).
 3. **Sem Expo Go:** por ter módulo nativo, o app não roda no app Expo Go da loja. É preciso `expo-dev-client` + `expo prebuild` + `expo run:android`/`expo run:ios` para gerar um build de desenvolvimento próprio.
 
+## 🏗️ Build (EAS)
+
+`eas.json` (Fase 9) define 3 perfis de build (`eas build --profile <nome>`), pensados especificamente pro fato do app depender de código nativo (WatermelonDB — ver seção acima):
+
+| Perfil | Uso | Distribuição |
+|---|---|---|
+| `development` | Gera o dev client com código nativo já embutido (`developmentClient: true`) — necessário porque o app não roda no Expo Go. É o build que se instala uma vez no aparelho/emulador e depois recebe atualizações de JS via `expo start` normalmente. | `internal` (APK direto, sem passar pela loja) |
+| `preview` | Build "de verdade" (sem o client de dev) pra testar em dispositivo físico antes de liberar — ex: mandar pro cliente avaliar. | `internal` (APK) |
+| `production` | Build final para a loja (`autoIncrement: true` — incrementa o `versionCode`/`buildNumber` automaticamente a cada build, sem precisar editar `app.json` na mão). | Loja (via `eas submit`, perfil `production` também configurado) |
+
+`android.package` em `app.json` já é o identificador definitivo (`com.gabrielazevedo.vendasapp`, definido em 2026-09-08 — não muda mais, esse valor é permanente a partir do primeiro APK instalado em qualquer aparelho). Segue pendente só o vínculo com uma conta Expo/EAS de verdade (`eas login`/`eas init`, gera o `extra.eas.projectId` em `app.json`) — não foi feito porque não há acesso a uma conta Expo neste ambiente; é o único passo que só o usuário consegue fazer, quando/se decidir usar o build em nuvem.
+
+### 🖥️ Build local (sem EAS, sem conta) — usado pra gerar o primeiro APK
+
+Como o app depende de código nativo (WatermelonDB), dá pra gerar um APK completamente local, sem conta Expo nenhuma, **desde que a máquina tenha o Android SDK instalado** (Android Studio, ou só o `cmdline-tools` + `platform-tools`/`build-tools`/NDK via `sdkmanager`):
+
+```bash
+npx expo prebuild --platform android --clean   # gera/regenera a pasta android/ (gitignored)
+cd android
+./gradlew assembleDebug     # rápido, assinado com a chave debug padrão — só pra testar que compila
+
+# release de distribuição de verdade — ver flags abaixo
+./gradlew assembleRelease \
+  -PreactNativeArchitectures=arm64-v8a \
+  -Pandroid.enableMinifyInReleaseBuilds=true \
+  -Pandroid.enableShrinkResourcesInReleaseBuilds=true
+```
+
+- **`assembleDebug`** empacota todas as arquiteturas sem compressão (~180-190MB) e inclui ferramentas de dev — serve só pra validar que o ambiente compila, não pra entregar pra ninguém.
+- **`assembleRelease`** é o artefato certo pra instalar no celular do cliente (habilitar "fontes desconhecidas" nas configurações do Android pra instalar um `.apk` fora da Play Store). Sem as flags, o template padrão do Expo gera um `.apk` universal (todas as arquiteturas, ~78MB) com R8/shrinkResources desligados. Com as três flags acima — `arm64-v8a` (cobre praticamente todo Android moderno; trocar por `armeabi-v7a` só pra aparelhos bem antigos) + minify + shrinkResources — o mesmo build cai pra **~27MB**, e é a configuração recomendada mesmo fora de qualquer restrição de tamanho (código/recursos não usados removidos de verdade, não é só uma economia de espaço).
+- **Assinatura do release:** por padrão, o template do Expo assina o `release` com a mesma chave `debug` (comentário no próprio `android/app/build.gradle`: "Caution! In production, you need to generate your own keystore"). Gerada uma chave de release de verdade em 2026-09-08 (`keytool`, RSA 2048, validade 10.000 dias) — guardada em `/keystore/vendas-app-release.keystore` **na raiz do projeto** (não dentro de `android/`, que é apagada e regenerada a cada `expo prebuild`), com as credenciais em `/keystore.properties`, também na raiz. Ambos no `.gitignore` — nunca vão pro Git, e foram entregues diretamente pro usuário (mesma lógica do `.env`, mas para um segredo ainda mais crítico).
+  ```gradle
+  // android/app/build.gradle — keystoreProperties lido de ../../keystore.properties (raiz do
+  // projeto, fora do android/). Sem esse arquivo, cai pra chave debug automaticamente, sem quebrar.
+  def keystorePropertiesFile = rootProject.file("../keystore.properties")
+  def keystoreProperties = new Properties()
+  if (keystorePropertiesFile.exists()) {
+      keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+  }
+  // ...dentro de android { }:
+  signingConfigs {
+      if (keystorePropertiesFile.exists()) {
+          release {
+              storeFile file(keystoreProperties['storeFile']) // ../../keystore/vendas-app-release.keystore
+              storePassword keystoreProperties['storePassword']
+              keyAlias keystoreProperties['keyAlias']
+              keyPassword keystoreProperties['keyPassword']
+          }
+      }
+  }
+  buildTypes {
+      release {
+          signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+      }
+  }
+  ```
+  > ⚠️ **`android/app/build.gradle` é regenerado do zero a cada `expo prebuild`** (a pasta inteira é gitignorada, não é código versionado) — só o arquivo da chave (`/keystore/`) e as credenciais (`/keystore.properties`) sobrevivem, por estarem fora de `android/`. **O trecho de código acima precisa ser colado de novo em `android/app/build.gradle` depois de qualquer `expo prebuild --clean` futuro**, antes de rodar `./gradlew assembleRelease` — sem isso, o release volta a ser assinado com a chave debug (não quebra o build, mas gera um APK com assinatura diferente da que já está no aparelho do cliente, impedindo atualizar por cima).
+  >
+  > **Guardar a chave em local seguro** (gerenciador de senhas, backup privado) — se for perdida, nenhuma atualização futura do app consegue ser instalada por cima da versão já no aparelho do cliente (precisaria desinstalar e reinstalar do zero, perdendo os dados locais dele).
+
 ## 🔑 Variáveis de ambiente
 
 Config de serviços externos (hoje só o Supabase, ver [docs/04-sistema-licenca.md](./04-sistema-licenca.md#-integração-com-o-supabase)) fica em variáveis com prefixo `EXPO_PUBLIC_`, que o Metro inlineia automaticamente no bundle (suporte nativo do Expo, sem lib adicional). Centralizadas em `src/services/api.ts`, nunca lidas diretamente de `process.env` no resto do código.
@@ -103,10 +163,12 @@ src/
 │   ├── licenseService.ts  # Validação/renovação de licença
 │   ├── orderService.ts    # Criação/atualização/exclusão de ordens de venda
 │   ├── pdfService.ts       # Geração do HTML/PDF da ordem de venda + compartilhamento (expo-print/expo-sharing)
-│   ├── backupService.ts   # Exportação/Importação JSON
+│   ├── backupService.ts   # Exportação/Importação JSON (manual, acionado pelo vendedor)
+│   ├── remoteBackupService.ts # Backup automático e silencioso (catálogo + vendas 30d) pro Supabase Storage
 │   └── settingsService.ts # Dados cadastrais da empresa (company_settings) + resumo de contagens do banco
 ├── hooks/            # Hooks customizados
 │   ├── useLicenseGuard.ts # Bloqueia navegação se licença inválida
+│   ├── useRemoteBackupSync.ts # Dispara o backup remoto silencioso (abertura, intervalo, reconexão)
 │   └── useOrderDraft.tsx  # Estado do carrinho/rascunho de ordem via Context, compartilhado entre as 3 telas do wizard
 ├── navigation/       # Stacks e rotas (RootNavigator, OrderDraftNavigator, tipos de rota)
 ├── templates/        # Template HTML para expo-print (Ordem de Venda A4) — orderTemplate.ts
@@ -146,21 +208,44 @@ screens/  ──depende de──>  hooks/ ──depende de──>  services/ ─
 | Imports | Absolutos via alias `@/` apontando para `src/` (configurado em `tsconfig.json` + `babel.config.js`) |
 | Estilo | `StyleSheet.create` por componente/tela; evitar estilos inline exceto casos triviais |
 
+**Lint/formatação (Fase 1, configurado em 2026-09-08):** ESLint (`eslint-config-expo`, config flat em `eslint.config.js`) + Prettier (`.prettierrc.json` — aspas simples, ponto e vírgula, `printWidth: 120`, já alinhado ao estilo que o código todo já seguia). Markdown (`docs/`, `CLAUDE.md`) fica fora do Prettier de propósito (`.prettierignore`) — são documentos com tabelas/formatação cuidadosa à mão, reformatação automática só geraria diff sem valor.
+```bash
+npm run lint           # expo lint (eslint-config-expo)
+npm run format          # prettier --write .
+npm run format:check    # prettier --check . (usado antes de commit/PR)
+```
+
 ## 🔌 Pontos de integração externa (mínimos, por design)
 
-O app é offline-first, então há apenas **um** ponto de rede real no sistema:
+O app é offline-first — todas as telas e ações do dia a dia (clientes, produtos, pedidos, PDF) rodam 100% no dispositivo, sem chamada HTTP nenhuma. Só três pontos tocam rede, e nenhum bloqueia o uso do app:
 
 | Integração | Quando é chamada | Serviço responsável |
 |---|---|---|
-| API de licença (renovação) | Somente quando `agora >= license_expires_at` | `services/licenseService.ts` |
+| API de licença (validação/renovação) | Na abertura do app e a cada 5 min enquanto fica aberto (não só perto do vencimento — ver [docs/04](./04-sistema-licenca.md)) | `services/licenseService.ts` |
+| Backup remoto automático (Supabase Storage) | Uma vez por dia, se houver internet (silencioso, nunca bloqueia — ver [docs/04](./04-sistema-licenca.md#-backup-remoto-automático-supabase-storage)) | `services/remoteBackupService.ts` |
+| Preenchimento automático de cliente (CNPJ/CEP) | Só sob ação explícita do vendedor no `ClientFormScreen` (nunca automático) — Fase 14, 2026-09-11 | `services/cnpjLookupService.ts`, `services/cepLookupService.ts` |
 
 Todo o resto (PDF, compartilhamento, banco de dados) roda 100% no dispositivo, sem chamadas HTTP.
 
-## 🧪 Estratégia de testes (diretriz)
+## 🌿 Estratégia de branches
 
-- **Services** (`licenseService`, `pdfService`, `backupService`): unidade, com foco em regras de negócio puras (cálculo de totais, regras de data da licença, geração do payload do PDF).
-- **Models/Schema do WatermelonDB**: testes de integração usando o adapter SQLite em memória.
-- **Screens**: testes de fluxo (React Native Testing Library) para os caminhos críticos: criar ordem, gerar PDF, tela de bloqueio de licença.
+> ✨ Adotada a partir da **Fase 12**. Antes disso, as `feature/*` eram mergeadas direto em `main`.
+
+| Branch | Papel | Ambiente |
+|---|---|---|
+| `feature/*` | Desenvolvimento de uma feature/fix isolada, a partir de `hml` (ou de `main`, se `hml` ainda não tiver sido criada) | — (local/dev) |
+| `hml` | Homologação — recebe o merge de `feature/*` para testes antes de ir para produção | HML |
+| `main` | Produção — só recebe merge de `hml` já validada | PRD |
+
+Fluxo: `feature/*` → PR/merge em `hml` → testes de homologação → PR/merge de `hml` em `main`. Branches `feature/*` já mergeadas devem ser excluídas (local e remota) para manter o repositório limpo — o GitHub já faz isso automaticamente ao mergear um PR, nesse repositório.
+
+## 🧪 Estratégia de testes
+
+**Framework:** [Jest](https://jestjs.io/) com o preset [`jest-expo`](https://www.npmjs.com/package/jest-expo) (padrão oficial do Expo — já traz os mocks de módulos nativos e o transform via `babel.config.js` do próprio projeto, então o alias `@/` funciona nos testes sem configuração extra). `npm test` roda a suíte uma vez; `npm run test:watch` fica observando mudanças. Configuração em `package.json` (chave `"jest"`), adotada na Fase 7 (2026-09-08) — primeira suíte real do projeto: `src/services/__tests__/licenseService.test.ts`, cobrindo `evaluateLicense()` (anti-fraude de relógio, validação remota via Supabase — sucesso/`not_registered`/`server_rejected`/falha de rede —, e os três desfechos offline: ativo, `expired` no dia do vencimento, `blocked` após o dia de tolerância).
+
+- **Services** (`licenseService`, e futuramente `pdfService`/`backupService`/`orderService`): unidade, mockando `@/database` por uma "tabela" em memória simples (`jest.mock('@/database', ...)` com um array + `get()/write()` fake) em vez de um adapter SQLite real — mais rápido e suficiente pra testar a regra de negócio em si, já que o WatermelonDB (ORM) não é o que está sendo validado. Dependências externas (`@react-native-community/netinfo`, `expo-crypto`, `@/services/api`, `fetch` global) também são mockadas por teste, controláveis via `jest.fn()`.
+- **Nota de tooling:** arquivos de teste precisam de `/// <reference types="jest" />` (e `"node"` quando usam `global`/`process` fora do que já é coberto pelos tipos do RN) no topo — por algum motivo a inclusão automática de pacotes `@types/*` do TypeScript não está pegando esses dois neste projeto (mesmo sem nenhuma restrição explícita via `types`/`typeRoots` no `tsconfig.json` ou em `expo/tsconfig.base`); a referência tripla-barra contorna isso de forma local ao arquivo, sem mexer no `tsconfig.json` global.
+- **Models/Schema do WatermelonDB** e **Screens** (React Native Testing Library): ainda não têm suíte própria — ver pendência na Fase 9.
 
 ## 📎 Documentos relacionados
 

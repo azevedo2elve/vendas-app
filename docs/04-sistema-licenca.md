@@ -27,22 +27,26 @@ Esse período de trial é uma decisão de implementação (não estava especific
 
 > ⚠️ **Por que o bootstrap não consulta o Supabase:** o `device_id` é um UUID v4 gerado aleatoriamente no próprio dispositivo na primeira execução — ele não pode, por definição, já existir na tabela `licenses` do Supabase nesse exato momento (ninguém o conhece antes do app gerá-lo). Por isso a validação remota só entra em ação mais tarde, quando `agora >= license_expires_at` (fim do trial) — ver árvore de decisão abaixo. Para o vendedor ter uma licença de verdade (não o trial), alguém do time de suporte precisa cadastrar o `device_id` exibido em [HomeScreen](../src/screens/HomeScreen.tsx) (ou na [tela de bloqueio](../src/screens/License/LicenseBlockedScreen.tsx)) na tabela `licenses` do Supabase.
 
-## 🧠 Regra de decisão (executada a cada abertura do app)
+## 🧠 Regra de decisão (executada na abertura do app, e a cada 5 min enquanto ele fica aberto)
 
 A lógica vive em `services/licenseService.ts` (função `evaluateLicense()`) e é consumida pelo hook `hooks/useLicenseGuard.ts`, que roda antes de liberar a navegação para qualquer tela de negócio (ver `navigation/RootNavigator.tsx`).
+
+> 🔁 **Validação contínua, não só no vencimento (2026-09-01):** `evaluateLicense()` sempre tenta contatar o Supabase primeiro, quando há internet — mesmo com a licença longe de vencer (dias, meses) — em vez de só tentar quando `agora >= license_expires_at`. E `useLicenseGuard` chama `evaluateLicense()` de novo a cada **5 minutos** enquanto o app permanece aberto (`setInterval`, não só na abertura). Isso é uma mudança deliberada em relação ao princípio original ("100% offline até vencer" — ver `CLAUDE.md`): agora o app aproveita qualquer internet disponível pra manter a licença sempre renovada/confirmada, mas **sem exigi-la** — sem conexão, tudo continua funcionando normalmente (sem nenhum erro visível) até passar 1 dia inteiro do vencimento.
 
 ### Detalhe da checagem de conectividade e do erro de renovação
 
 - **Online** = `NetInfo.fetch()` retorna `isConnected === true` **e** `isInternetReachable !== false` (trata o estado "ainda não determinado" (`null`) como tentativa válida, em vez de bloquear precocemente).
-- Se o Supabase não estiver configurado (`EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` ausentes) o app nem tenta a chamada — trata como se estivesse offline (`expired`/`offline`, com retry).
-- Se o fetch ao Supabase falhar por **erro de rede/timeout** (ex: `TypeError` antes de obter resposta), o resultado é tratado como **`expired`/offline** — não como `blocked` — pois não houve uma recusa explícita do servidor.
-- Se o Supabase **responder** com erro HTTP (ex: `401`/`403` por chave inválida, RLS negando a linha), o resultado é `blocked` com `reason: 'server_rejected'`.
+- Se o Supabase não estiver configurado (`EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` ausentes) ou não há internet, o app nem tenta a chamada — cai direto no tratamento local por data (passo 3 abaixo), **sem mostrar nenhum erro**.
+- Se o fetch ao Supabase falhar por **erro de rede/timeout** (ex: `TypeError` antes de obter resposta), mesmo com o `NetInfo` dizendo que há conexão, o resultado é tratado como se estivesse offline — cai no mesmo tratamento local por data, não em `blocked`, pois não houve uma recusa explícita do servidor.
+- Se o Supabase **responder** com erro HTTP (ex: `401`/`403` por chave inválida, RLS negando a linha), o resultado é `blocked` com `reason: 'server_rejected'` — **imediato**, independente de quantos dias faltam pro vencimento.
 - Se o Supabase responder OK mas com **array vazio** (nenhuma linha para esse `device_id`), o resultado é `blocked` com `reason: 'not_registered'` — dispositivo não cadastrado no sistema de licenças.
 - Se a linha encontrada tiver `license_status` diferente de `'active'` (ex: `'blocked'` ou `'expired'` definidos manualmente no Supabase), o resultado também é `blocked` com `reason: 'server_rejected'`.
 - Em qualquer resultado, o `device_id` do dispositivo é retornado por `evaluateLicense()` e exibido na tela (para poder ser repassado ao suporte).
 
 ```text
 agora = Date.now()
+hoje = dia calendário de agora (fuso do dispositivo)
+dia_vencimento = dia calendário de license_expires_at
 
 1. ANTI-FRAUDE DE RELÓGIO
    SE agora < last_opened_at:
@@ -51,89 +55,127 @@ agora = Date.now()
        → Motivo: relógio do dispositivo foi voltado manualmente
                  para burlar a expiração da licença.
 
-2. LICENÇA AINDA VÁLIDA
-   SENÃO SE agora < license_expires_at:
-       → App funciona 100% OFFLINE, sem chamadas de rede
-       → Atualiza last_opened_at = agora
-       → Libera navegação normalmente
+2. SEMPRE TENTA VALIDAR COM O SERVIDOR PRIMEIRO (2026-09-01)
+   SE Supabase configurado E há internet:
+       → GET {SUPABASE_REST_URL}/licenses?device_id=eq.{deviceId}
+            &select=device_id,license_expires_at,license_status
+         headers: apikey / Authorization: Bearer <anon key>
 
-3. LICENÇA VENCIDA → precisa validar renovação
-   SENÃO (agora >= license_expires_at):
-       → Verifica conectividade (NetInfo) e se o Supabase está configurado
+       → SE encontrou uma linha E license_status === 'active':
+            → Atualiza license_expires_at (valor retornado pelo Supabase)
+            → license_status = 'active'
+            → Atualiza last_opened_at = agora
+            → Libera navegação — FIM
 
-       SE HÁ INTERNET E SUPABASE CONFIGURADO:
-           → GET {SUPABASE_REST_URL}/licenses?device_id=eq.{deviceId}
-                &select=device_id,license_expires_at,license_status
-             headers: apikey / Authorization: Bearer <anon key>
+       → SE encontrou uma linha COM license_status ('blocked' ou 'expired'):
+            → license_status = 'blocked'  (reason: 'server_rejected')
+            → Exibe tela de bloqueio — FIM
 
-           → SE encontrou uma linha E license_status === 'active':
-                → Atualiza license_expires_at (valor retornado pelo Supabase)
-                → license_status = 'active'
-                → Atualiza last_opened_at = agora
-                → Libera navegação
+       → SE array vazio (device_id não cadastrado no Supabase):
+            → license_status = 'blocked'  (reason: 'not_registered')
+            → Exibe tela de bloqueio com o device_id, para repassar
+              ao suporte — FIM
 
-           → SE encontrou uma linha COM license_status ('blocked' ou 'expired'):
-                → license_status = 'blocked'  (reason: 'server_rejected')
-                → Exibe tela de bloqueio
+       → SE erro HTTP do Supabase (ex: 401/403):
+            → license_status = 'blocked'  (reason: 'server_rejected') — FIM
 
-           → SE array vazio (device_id não cadastrado no Supabase):
-                → license_status = 'blocked'  (reason: 'not_registered')
-                → Exibe tela de bloqueio com o device_id, para repassar ao suporte
+       → SE erro de rede/timeout: cai pro passo 3 abaixo, sem erro
 
-           → SE erro HTTP do Supabase (ex: 401/403):
-                → license_status = 'blocked'  (reason: 'server_rejected')
+   SENÃO (sem internet, ou Supabase não configurado): cai pro passo 3
 
-       SE NÃO HÁ INTERNET, OU SUPABASE NÃO CONFIGURADO, OU FALHA DE REDE/TIMEOUT:
-           → license_status = 'expired'  (reason: 'offline')
-           → Bloqueia emissão de pedidos
-           → Exibe tela de bloqueio com aviso + botão de retry
+3. TRATAMENTO LOCAL POR DATA (só chega aqui se não deu pra validar com
+   o servidor) — nunca dá erro por si só, só decide active OU blocked
+   com base na data já registrada localmente:
+
+   SE agora < license_expires_at (ainda não venceu, mesmo que hoje seja
+   o dia do vencimento):
+       → license_status = 'active'
+       → App funciona 100% normalmente, sem nenhuma restrição
+
+   SENÃO SE hoje > dia_vencimento (já passou pelo menos 1 dia INTEIRO
+   desde o vencimento — não é mais "o dia que venceu"):
+       → license_status = 'blocked'  (reason: 'grace_period_exceeded')
+       → Exibe tela de bloqueio
+
+   SENÃO (venceu, mas ainda é o próprio dia do vencimento):
+       → license_status = 'expired'  (reason: 'offline')
+       → Modo somente-leitura (não bloqueia visualização/backup)
 ```
 
 ## 🔄 Diagrama de estados
 
 ```text
-                 ┌─────────────┐
-        ┌───────▶│   active    │◀───────────────┐
-        │        └─────────────┘                │
-        │               │                        │
-        │      agora >= license_expires_at        │ renovação OK
-        │               │                        │ (com internet)
-        │               ▼                        │
-        │        ┌─────────────┐        tenta renovar
-        │        │  (checando  │────────────────┘
-        │        │  renovação) │
-        │        └─────────────┘
-        │               │
-        │      sem internet / falha
-        │               │
-        │               ▼
-        │        ┌─────────────┐
-        │        │   expired   │──── botão "Tentar novamente" ───┐
-        │        └─────────────┘                                 │
-        │                                                          │
-        │   relógio voltado (agora < last_opened_at)              │
-        │   OU backend recusa a licença                            │
-        │               │                                          │
-        │               ▼                                          │
-        │        ┌─────────────┐                                  │
-        └────────│   blocked   │◀─────────────────────────────────┘
-                  └─────────────┘
+              a cada abertura do app                  renovação OK
+              e a cada 5 min                          (com internet,
+                     │                                  a qualquer momento —
+                     ▼                                  não só perto do
+              ┌─────────────┐  tenta validar com o     vencimento)
+   ┌─────────▶│   active    │──── servidor (se online)────┐
+   │          └─────────────┘                              │
+   │                                                        │
+   │   backend recusa (not_registered / server_rejected)    │
+   │   ──────────────────────────────────────────────┐      │
+   │                                                   │      │
+   │   sem internet (ou falha de rede/timeout)          │      │
+   │               │                                    │      │
+   │               ▼                                    │      │
+   │   agora < license_expires_at?                       │      │
+   │      │                    │                          │      │
+   │     sim                  não                          │      │
+   │      │                    │                          │      │
+   │      └──── continua active (sem restrição) ◀──────────┘      │
+   │                           │                                  │
+   │              hoje > dia_vencimento (1 dia de                  │
+   │              tolerância excedido)?                             │
+   │                 │                    │                         │
+   │                não                  sim                        │
+   │                 │                    │                         │
+   │                 ▼                    │                         │
+   │          ┌─────────────┐             │                         │
+   │          │   expired   │─── botão "Tentar novamente" ──────────┘
+   │          │  (somente    │
+   │          │   leitura)   │
+   │          └─────────────┘
+   │
+   │   relógio voltado (agora < last_opened_at)
+   │   OU backend recusa a licença
+   │   OU 1 dia de tolerância excedido sem renovar
+   │               │
+   │               ▼
+   │        ┌─────────────┐
+   └────────│   blocked   │
+             └─────────────┘
 ```
 
 ## 🚫 O que fica bloqueado quando a licença não está `active`
+
+> ✅ Implementado em **2026-09-01**, fechando pendências das Fases 7 e 8 (antes só documentado como planejado — ver nota de status que existia aqui, removida). A tabela abaixo é o comportamento real do app.
 
 | Ação | `expired` (sem internet) | `blocked` |
 |---|---|---|
 | Visualizar clientes/produtos cadastrados | ✔️ Permitido (somente leitura) | ⛔ Bloqueado |
 | Criar/editar cliente ou produto | ⛔ Bloqueado | ⛔ Bloqueado |
+| Gerenciar categorias (criar/renomear/excluir) | ⛔ Bloqueado | ⛔ Bloqueado |
 | Emitir nova ordem de venda | ⛔ Bloqueado | ⛔ Bloqueado |
 | Gerar/compartilhar PDF | ⛔ Bloqueado | ⛔ Bloqueado |
-| Exportar backup | ✔️ Permitido (o vendedor não pode perder dados) | ✔️ Permitido |
-| Botão de retry de renovação | ✔️ Visível | ✔️ Visível (mas backend pode recusar de novo) |
+| Concluir/cancelar/excluir pedido existente | ⛔ Bloqueado | ⛔ Bloqueado |
+| Editar dados da empresa/vendedor, logo | ⛔ Bloqueado | ⛔ Bloqueado |
+| Importar backup | ⛔ Bloqueado | ⛔ Bloqueado |
+| **Exportar backup** | ✔️ Permitido (o vendedor não pode perder dados) | ✔️ Permitido — **mesmo bloqueado** |
+| Botão de retry de renovação | ✔️ Visível (banner no topo do app) | ✔️ Visível (tela de bloqueio) |
 
-> A decisão de permitir leitura + backup em `expired` (mas nunca em `blocked`) evita que o vendedor perca acesso aos próprios dados por estar temporariamente sem internet, mas impede a operação normal do negócio (emissão de pedidos) até a renovação.
+> A decisão de permitir leitura + exportação de backup em `expired` **e também em `blocked`** evita que o vendedor perca acesso aos próprios dados por estar sem internet ou com a licença revogada, mas impede a operação normal do negócio (cadastros, pedidos, PDF) até a renovação. Diferente de uma versão anterior deste documento, a exportação de backup **não** é restrita quando `blocked` — foi uma decisão deliberada para priorizar o vendedor nunca ficar sem acesso aos próprios dados, mesmo numa revogação manual.
 
-> 🚧 **Status desta fase (setup de arquitetura):** os módulos Clientes/Produtos/Backup ainda não existem, então `RootNavigator` hoje só decide entre "tela de negócio" (uma `HomeScreen` de diagnóstico) e `LicenseBlockedScreen` — não há, ainda, o acesso somente-leitura em modo `expired` descrito na tabela acima. Implementar essa distinção fica para quando os módulos de Clientes/Produtos/Backup existirem (Fases 3, 4 e 8 do [changelog](./06-changelog-tarefas.md)).
+> ⏳ **Tolerância de 1 dia para `expired` (2026-09-01):** o modo somente-leitura em `expired` não dura mais indefinidamente. Ele só existe no **próprio dia** em que a licença venceu — assim que vira o dia seguinte (calendário do dispositivo) e ainda não foi possível renovar, o app escala automaticamente para `blocked` (`reason: 'grace_period_exceeded'`), removendo até o acesso de leitura. Decisão de produto: dar 1 dia de tolerância pro vendedor conseguir internet sem perder acesso na hora, mas sem deixar o app operando offline indefinidamente sem nunca reportar-se ao servidor.
+
+### Como é implementado
+
+- **`blocked`**: `RootNavigator` continua mostrando só `LicenseBlockedScreen`, sem montar nenhuma tela de negócio — mas essa tela agora tem um botão **"Exportar meus dados (Backup)"**, que chama `backupService.exportBackup()` diretamente (sem precisar navegar, já que não há navegação nenhuma montada nesse estado). Se o botão "Tentar novamente" falhar de novo (o componente continua montado — se tivesse dado certo, o `RootNavigator` já teria trocado de tela), aparece um aviso inline *"Ainda não foi possível validar sua licença..."* — sinal explícito de que a tentativa não funcionou (2026-09-01).
+- **`expired`**: `RootNavigator` monta o app inteiro normalmente (todas as telas continuam navegáveis), mas envolve a árvore com `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`, contexto `{ readOnly, expiresAt, retry }` — `retry` é a mesma instância de `useLicenseGuard().retry` do `RootNavigator`, ver nota de fix abaixo) com `readOnly = true`, e exibe uma faixa fixa no topo (`ReadOnlyBanner`, acima do próprio `NavigationContainer` — visível em qualquer tela) com o aviso e um botão de retry.
+  - `useReadOnlyGuard()` (mesmo arquivo) expõe `{ readOnly, guard }` — `guard(acao)` executa a ação normalmente se `readOnly` for `false`, ou mostra um `Alert` explicativo e não faz nada se for `true`. Usado nos pontos de entrada de criação (FABs de Clientes/Produtos/Ordens, botão "Nova Venda" da `HomeScreen`).
+  - Dentro das telas de formulário/detalhe (`ClientFormScreen`, `ProductFormScreen`, `CategoryListScreen`, `OrderDetailScreen`, `SettingsScreen`, `BackupScreen`), o padrão é ler `const { readOnly } = useLicenseAccess()` diretamente e desabilitar (`disabled={readOnly}`) os botões que escrevem dados — a visualização continua acessível normalmente, sem gating adicional.
+  - `BackupScreen` é a única tela com uma regra assimétrica: exportar continua sempre habilitado, só o botão de **importar** é desabilitado quando `readOnly`.
+- **`active` perto de vencer**: `RootNavigator` mostra `LicenseExpiryBanner` (ver seção própria abaixo) — faixa não-bloqueante, diferente da `ReadOnlyBanner` (que é para quando a licença já venceu).
 
 ## 🖥️ Tela de bloqueio (`screens/License/LicenseBlockedScreen.tsx`)
 
@@ -144,12 +186,23 @@ Elementos obrigatórios da tela:
   - `blocked` / `clock_tampered` → *"Detectamos uma alteração incomum na data do dispositivo. Ajuste o relógio para a data e hora corretas e tente novamente."*
   - `blocked` / `server_rejected` → *"Sua licença não pôde ser renovada. Entre em contato com o suporte para regularizar o acesso."*
   - `blocked` / `not_registered` → *"Não encontramos este dispositivo em nosso sistema de licenças. Entre em contato com o suporte informando o ID do dispositivo para liberar o acesso."*
+  - `blocked` / `grace_period_exceeded` → *"Sua licença está vencida há mais de um dia e não conseguimos renovar automaticamente. Conecte-se à internet e tente novamente, ou entre em contato com o suporte."* (2026-09-01)
 - Botão **"Tentar novamente"** que:
   1. Reexecuta a checagem de conectividade.
   2. Se online e o Supabase estiver configurado, consulta `fetchLicenseFromSupabase` novamente.
   3. Mostra loading durante a tentativa; trata timeout com mensagem amigável.
 - Exibe o **`device_id`** do dispositivo (texto selecionável) em todos os motivos de bloqueio — é o dado que o suporte precisa para cadastrar/liberar o dispositivo na tabela `licenses` do Supabase.
-- Acesso alternativo (link/botão secundário) para **Exportar backup** — planejado para quando o módulo de Backup existir (ver nota de status logo acima), sempre visível exceto quando `blocked`/`server_rejected`.
+- Botão secundário **"Exportar meus dados (Backup)"** — chama `backupService.exportBackup()` diretamente, visível em **todo** motivo de bloqueio (Fases 7/8 — sem exceção; uma versão anterior deste doc previa esconder em `server_rejected`, decisão revertida em favor de nunca cortar o vendedor do próprio dado).
+
+## 🔔 Aviso de vencimento próximo (`components/LicenseExpiryBanner.tsx`)
+
+Adicionado em 2026-09-01. Diferente da `LicenseBlockedScreen`/`ReadOnlyBanner` (que só aparecem quando a licença **já** tem algum problema), este é um aviso preventivo: mostrado pelo `RootNavigator` só quando `status === 'active'` **e** o vencimento está próximo — pra dar tempo do vendedor se conectar à internet antes da licença realmente vencer.
+
+- **Não-bloqueante por design** ("não atrapalha o cliente de mexer nele"): é uma faixa fina no topo do app, acima da navegação — não é modal, não impede toque em nenhuma outra parte da tela, e tem um botão de fechar (✕).
+- **Quando aparece:** a partir de **5 dias** antes do vencimento — e, diferente da primeira versão deste aviso, a contagem decresce **dia a dia** (5, 4, 3, 2, 1 — não pula direto de "5 dias" pra "2 dias", ajuste pedido pelo usuário em 2026-09-01), trocando pra contagem em **hora** nas últimas 2h ("2 horas", depois "1 hora", mais precisas que "1 dia" pros minutos finais). O relógio de contagem é só local (recalcula a cada 30s a partir de `expiresAt`, sem chamada de rede) — quem efetivamente reavalia a licença é o `setInterval` de 5 min do `useLicenseGuard` (ver acima).
+- **Fechar (✕):** esconde o aviso só para o rótulo atual (guardado em estado local do componente, não persiste) — como a contagem muda todo dia, fechar em "3 dias" não esconde o de "2 dias" amanhã: reaparece sozinho a cada rótulo novo (dia seguinte, ou virada pra hora nas últimas 2h), ou numa próxima sessão do app.
+- **Botão "Validar agora"** — chama a mesma função de retry (`useLicenseGuard().retry`, que roda `evaluateLicense()`) usada na `ReadOnlyBanner`/`LicenseBlockedScreen`. Se a renovação funcionar, `expiresAt` muda e o aviso desaparece sozinho (deixa de estar dentro de qualquer limiar).
+- Texto do aviso inclui a data/hora exata do vencimento (`toLocaleDateString`/`toLocaleTimeString('pt-BR')`) e lembra o vendedor de ficar conectado à internet para a renovação automática acontecer.
 
 ## 🌐 Integração com o Supabase
 
@@ -205,6 +258,8 @@ Content-Type: application/json
 
 O Postgres não atualiza colunas sozinho quando uma data passa — só reage a jobs agendados ou a valores computados na leitura. Por isso `fetchLicenseFromSupabase` **não confia cegamente** em `license_status`: mesmo que a coluna ainda diga `active` (porque o job de expiração no Supabase ainda não rodou), se `license_expires_at <= agora` a licença é tratada como rejeitada (`server_rejected`) no app. Isso torna o cliente resiliente independentemente de haver ou não um job configurado no banco.
 
+> 🐛 **Fix (2026-09-11):** essa checagem de `license_expires_at <= agora` estava documentada aqui, mas nunca tinha sido de fato implementada em código — `fetchLicenseFromSupabase` só checava `license_status`, sem olhar a data. Na prática, sem o job `pg_cron` abaixo configurado (é um passo **manual**, feito fora deste repo, fácil de esquecer), uma licença vencida com `license_status` ainda `active` no banco ficaria válida pra sempre enquanto o app tivesse internet — o oposto do que este parágrafo sempre disse que acontecia. Corrigido em `licenseService.ts` (novo teste de regressão em `licenseService.test.ts`).
+
 Ainda assim, para manter a coluna `license_status` em si correta no painel/Table Editor do Supabase (útil para quem administra as licenças visualmente), configure um job `pg_cron` que sincroniza o status a partir da data periodicamente — **nos dois sentidos** (`active → expired` quando vence, e `expired → active` quando a data é renovada), mas **nunca mexe em `blocked`** (esse é só manual — ver [decisão de design](#-por-que-license_status-além-de-license_expires_at) abaixo):
 
 ```sql
@@ -243,6 +298,68 @@ Não é redundante — são dois mecanismos independentes, e o app exige que **a
 - **`license_expires_at`**: expiração natural "por tempo", sem ação manual.
 - **`license_status`**: revogação manual e imediata, independente da data — o kill switch (`'blocked'`) para cortar acesso antes do vencimento (inadimplência, uso indevido, etc.) sem precisar editar a data. Por isso o job de sincronização acima nunca sobrescreve `'blocked'`.
 
+## 💾 Backup remoto automático (Supabase Storage)
+
+Adicionado em 2026-09-07. Pedido do cliente: um backup de segurança que aconteça sozinho, todo dia, sem o vendedor precisar fazer nada — diferente do backup manual (Fase 8, JSON completo, exportado/importado/enviado por e-mail pelo próprio vendedor quando ele quiser), este é silencioso e automático, pensado só pra suporte conseguir restaurar dados se um aparelho tiver problema.
+
+### O que é enviado (e o que não é)
+
+Só um recorte pequeno, pra caber folgado no plano gratuito do Supabase (500MB banco / 1GB Storage) mesmo com muitos vendedores usando o mesmo projeto:
+- **Catálogo de produtos completo** (nome, categoria, preço, unidade — igual ao backup local, sem `photo_path`, que nunca sai do celular).
+- **Vendas (`orders`) dos últimos 30 dias apenas** (`created_at >= agora - 30 dias`), cada uma com o nome/documento do cliente (snapshot embutido — não existe uma coleção `clients` separada aqui) e os itens (mesmo formato do backup local: `product_name_snapshot`, preço, quantidade, desconto, subtotal).
+- **Nunca** envia: clientes fora do contexto de uma venda recente, pedidos com mais de 30 dias, `license_control`, `company_settings`, nem fotos de produto.
+
+`src/services/remoteBackupService.ts` (`buildRemoteBackupPayload`) monta esse JSON reaproveitando a mesma lógica/nomenclatura do `backupService.ts` (Fase 8), só que com esse recorte.
+
+### Onde fica guardado — só o mais recente, nunca acumula
+
+Um arquivo por dispositivo, no bucket `device-backups` do Supabase Storage, no caminho `device-backups/{device_id}.json`. Todo envio **sobrescreve** o arquivo anterior (upload com `x-upsert: true`) — nunca fica um histórico de backups antigos acumulando espaço. Pra identificar de qual vendedor é um arquivo, cruze o `device_id` do nome do arquivo com a tabela `licenses` (mesmo projeto Supabase, já tem `device_id` → `client_name`) — por isso o payload não precisa repetir esse dado.
+
+### Quando é enviado
+
+Não existe um "relógio" rodando com o app fechado — nenhuma solução no Expo managed workflow garante isso de forma confiável (principalmente no iOS). Em vez disso, `useRemoteBackupSync` (chamado incondicionalmente em `App.tsx`, independente da tela ou do status da licença — inclusive em modo somente-leitura ou bloqueado, já que o objetivo é justamente ter um backup de segurança para esses casos) tenta a cada:
+- Abertura do app;
+- 15 minutos, enquanto o app fica aberto;
+- Reconexão de rede (`NetInfo.addEventListener`).
+
+`remoteBackupService.syncRemoteBackupIfNeeded()` só efetivamente faz alguma coisa se: (1) ainda não enviou hoje (`license_control.last_remote_backup_at` não é do mesmo dia local) **e** (2) há internet no momento (`NetInfo.fetch()`) — sem internet, não tenta e não é erro, só espera a próxima chamada. Na prática, cobre bem um app de vendas usado diariamente: se o vendedor abrir o app em algum momento do dia com internet, o backup daquele dia é enviado; dias sem abrir o app ou sem internet nenhuma vez simplesmente não geram backup daquele dia (o próximo envio bem-sucedido sobrescreve o arquivo mesmo assim). Falhas (offline, Supabase fora do ar) são silenciosas — nunca aparece erro pro vendedor, é uma ação de bundle, não dele.
+
+### Segurança — escrita liberada, leitura também (trade-off aceito, ver histórico abaixo)
+
+O app usa a mesma chave **anon/publishable** já usada pra licença (não existe login/autenticação de usuário nesse app) — por isso não dá pra restringir por RLS "cada dispositivo só acessa o próprio arquivo" de forma criptograficamente garantida (todo app instalado compartilha a mesma chave).
+
+> ⚠️ **Descoberto durante o setup (2026-09-07):** a intenção original era bloquear totalmente leitura/listagem pra `anon` (só INSERT/UPDATE), deixando só o dono do projeto (painel do Supabase, via `service_role`) ver os arquivos. Na prática isso **não funciona** com o Postgres/Storage do Supabase: qualquer operação que precise "encontrar" um objeto que já existe — sobrescrever (upload com `x-upsert`), `UPDATE` explícito (`PUT`) e até `DELETE` — faz uma checagem de visibilidade equivalente a um `SELECT` internamente (confirmado lendo os Postgres Logs: mesmo um `INSERT ... ON CONFLICT (name, bucket_id) DO UPDATE` simples já basta pra exigir isso). Sem nenhuma policy de `SELECT`, **toda tentativa de sobrescrever o backup do dia seguinte falhava** com `"new row violates row-level security policy"` — só a criação de um arquivo novo (primeiro dia) funcionava. Como o RLS do Postgres não diferencia "buscar um arquivo específico que eu já sei o nome" de "listar tudo" (a mesma policy de `SELECT` vale pras duas formas de consulta), não tem como liberar só o suficiente pra permitir sobrescrever sem também permitir listar/baixar qualquer arquivo do bucket com a chave anon.
+>
+> **Decisão tomada:** liberar `SELECT` pra todo o bucket (`to public`), aceitando o risco de que alguém que extraia a chave anon do app (ela é pública por natureza, embutida no bundle) consiga listar e baixar o backup de **qualquer** vendedor, não só o próprio. Mesma classe de risco que a tabela `licenses` já aceita hoje (a chave anon permite consultar `device_id`s à vontade, sem isolamento por dispositivo) — só que aqui o conteúdo é dado de venda de verdade, não só status de licença, então é um risco um pouco maior. Alternativa mais correta descartada por ora (complexidade maior que o cliente considerou não valer a pena agora): dar a cada aparelho uma identidade própria via **Supabase Anonymous Auth** e isolar por `auth.uid()` no caminho do arquivo — revisitar se o volume de clientes/sensibilidade dos dados justificar no futuro.
+> - O nome do arquivo continua sendo o `device_id` (UUID não exposto em nenhuma tela) — não impede leitura via `list()`, mas ainda evita que alguém "adivinhe" o nome de um arquivo específico sem antes listar o bucket inteiro.
+
+**Setup manual, uma vez só, pelo painel do Supabase** (SQL Editor → New query):
+
+```sql
+-- 1. Criar o bucket pelo painel: Storage → New bucket → nome "device-backups", Public bucket = OFF.
+
+-- 2. Policies do bucket (SQL Editor):
+create policy "device-backups: anon pode enviar"
+on storage.objects for insert
+to public
+with check (bucket_id = 'device-backups');
+
+create policy "device-backups: anon pode sobrescrever"
+on storage.objects for update
+to public
+using (bucket_id = 'device-backups')
+with check (bucket_id = 'device-backups');
+
+-- Necessária pro upload com x-upsert (sobrescrita) funcionar — sem ela, todo envio a partir do
+-- 2º dia falha com "new row violates row-level security policy" (ver nota acima).
+create policy "device-backups: leitura liberada para permitir sobrescrever"
+on storage.objects for select
+to public
+using (bucket_id = 'device-backups');
+```
+
+> As policies usam `to public` em vez de `to anon`: em testes, `to anon` não bateu de forma confiável com a chave `sb_publishable_...` (o formato novo de chave do Supabase) no serviço de Storage — `to public` (aplica a qualquer role) contornou isso sem abrir nada além do que `to anon` já abriria neste projeto, já que não existe nenhum usuário autenticado (`authenticated`) aqui.
+
 ## 🧩 Integração com `useLicenseGuard`
 
 ```ts
@@ -250,18 +367,23 @@ Não é redundante — são dois mecanismos independentes, e o app exige que **a
 function useLicenseGuard(): {
   checking: boolean;
   status: 'active' | 'expired' | 'blocked' | null;
-  reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered';
+  reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered' | 'grace_period_exceeded';
   deviceId?: string;
-  retry: () => Promise<void>;
+  expiresAt: Date | null;
+  retry: () => Promise<LicenseCheckResult>;
 } {
   // 1. Lê/cria license_control local (evaluateLicense em services/licenseService.ts)
   // 2. Aplica a árvore de decisão descrita acima (com fetchLicenseFromSupabase quando aplicável)
   // 3. Expõe status para o RootNavigator decidir entre
   //    Stack de negócio (Clients/Products/Orders) ou LicenseBlockedScreen
+  // 4. Reexecuta a própria checagem a cada 5 min via setInterval, enquanto o app fica aberto
+  //    (2026-09-01) — não só na montagem inicial.
 }
 ```
 
 O `RootNavigator` (em `src/navigation/`) deve consumir `useLicenseGuard` **antes** de montar qualquer stack de telas de negócio, garantindo que nenhuma tela sensível seja acessível com licença inválida.
+
+> 🔁 **Fix (2026-09-11): `retry` nunca mais passa por `checking: true`.** Antes, qualquer chamada de `retry()` (banners, `LicenseBlockedScreen`, e o botão "Verificar Licença Agora" das Configurações) resetava `checking` pra `true`, e o `RootNavigator` desmonta a árvore de navegação **inteira** enquanto `checking` é `true` (`if (checking...) return <LoadingView/>`) — perdendo o estado de qualquer tela (scroll, formulário em edição) e, em Configurações especificamente, criava a impressão de que um bloqueio detectado ali "demorava" a valer: o botão só atualizava o snapshot local da própria tela (via `evaluateLicense()` chamado direto, sem passar pelo hook compartilhado), então o `RootNavigator` só refletia isso na sua **própria** reavaliação periódica seguinte (até 5 min depois). Agora `retry()` só atualiza `result` silenciosamente (mesmo padrão já usado pelo `setInterval`), e `LicenseAccessContext` passou a expor esse `retry` compartilhado (`src/hooks/useLicenseAccess.tsx`) — `SettingsScreen` chama esse `retry` em vez de `evaluateLicense()` direto, garantindo que um bloqueio detectado no botão "Verificar Licença Agora" reflita **imediatamente** em todo o app (troca pra `LicenseBlockedScreen` na hora), não só no snapshot local da tela de Configurações.
 
 ## ✅ Checklist ao alterar esta regra
 

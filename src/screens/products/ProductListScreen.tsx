@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Q } from '@nozbe/watermelondb';
 import { withObservables } from '@nozbe/watermelondb/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -57,6 +58,7 @@ function ProductListScreenBase({
   onSelectCategory,
 }: ListProps) {
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
+  const { guard } = useReadOnlyGuard();
 
   return (
     <View style={styles.container}>
@@ -101,7 +103,11 @@ function ProductListScreenBase({
               activeOpacity={0.7}
             >
               <View style={styles.iconWrap}>
-                <Ionicons name="cube-outline" size={22} color={colors.accent} />
+                {item.photoPath ? (
+                  <Image source={{ uri: item.photoPath }} style={styles.thumbnail} />
+                ) : (
+                  <Ionicons name="cube-outline" size={22} color={colors.accent} />
+                )}
               </View>
               <View style={styles.cardInfo}>
                 <Text style={styles.cardTitle}>{item.name}</Text>
@@ -125,7 +131,10 @@ function ProductListScreenBase({
         />
       </View>
 
-      <Fab accessibilityLabel="Novo produto" onPress={() => navigation.navigate('ProductForm', undefined)} />
+      <Fab
+        accessibilityLabel="Novo produto"
+        onPress={() => guard(() => navigation.navigate('ProductForm', undefined))}
+      />
     </View>
   );
 }
@@ -221,6 +230,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  thumbnail: {
+    width: '100%',
+    height: '100%',
   },
   cardInfo: {
     flex: 1,

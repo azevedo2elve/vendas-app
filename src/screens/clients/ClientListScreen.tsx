@@ -10,9 +10,11 @@ import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { Fab } from '@/components/Fab';
 import { SearchBar } from '@/components/SearchBar';
+import { useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 import { maskCpfCnpj, maskPhone } from '@/utils/masks';
+import { formatClientFullAddress } from '@/utils/address';
 import { openWhatsApp } from '@/utils/whatsapp';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ClientList'>;
@@ -34,6 +36,8 @@ function observeClients(searchQuery: string) {
 type ListProps = Props & { clients: Client[]; searchQuery: string; onSearchChange: (value: string) => void };
 
 function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps) {
+  const { guard } = useReadOnlyGuard();
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -56,9 +60,9 @@ function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps
                 <Text style={styles.cardTitle}>{item.name}</Text>
                 <Text style={styles.cardSubtitle}>{maskCpfCnpj(item.document)}</Text>
                 <Text style={styles.cardSubtitle}>{maskPhone(item.phone)}</Text>
-                {item.address ? (
+                {formatClientFullAddress(item) ? (
                   <Text style={styles.cardAddress} numberOfLines={1}>
-                    {item.address}
+                    {formatClientFullAddress(item)}
                   </Text>
                 ) : null}
               </View>
@@ -81,7 +85,10 @@ function ClientListScreenBase({ navigation, clients, onSearchChange }: ListProps
         />
       </View>
 
-      <Fab accessibilityLabel="Novo cliente" onPress={() => navigation.navigate('ClientForm', undefined)} />
+      <Fab
+        accessibilityLabel="Novo cliente"
+        onPress={() => guard(() => navigation.navigate('ClientForm', undefined))}
+      />
     </View>
   );
 }

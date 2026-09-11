@@ -36,12 +36,7 @@ export function PrimaryButton({
       ) : (
         <View style={styles.content}>
           {icon ? (
-            <Ionicons
-              name={icon}
-              size={18}
-              color={isOutline ? colors.slate700 : colors.white}
-              style={styles.icon}
-            />
+            <Ionicons name={icon} size={18} color={isOutline ? colors.slate700 : colors.white} style={styles.icon} />
           ) : null}
           <Text style={[styles.label, isOutline ? styles.labelOutline : null]}>{label}</Text>
         </View>

@@ -11,12 +11,7 @@ type FabProps = {
 
 export function Fab({ onPress, accessibilityLabel, icon = 'add' }: FabProps) {
   return (
-    <TouchableOpacity
-      style={styles.fab}
-      onPress={onPress}
-      accessibilityLabel={accessibilityLabel}
-      activeOpacity={0.85}
-    >
+    <TouchableOpacity style={styles.fab} onPress={onPress} accessibilityLabel={accessibilityLabel} activeOpacity={0.85}>
       <Ionicons name={icon} size={28} color={colors.white} />
     </TouchableOpacity>
   );

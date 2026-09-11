@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 4,
+  version: 7,
   tables: [
     tableSchema({
       name: 'clients',
@@ -9,7 +9,12 @@ export default appSchema({
         { name: 'name', type: 'string', isIndexed: true },
         { name: 'document', type: 'string', isIndexed: true },
         { name: 'phone', type: 'string' },
-        { name: 'address', type: 'string', isOptional: true },
+        { name: 'address_street', type: 'string', isOptional: true },
+        { name: 'address_number', type: 'string', isOptional: true },
+        { name: 'address_complement', type: 'string', isOptional: true },
+        { name: 'address_city', type: 'string', isOptional: true },
+        { name: 'address_state', type: 'string', isOptional: true },
+        { name: 'address_zip', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -27,6 +32,7 @@ export default appSchema({
         { name: 'category_id', type: 'string', isIndexed: true, isOptional: true },
         { name: 'price', type: 'number' },
         { name: 'unit', type: 'string' },
+        { name: 'photo_path', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -40,6 +46,8 @@ export default appSchema({
         { name: 'total_net', type: 'number' },
         { name: 'payment_method', type: 'string' },
         { name: 'notes', type: 'string', isOptional: true },
+        { name: 'order_number', type: 'number' },
+        { name: 'delivery_date', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -62,6 +70,7 @@ export default appSchema({
         { name: 'license_expires_at', type: 'number' },
         { name: 'license_status', type: 'string' },
         { name: 'last_opened_at', type: 'number' },
+        { name: 'last_remote_backup_at', type: 'number', isOptional: true },
       ],
     }),
     tableSchema({
@@ -80,6 +89,8 @@ export default appSchema({
         { name: 'address_state', type: 'string', isOptional: true },
         { name: 'address_zip', type: 'string', isOptional: true },
         { name: 'pix_key', type: 'string', isOptional: true },
+        { name: 'vendedor_nome', type: 'string', isOptional: true },
+        { name: 'logo_base64', type: 'string', isOptional: true },
         { name: 'updated_at', type: 'number' },
       ],
     }),

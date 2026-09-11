@@ -14,9 +14,10 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
 import { deleteOrder, setOrderStatus } from '@/services/orderService';
 import { shareOrderPdf } from '@/services/pdfService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, PAYMENT_METHOD_LABELS } from '@/types/database';
-import { colors, radii, spacing } from '@/theme';
+import { colors, spacing } from '@/theme';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetail'>;
@@ -27,6 +28,7 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
   const [updating, setUpdating] = useState(false);
   const [sharing, setSharing] = useState(false);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   async function handleComplete() {
     setUpdating(true);
@@ -97,6 +99,18 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
           <Ionicons name="calendar-outline" size={16} color={colors.slate500} />
           <Text style={styles.row}>{order.createdAt.toLocaleString('pt-BR')}</Text>
         </View>
+        {order.orderNumber > 0 ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="pricetag-outline" size={16} color={colors.slate500} />
+            <Text style={styles.row}>Pedido nº {order.orderNumber} deste cliente</Text>
+          </View>
+        ) : null}
+        {order.deliveryDate ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="cube-outline" size={16} color={colors.slate500} />
+            <Text style={styles.row}>Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}</Text>
+          </View>
+        ) : null}
         <View style={styles.infoRow}>
           <Ionicons name="wallet-outline" size={16} color={colors.slate500} />
           <Text style={styles.row}>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</Text>
@@ -140,12 +154,19 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
         </View>
       </Card>
 
+      {readOnly ? (
+        <Text style={styles.readOnlyNotice}>
+          Licença expirada — somente leitura. Compartilhar, concluir, cancelar e excluir ficam indisponíveis.
+        </Text>
+      ) : null}
+
       <PrimaryButton
         label="Compartilhar (PDF / WhatsApp)"
         variant="success"
         icon="share-social-outline"
         onPress={handleShare}
         loading={sharing}
+        disabled={readOnly}
       />
       {order.status === 'pending' ? (
         <PrimaryButton
@@ -153,12 +174,24 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
           icon="checkmark-circle-outline"
           onPress={handleComplete}
           loading={updating}
+          disabled={readOnly}
         />
       ) : null}
       {order.status !== 'cancelled' ? (
-        <PrimaryButton label="Cancelar pedido" variant="outline" onPress={handleCancel} disabled={updating} />
+        <PrimaryButton
+          label="Cancelar pedido"
+          variant="outline"
+          onPress={handleCancel}
+          disabled={updating || readOnly}
+        />
       ) : null}
-      <PrimaryButton label="Excluir pedido" variant="danger" icon="trash-outline" onPress={handleDelete} disabled={updating} />
+      <PrimaryButton
+        label="Excluir pedido"
+        variant="danger"
+        icon="trash-outline"
+        onPress={handleDelete}
+        disabled={updating || readOnly}
+      />
     </ScrollView>
   );
 }
@@ -291,5 +324,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: colors.success,
+  },
+  readOnlyNotice: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.warningStrong,
+    textAlign: 'center',
   },
 });

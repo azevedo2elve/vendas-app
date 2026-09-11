@@ -9,4 +9,5 @@ export default class LicenseControl extends Model {
   @date('license_expires_at') declare licenseExpiresAt: Date;
   @field('license_status') declare licenseStatus: LicenseStatus;
   @date('last_opened_at') declare lastOpenedAt: Date;
+  @date('last_remote_backup_at') declare lastRemoteBackupAt: Date | null;
 }

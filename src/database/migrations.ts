@@ -3,6 +3,65 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export default schemaMigrations({
   migrations: [
     {
+      toVersion: 7,
+      steps: [
+        // Backup remoto automático (2026-09-07): guarda quando foi o último envio bem-sucedido
+        // do backup reduzido (catálogo + vendas dos últimos 30 dias) pro Supabase Storage, pra
+        // `remoteBackupService.syncRemoteBackupIfNeeded()` saber que já mandou hoje e não repetir.
+        addColumns({
+          table: 'license_control',
+          columns: [{ name: 'last_remote_backup_at', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 6,
+      steps: [
+        // Foto do produto (apenas visual, nunca vai pro PDF): guarda o caminho do arquivo já
+        // redimensionado/comprimido no armazenamento do próprio celular (productPhotoService),
+        // não a imagem em si — mesmo padrão do logo em `company_settings`, mas em disco em vez
+        // de base64 no banco, pra não pesar o SQLite com fotos.
+        addColumns({
+          table: 'products',
+          columns: [{ name: 'photo_path', type: 'string', isOptional: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 5,
+      steps: [
+        // Fase 13: endereço estruturado do cliente (substitui a antiga coluna `address`, que
+        // fica órfã no SQLite, mesmo padrão já usado para `sku` na Fase 12), número do pedido
+        // por cliente e data de entrega em `orders`, e logo/nome do vendedor em `company_settings`
+        // — todos consumidos pelo novo cabeçalho do PDF.
+        addColumns({
+          table: 'clients',
+          columns: [
+            { name: 'address_street', type: 'string', isOptional: true },
+            { name: 'address_number', type: 'string', isOptional: true },
+            { name: 'address_complement', type: 'string', isOptional: true },
+            { name: 'address_city', type: 'string', isOptional: true },
+            { name: 'address_state', type: 'string', isOptional: true },
+            { name: 'address_zip', type: 'string', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'orders',
+          columns: [
+            { name: 'order_number', type: 'number' },
+            { name: 'delivery_date', type: 'number', isOptional: true },
+          ],
+        }),
+        addColumns({
+          table: 'company_settings',
+          columns: [
+            { name: 'vendedor_nome', type: 'string', isOptional: true },
+            { name: 'logo_base64', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
       toVersion: 4,
       steps: [
         // Categorias de produtos (Fase 12): nova tabela `categories` + `products.category_id`.

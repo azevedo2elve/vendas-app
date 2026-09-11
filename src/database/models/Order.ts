@@ -19,8 +19,12 @@ export default class Order extends Model {
   @field('total_net') declare totalNet: number;
   @field('payment_method') declare paymentMethod: PaymentMethod;
   @field('notes') declare notes?: string;
+  // Número sequencial do pedido específico para o cliente (1º, 2º, 3º pedido daquele cliente),
+  // não um identificador global. Pedidos criados antes da Fase 13 têm `0` (sentinela de "legado").
+  @field('order_number') declare orderNumber: number;
 
   @readonly @date('created_at') declare createdAt: Date;
+  @date('delivery_date') declare deliveryDate: Date | null;
 
   @relation('clients', 'client_id') declare client: Relation<Client>;
   @children('order_items') declare items: Query<OrderItem>;

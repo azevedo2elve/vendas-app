@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+ios/
+android/
+package-lock.json
+assets/catalogo/
+
+# Markdown (docs/, CLAUDE.md) é escrito/formatado à mão com cuidado (tabelas, emojis nos
+# títulos, blocos de código aninhados) — reformatação automática do Prettier arrisca mexer em
+# quebras de linha/espaçamento de um jeito que não agrega nada e polui o diff. Prettier aqui é
+# só pra código (ts/tsx/js).
+*.md
+

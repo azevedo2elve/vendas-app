@@ -13,6 +13,7 @@ export default class Product extends Model {
   @field('category_id') declare categoryId?: string;
   @field('price') declare price: number;
   @field('unit') declare unit: string;
+  @field('photo_path') declare photoPath?: string;
 
   @readonly @date('created_at') declare createdAt: Date;
 

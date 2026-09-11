@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,13 +14,15 @@ import { LoadingView } from '@/components/LoadingView';
 import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
-import { isSupportPhoneConfigured, SUPPORT_WHATSAPP_PHONE } from '@/services/api';
-import { exportBackup } from '@/services/backupService';
-import { evaluateLicense, getCurrentLicenseSnapshot } from '@/services/licenseService';
+import { isSupportEmailConfigured, isSupportPhoneConfigured, SUPPORT_WHATSAPP_PHONE } from '@/services/api';
+import { emailBackup, exportBackup } from '@/services/backupService';
+import { getCurrentLicenseSnapshot } from '@/services/licenseService';
 import { clearAllOrders } from '@/services/orderService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import {
   getDatabaseSummary,
   getOrCreateCompanySettings,
+  pickCompanyLogo,
   saveCompanySettings,
   type DatabaseSummary,
 } from '@/services/settingsService';
@@ -37,6 +39,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 const companySchema = z.object({
   razaoSocial: z.string().trim().min(3, 'Nome/razão social muito curto'),
   nomeFantasia: z.string().trim().optional(),
+  vendedorNome: z.string().trim().optional(),
   document: z.string().refine((value) => value.length === 0 || isValidCpfOuCnpj(value), 'CNPJ/CPF inválido'),
   ie: z.string().trim().optional(),
   phone: z.string().min(10, 'Telefone inválido'),
@@ -55,6 +58,7 @@ type CompanyFormValues = z.infer<typeof companySchema>;
 const EMPTY_COMPANY_FORM: CompanyFormValues = {
   razaoSocial: '',
   nomeFantasia: '',
+  vendedorNome: '',
   document: '',
   ie: '',
   phone: '',
@@ -78,11 +82,15 @@ export function SettingsScreen({ navigation }: Props) {
   const [summary, setSummary] = useState<DatabaseSummary | null>(null);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [sendingBackupEmail, setSendingBackupEmail] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'company' | 'system' | 'data' | null>(null);
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [pickingLogo, setPickingLogo] = useState(false);
   const { showToast } = useToast();
   const netInfo = useNetInfo();
+  const { readOnly, retry: retryLicense } = useLicenseAccess();
 
   function toggleSection(section: 'company' | 'system' | 'data') {
     setExpandedSection((current) => (current === section ? null : section));
@@ -91,6 +99,7 @@ export function SettingsScreen({ navigation }: Props) {
   const {
     control,
     handleSubmit,
+    getValues,
     reset,
     formState: { errors },
   } = useForm<CompanyFormValues>({
@@ -101,11 +110,15 @@ export function SettingsScreen({ navigation }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [settings, licenseSnapshot] = await Promise.all([getOrCreateCompanySettings(), getCurrentLicenseSnapshot()]);
+      const [settings, licenseSnapshot] = await Promise.all([
+        getOrCreateCompanySettings(),
+        getCurrentLicenseSnapshot(),
+      ]);
       if (cancelled) return;
       reset({
         razaoSocial: settings.razaoSocial,
         nomeFantasia: settings.nomeFantasia ?? '',
+        vendedorNome: settings.vendedorNome ?? '',
         document: settings.document,
         ie: settings.ie ?? '',
         phone: settings.phone,
@@ -118,6 +131,7 @@ export function SettingsScreen({ navigation }: Props) {
         addressZip: settings.addressZip ?? '',
         pixKey: settings.pixKey ?? '',
       });
+      setLogoBase64(settings.logoBase64 ?? null);
       setLicense(licenseSnapshot);
       setLoading(false);
     })();
@@ -138,28 +152,63 @@ export function SettingsScreen({ navigation }: Props) {
     }, [refreshSummary])
   );
 
+  function companySettingsInputFromForm(values: CompanyFormValues) {
+    return {
+      razaoSocial: values.razaoSocial,
+      nomeFantasia: values.nomeFantasia,
+      vendedorNome: values.vendedorNome,
+      document: onlyDigits(values.document ?? ''),
+      ie: values.ie,
+      phone: onlyDigits(values.phone),
+      email: values.email,
+      addressStreet: values.addressStreet,
+      addressNumber: values.addressNumber,
+      addressDistrict: values.addressDistrict,
+      addressCity: values.addressCity,
+      addressState: values.addressState?.toUpperCase(),
+      addressZip: onlyDigits(values.addressZip ?? ''),
+      pixKey: values.pixKey,
+    };
+  }
+
   async function onSubmitCompany(values: CompanyFormValues) {
     setSaving(true);
     try {
-      await saveCompanySettings({
-        razaoSocial: values.razaoSocial,
-        nomeFantasia: values.nomeFantasia,
-        document: onlyDigits(values.document ?? ''),
-        ie: values.ie,
-        phone: onlyDigits(values.phone),
-        email: values.email,
-        addressStreet: values.addressStreet,
-        addressNumber: values.addressNumber,
-        addressDistrict: values.addressDistrict,
-        addressCity: values.addressCity,
-        addressState: values.addressState?.toUpperCase(),
-        addressZip: onlyDigits(values.addressZip ?? ''),
-        pixKey: values.pixKey,
-      });
+      await saveCompanySettings(companySettingsInputFromForm(values));
       showToast('Dados da empresa salvos com sucesso!', 'success');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handlePickLogo() {
+    setPickingLogo(true);
+    try {
+      const dataUri = await pickCompanyLogo();
+      if (!dataUri) return;
+      await saveCompanySettings({ ...companySettingsInputFromForm(getValues()), logoBase64: dataUri });
+      setLogoBase64(dataUri);
+      showToast('Logo atualizada com sucesso!', 'success');
+    } catch (error) {
+      Alert.alert('Não foi possível definir a logo', String(error instanceof Error ? error.message : error));
+    } finally {
+      setPickingLogo(false);
+    }
+  }
+
+  function handleRemoveLogo() {
+    Alert.alert('Remover logo', 'Tem certeza que deseja remover a logo da empresa?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Remover',
+        style: 'destructive',
+        onPress: async () => {
+          await saveCompanySettings({ ...companySettingsInputFromForm(getValues()), logoBase64: null });
+          setLogoBase64(null);
+          showToast('Logo removida.', 'info');
+        },
+      },
+    ]);
   }
 
   async function handleCopyDeviceId() {
@@ -179,13 +228,15 @@ export function SettingsScreen({ navigation }: Props) {
   async function handleCheckLicense() {
     setCheckingLicense(true);
     try {
-      await evaluateLicense();
-      const snapshot = await getCurrentLicenseSnapshot();
-      setLicense(snapshot);
-      if (snapshot.status === 'active') {
+      // Usa o `retry` compartilhado com o RootNavigator (via LicenseAccessProvider), não um
+      // evaluateLicense() isolado — senão o app só reagiria a um bloqueio recém-detectado aqui
+      // até 5 minutos depois, na próxima reavaliação periódica automática do RootNavigator.
+      const result = await retryLicense();
+      setLicense({ status: result.status, expiresAt: result.expiresAt, deviceId: result.deviceId });
+      if (result.status === 'active') {
         showToast('Licença verificada: está ativa!', 'success');
       } else {
-        showToast(`Licença ${LICENSE_STATUS_LABELS[snapshot.status].toLowerCase()}.`, 'error');
+        showToast(`Licença ${LICENSE_STATUS_LABELS[result.status].toLowerCase()}.`, 'error');
       }
     } catch (error) {
       showToast(`Não foi possível verificar a licença: ${String(error)}`, 'error');
@@ -198,11 +249,30 @@ export function SettingsScreen({ navigation }: Props) {
     setExporting(true);
     try {
       const result = await exportBackup();
-      showToast(`Backup gerado com ${result.clientsCount} cliente(s) e ${result.productsCount} produto(s).`, 'success');
+      showToast(
+        `Backup gerado com ${result.clientsCount} cliente(s), ${result.productsCount} produto(s) e ${result.ordersCount} pedido(s).`,
+        'success'
+      );
     } catch (error) {
       showToast(`Não foi possível exportar o backup: ${String(error)}`, 'error');
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleEmailBackup() {
+    setSendingBackupEmail(true);
+    try {
+      const result = await emailBackup();
+      if (result.status === 'cancelled') return;
+      showToast(
+        `Backup enviado com ${result.clientsCount} cliente(s), ${result.productsCount} produto(s) e ${result.ordersCount} pedido(s).`,
+        'success'
+      );
+    } catch (error) {
+      showToast(`Não foi possível enviar o backup por e-mail: ${String(error)}`, 'error');
+    } finally {
+      setSendingBackupEmail(false);
     }
   }
 
@@ -238,7 +308,6 @@ export function SettingsScreen({ navigation }: Props) {
         expanded={expandedSection === 'company'}
         onToggle={() => toggleSection('company')}
       >
-
         <Controller
           control={control}
           name="razaoSocial"
@@ -265,6 +334,52 @@ export function SettingsScreen({ navigation }: Props) {
             />
           )}
         />
+
+        <Controller
+          control={control}
+          name="vendedorNome"
+          render={({ field }) => (
+            <MaskedInput
+              label="Nome do Vendedor"
+              placeholder="Exibido na tela inicial e no PDF (opcional)"
+              value={field.value ?? ''}
+              onChangeText={field.onChange}
+            />
+          )}
+        />
+
+        <View>
+          <Text style={styles.sectionLabel}>Logo da Empresa</Text>
+          <View style={styles.logoRow}>
+            {logoBase64 ? (
+              <Image source={{ uri: logoBase64 }} style={styles.logoPreview} resizeMode="contain" />
+            ) : (
+              <View style={styles.logoPlaceholder}>
+                <Ionicons name="image-outline" size={22} color={colors.slate400} />
+              </View>
+            )}
+            <View style={styles.logoActions}>
+              <PrimaryButton
+                label={logoBase64 ? 'Trocar logo' : 'Selecionar logo'}
+                variant="outline"
+                icon="cloud-upload-outline"
+                onPress={handlePickLogo}
+                loading={pickingLogo}
+                disabled={readOnly}
+              />
+              {logoBase64 ? (
+                <PrimaryButton
+                  label="Remover"
+                  variant="danger"
+                  icon="trash-outline"
+                  onPress={handleRemoveLogo}
+                  disabled={readOnly}
+                />
+              ) : null}
+            </View>
+          </View>
+          <Text style={styles.helperText}>PNG ou JPG, até 2MB. Usada no cabeçalho do PDF da ordem de venda.</Text>
+        </View>
 
         <View style={styles.formRow}>
           <View style={styles.formRowItemWide}>
@@ -404,7 +519,13 @@ export function SettingsScreen({ navigation }: Props) {
           control={control}
           name="addressZip"
           render={({ field }) => (
-            <MaskedInput label="CEP" mask="cep" placeholder="00000-000" value={field.value ?? ''} onChangeText={field.onChange} />
+            <MaskedInput
+              label="CEP"
+              mask="cep"
+              placeholder="00000-000"
+              value={field.value ?? ''}
+              onChangeText={field.onChange}
+            />
           )}
         />
 
@@ -426,6 +547,7 @@ export function SettingsScreen({ navigation }: Props) {
           icon="checkmark-circle-outline"
           onPress={handleSubmit(onSubmitCompany)}
           loading={saving}
+          disabled={readOnly}
         />
       </CollapsibleCard>
 
@@ -438,7 +560,6 @@ export function SettingsScreen({ navigation }: Props) {
         expanded={expandedSection === 'system'}
         onToggle={() => toggleSection('system')}
       >
-
         <View>
           <Text style={styles.sectionLabel}>ID do Dispositivo</Text>
           <View style={styles.deviceIdBox}>
@@ -479,11 +600,7 @@ export function SettingsScreen({ navigation }: Props) {
             <Ionicons name={isOnline ? 'wifi' : 'cloud-offline-outline'} size={16} color={colors.slate500} />
             <Text style={styles.infoLabel}>Conexão</Text>
           </View>
-          <Badge
-            label={isOnline ? 'Online' : 'Modo Offline'}
-            tone={isOnline ? 'success' : 'warning'}
-            dot
-          />
+          <Badge label={isOnline ? 'Online' : 'Modo Offline'} tone={isOnline ? 'success' : 'warning'} dot />
         </View>
 
         <View style={styles.infoRow}>
@@ -525,7 +642,6 @@ export function SettingsScreen({ navigation }: Props) {
         expanded={expandedSection === 'data'}
         onToggle={() => toggleSection('data')}
       >
-
         {summary ? (
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -557,6 +673,23 @@ export function SettingsScreen({ navigation }: Props) {
           icon="cloud-download-outline"
           onPress={() => navigation.navigate('Backup')}
         />
+        <PrimaryButton
+          label="Enviar backup por e-mail (suporte)"
+          variant="outline"
+          icon="mail-outline"
+          onPress={handleEmailBackup}
+          loading={sendingBackupEmail}
+          disabled={!isSupportEmailConfigured()}
+        />
+        {!isSupportEmailConfigured() ? (
+          <Text style={styles.helperText}>
+            Envio de backup por e-mail não configurado (defina EXPO_PUBLIC_SUPPORT_EMAIL no .env).
+          </Text>
+        ) : (
+          <Text style={styles.helperText}>
+            Use quando precisar de ajuda do suporte: abre seu app de e-mail com o backup anexado, pronto pra enviar.
+          </Text>
+        )}
 
         <View style={styles.divider} />
 
@@ -566,10 +699,16 @@ export function SettingsScreen({ navigation }: Props) {
           variant="danger"
           icon="trash-outline"
           onPress={() => setConfirmClearVisible(true)}
+          disabled={readOnly}
         />
       </CollapsibleCard>
 
-      <Modal visible={confirmClearVisible} transparent animationType="fade" onRequestClose={() => setConfirmClearVisible(false)}>
+      <Modal
+        visible={confirmClearVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmClearVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <View style={styles.modalIconCircle}>
@@ -577,8 +716,8 @@ export function SettingsScreen({ navigation }: Props) {
             </View>
             <Text style={styles.modalTitle}>Limpar todos os pedidos?</Text>
             <Text style={styles.modalMessage}>
-              Esta ação remove permanentemente {summary?.ordersCount ?? 0} ordem(ns) de venda e seus itens. Clientes
-              e produtos cadastrados não são afetados. Esta ação não pode ser desfeita.
+              Esta ação remove permanentemente {summary?.ordersCount ?? 0} ordem(ns) de venda e seus itens. Clientes e
+              produtos cadastrados não são afetados. Esta ação não pode ser desfeita.
             </Text>
             <View style={styles.modalActions}>
               <View style={styles.modalActionButton}>
@@ -650,6 +789,35 @@ const styles = StyleSheet.create({
     color: colors.textDisabled,
     marginTop: spacing.xs,
     lineHeight: 16,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  logoPreview: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.slate50,
+  },
+  logoPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: colors.slate50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoActions: {
+    flex: 1,
+    gap: spacing.xs,
   },
   divider: {
     height: 1,

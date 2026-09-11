@@ -16,6 +16,8 @@ import { LoadingView } from '@/components/LoadingView';
 import { SectionHeader } from '@/components/SectionHeader';
 import { StatCard } from '@/components/StatCard';
 import { testSupabaseFetch } from '@/services/licenseService';
+import { getOrCreateCompanySettings, resolveDisplayName } from '@/services/settingsService';
+import { useLicenseAccess, useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
@@ -26,6 +28,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type RecentOrder = { order: Order; clientName: string };
 
 type DashboardData = {
+  displayName: string;
   clientsCount: number;
   ordersCount: number;
   totalToday: number;
@@ -39,7 +42,8 @@ async function loadDashboardData(): Promise<DashboardData> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [clientsCount, ordersCount, todayOrders, recentOrders] = await Promise.all([
+  const [companySettings, clientsCount, ordersCount, todayOrders, recentOrders] = await Promise.all([
+    getOrCreateCompanySettings(),
     clientsCollection.query().fetchCount(),
     ordersCollection.query().fetchCount(),
     ordersCollection
@@ -57,14 +61,28 @@ async function loadDashboardData(): Promise<DashboardData> {
     })
   );
 
-  return { clientsCount, ordersCount, totalToday, recentOrders: recentWithClients };
+  return {
+    displayName: resolveDisplayName(companySettings),
+    clientsCount,
+    ordersCount,
+    totalToday,
+    recentOrders: recentWithClients,
+  };
 }
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Bom dia';
-  if (hour < 18) return 'Boa tarde';
-  return 'Boa noite';
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+// "Licença Válida", "Licença Inválida" (modo somente-leitura), ou a contagem regressiva de dias
+// (5, 4, 3, 2, 1 — diminui um a um conforme o dia passa, não pula direto de 5 para 2) a partir de
+// 5 dias antes do vencimento. Sem contagem em horas aqui (isso fica só no LicenseExpiryBanner).
+function licenseStatusLabel(readOnly: boolean, expiresAt: Date | null): string {
+  if (readOnly) return 'Licença Inválida';
+  if (!expiresAt) return 'Licença Válida';
+
+  const remainingMs = expiresAt.getTime() - Date.now();
+  const daysRemaining = Math.max(1, Math.ceil(remainingMs / ONE_DAY_MS));
+  if (daysRemaining > 5) return 'Licença Válida';
+  return daysRemaining === 1 ? 'Falta 1 dia - validade' : `Faltam ${daysRemaining} dias - validade`;
 }
 
 export function HomeScreen({ navigation }: Props) {
@@ -74,6 +92,8 @@ export function HomeScreen({ navigation }: Props) {
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
+  const { readOnly, guard } = useReadOnlyGuard();
+  const { expiresAt } = useLicenseAccess();
 
   const refresh = useCallback(async () => {
     const dashboard = await loadDashboardData();
@@ -115,7 +135,7 @@ export function HomeScreen({ navigation }: Props) {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.greeting}>{data.displayName}</Text>
           <Text style={styles.dateText}>{today}</Text>
         </View>
         <View style={styles.headerRight}>
@@ -135,12 +155,18 @@ export function HomeScreen({ navigation }: Props) {
                 color={isOnline ? colors.success : colors.warningStrong}
               />
               <Text style={[styles.statusPillText, { color: isOnline ? colors.successStrong : colors.warningStrong }]}>
-                {isOnline ? 'Online' : 'Modo Offline Ativo'}
+                {isOnline ? 'Online' : 'Offline'}
               </Text>
             </View>
-            <View style={[styles.statusPill, styles.statusPillLicense]}>
-              <Ionicons name="shield-checkmark" size={13} color={colors.accent} />
-              <Text style={[styles.statusPillText, { color: colors.accentDark }]}>Licença Válida</Text>
+            <View style={[styles.statusPill, readOnly ? styles.statusPillOffline : styles.statusPillLicense]}>
+              <Ionicons
+                name={readOnly ? 'time-outline' : 'shield-checkmark'}
+                size={13}
+                color={readOnly ? colors.warningStrong : colors.accent}
+              />
+              <Text style={[styles.statusPillText, { color: readOnly ? colors.warningStrong : colors.accentDark }]}>
+                {licenseStatusLabel(readOnly, expiresAt)}
+              </Text>
             </View>
           </View>
         </View>
@@ -155,7 +181,7 @@ export function HomeScreen({ navigation }: Props) {
       <View style={styles.quickActions}>
         <TouchableOpacity
           style={styles.primaryAction}
-          onPress={() => navigation.navigate('NewOrder')}
+          onPress={() => guard(() => navigation.navigate('NewOrder'))}
           activeOpacity={0.85}
         >
           <View style={styles.primaryActionIcon}>
@@ -171,7 +197,7 @@ export function HomeScreen({ navigation }: Props) {
         <View style={styles.secondaryActionsRow}>
           <TouchableOpacity
             style={styles.secondaryAction}
-            onPress={() => navigation.navigate('ClientForm', undefined)}
+            onPress={() => guard(() => navigation.navigate('ClientForm', undefined))}
             activeOpacity={0.75}
           >
             <Ionicons name="person-add-outline" size={20} color={colors.accent} />
@@ -185,19 +211,15 @@ export function HomeScreen({ navigation }: Props) {
             <Ionicons name="grid-outline" size={20} color={colors.accent} />
             <Text style={styles.secondaryActionText}>Catálogo</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryAction}
-            onPress={() => navigation.navigate('Backup')}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="cloud-upload-outline" size={20} color={colors.accent} />
-            <Text style={styles.secondaryActionText}>Backup</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title="Últimos pedidos" actionLabel="Ver todos" onAction={() => navigation.navigate('OrderList')} />
+        <SectionHeader
+          title="Últimos pedidos"
+          actionLabel="Ver todos"
+          onAction={() => navigation.navigate('OrderList')}
+        />
 
         {data.recentOrders.length === 0 ? (
           <Card>
@@ -223,6 +245,14 @@ export function HomeScreen({ navigation }: Props) {
                   <Text style={styles.recentMeta}>
                     {order.createdAt.toLocaleDateString('pt-BR')} · #{order.id.slice(0, 6).toUpperCase()}
                   </Text>
+                  {order.deliveryDate ? (
+                    <View style={styles.recentDeliveryRow}>
+                      <Ionicons name="cube-outline" size={12} color={colors.accent} />
+                      <Text style={styles.recentDeliveryText}>
+                        Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.recentRight}>
                   <Text style={styles.recentValue}>{formatCurrencyBRL(order.totalNet)}</Text>
@@ -435,6 +465,17 @@ const styles = StyleSheet.create({
   recentMeta: {
     fontSize: 11.5,
     color: colors.textMuted,
+  },
+  recentDeliveryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  recentDeliveryText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
   },
   recentRight: {
     alignItems: 'flex-end',

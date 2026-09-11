@@ -1,29 +1,35 @@
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { LicenseCheckResult } from '@/services/licenseService';
+import { exportBackup } from '@/services/backupService';
 import { colors, radii, spacing } from '@/theme';
 
 type LicenseBlockedScreenProps = {
   status: Exclude<LicenseCheckResult['status'], 'active'>;
   reason: LicenseCheckResult['reason'];
   deviceId?: string;
-  onRetry: () => Promise<void>;
+  onRetry: () => Promise<LicenseCheckResult>;
 };
 
 const MESSAGES: Record<string, string> = {
-  offline:
-    'Sua licença venceu e não conseguimos renovar automaticamente. Conecte-se à internet e tente novamente.',
+  offline: 'Sua licença venceu e não conseguimos renovar automaticamente. Conecte-se à internet e tente novamente.',
   clock_tampered:
     'Detectamos uma alteração incomum na data do dispositivo. Ajuste o relógio para a data e hora corretas e tente novamente.',
-  server_rejected:
-    'Sua licença não pôde ser renovada. Entre em contato com o suporte para regularizar o acesso.',
+  server_rejected: 'Sua licença não pôde ser renovada. Entre em contato com o suporte para regularizar o acesso.',
   not_registered:
     'Não encontramos este dispositivo em nosso sistema de licenças. Entre em contato com o suporte informando o ID do dispositivo para liberar o acesso.',
+  grace_period_exceeded:
+    'Sua licença está vencida há mais de um dia e não conseguimos renovar automaticamente. Conecte-se à internet e tente novamente, ou entre em contato com o suporte.',
 };
 
 export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: LicenseBlockedScreenProps) {
   const [retrying, setRetrying] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  // Se este componente ainda está montado depois de um retry, é porque o status continua
+  // != 'active' (senão o RootNavigator já teria trocado de tela) — então sabemos que a
+  // tentativa falhou, sem precisar que `onRetry` devolva o resultado.
+  const [attempted, setAttempted] = useState(false);
 
   const message = MESSAGES[reason ?? 'offline'] ?? MESSAGES.offline;
 
@@ -31,8 +37,22 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
     setRetrying(true);
     try {
       await onRetry();
+      setAttempted(true);
     } finally {
       setRetrying(false);
+    }
+  }
+
+  // O vendedor nunca deve perder acesso aos próprios dados, mesmo com a licença bloqueada — só
+  // a operação normal do negócio (cadastros, pedidos, PDF) fica indisponível aqui.
+  async function handleExportBackup() {
+    setExporting(true);
+    try {
+      await exportBackup();
+    } catch (error) {
+      Alert.alert('Não foi possível exportar o backup', String(error instanceof Error ? error.message : error));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -44,6 +64,15 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
 
       <Text style={styles.title}>{status === 'blocked' ? 'Acesso bloqueado' : 'Licença expirada'}</Text>
       <Text style={styles.message}>{message}</Text>
+
+      {attempted && !retrying ? (
+        <View style={styles.retryFeedback}>
+          <Ionicons name="alert-circle-outline" size={15} color={colors.dangerStrong} />
+          <Text style={styles.retryFeedbackText}>
+            Ainda não foi possível validar sua licença. Continue tentando ou entre em contato com o suporte.
+          </Text>
+        </View>
+      ) : null}
 
       <TouchableOpacity style={styles.button} onPress={handleRetry} disabled={retrying} activeOpacity={0.8}>
         {retrying ? (
@@ -64,6 +93,22 @@ export function LicenseBlockedScreen({ status, reason, deviceId, onRetry }: Lice
           </Text>
         </View>
       ) : null}
+
+      <TouchableOpacity
+        style={styles.exportButton}
+        onPress={handleExportBackup}
+        disabled={exporting}
+        activeOpacity={0.8}
+      >
+        {exporting ? (
+          <ActivityIndicator color={colors.slate700} />
+        ) : (
+          <View style={styles.buttonContent}>
+            <Ionicons name="cloud-upload-outline" size={16} color={colors.slate700} />
+            <Text style={styles.exportButtonText}>Exportar meus dados (Backup)</Text>
+          </View>
+        )}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -98,6 +143,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
     maxWidth: 380,
+  },
+  retryFeedback: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: colors.dangerBgSoft,
+    borderRadius: radii.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    maxWidth: 380,
+  },
+  retryFeedbackText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: colors.dangerStrong,
+    lineHeight: 17,
+    fontWeight: '600',
   },
   button: {
     marginTop: spacing.xs,
@@ -138,5 +200,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  exportButton: {
+    marginTop: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 13,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.md,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  exportButtonText: {
+    color: colors.slate700,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

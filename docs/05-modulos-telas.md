@@ -5,7 +5,7 @@
 | Módulo | Telas principais | Depende de |
 |---|---|---|
 | Dashboard | `HomeScreen` | `orders`/`clients` (WatermelonDB, agregados), `licenseService`, `netinfo` |
-| Licença | `LicenseBlockedScreen` | `licenseService` |
+| Licença | `LicenseBlockedScreen`, `ReadOnlyBanner`, `LicenseExpiryBanner` | `licenseService`, `useLicenseGuard`, `useLicenseAccess` |
 | Clientes | `ClientListScreen`, `ClientFormScreen` | `clients` (WatermelonDB) |
 | Produtos | `ProductListScreen`, `ProductFormScreen`, `CategoryListScreen` | `products`, `categories` (WatermelonDB) |
 | Ordem de Venda | `OrderSelectClientScreen`, `OrderItemsScreen`, `OrderReviewScreen`, `OrderSuccessScreen`, `OrderListScreen`, `OrderDetailScreen` | `orders`, `order_items`, `pdfService` |
@@ -14,16 +14,30 @@
 
 ---
 
+## 🔒 Modo somente-leitura (licença `expired`) — cross-cutting, Fases 7/8
+
+Regra completa em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active). Mecanismo, usado em várias telas abaixo:
+
+- `RootNavigator` monta `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`) com `readOnly = status === 'expired'`, e mostra uma faixa fixa (`ReadOnlyBanner`) acima da navegação inteira quando `readOnly`.
+- `useLicenseAccess()` — hook cru, só `{ readOnly }`, usado dentro de telas de formulário/detalhe pra desabilitar (`disabled={readOnly}`) os botões que escrevem dado (Salvar, Excluir, Compartilhar PDF, Concluir/Cancelar pedido, etc.), mantendo a tela navegável/visível.
+- `useReadOnlyGuard()` — `{ readOnly, guard }`, usado nos **pontos de entrada de criação** (FABs, botão "Nova Venda"): `guard(acao)` só executa `acao` se não estiver em somente-leitura; senão mostra um `Alert` e não navega.
+- Quando `blocked` (não `expired`), nada disso se aplica — o app inteiro fica só com `LicenseBlockedScreen`, que ganhou seu próprio botão de exportar backup direto (ver docs/04).
+- **`expired` não é mais permanente (2026-09-01):** só dura o próprio dia do vencimento — virou o dia seguinte sem conseguir renovar, o `RootNavigator` escala sozinho pra `blocked` (ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)). Isso acontece via a reavaliação periódica de 5 min do `useLicenseGuard`, não só na abertura do app.
+- **`LicenseExpiryBanner` (2026-09-01):** quando `status === 'active'` e o vencimento está próximo (5/2/1 dia, 2/1 hora antes), uma faixa não-bloqueante e dispensável aparece no mesmo lugar da `ReadOnlyBanner` (mutuamente exclusivas — uma é só pra quando ainda não venceu, a outra só pra depois que já venceu). Ver seção própria em [docs/04](./04-sistema-licenca.md#-aviso-de-vencimento-próximo-componentslicenseexpirybannertsx).
+
+---
+
 ## 🏠 Dashboard — `HomeScreen` (`src/screens/HomeScreen.tsx`)
 
 Redesenhada na Fase 10 como uma tela comercial de verdade (era um painel de diagnóstico técnico até então). `headerShown: false` no `RootNavigator` — a tela desenha seu próprio cabeçalho (respeitando `useSafeAreaInsets`).
 
-- **Cabeçalho:** saudação dinâmica por horário (`getGreeting()` — "Bom dia"/"Boa tarde"/"Boa noite"), data por extenso, e dois indicadores de status:
-  - **Conectividade**, via `useNetInfo()` (`@react-native-community/netinfo`) — "Online" ou "Modo Offline Ativo", refletindo o estado real do dispositivo (não é decorativo).
-  - **Licença**, estático "Licença Válida" — a tela só é alcançável quando `useLicenseGuard` já validou `status === 'active'` no `RootNavigator`, então não há necessidade de checar de novo aqui.
+- **Cabeçalho:** nome do vendedor/empresa em destaque (`resolveDisplayName()`, `src/services/settingsService.ts` — prioridade `company_settings.vendedor_nome` → `nome_fantasia` → `razao_social` → `"Vendas App"` como default; **Fase 13**, substituiu a saudação por horário "Bom dia"/"Boa tarde"/"Boa noite" usada até então), data por extenso, e dois indicadores de status:
+  - **Conectividade**, via `useNetInfo()` (`@react-native-community/netinfo`) — exatamente **"Online"** ou **"Offline"** (2026-09-01 — antes dizia "Modo Offline Ativo"), refletindo o estado real do dispositivo (não é decorativo).
+  - **Licença** — desde as Fases 7/8 já não é mais estático, e ganhou rótulos dinâmicos (2026-09-01, `licenseStatusLabel()` em `HomeScreen.tsx`): **"Licença Inválida"** (modo somente-leitura, `readOnly === true`); ou, com a licença normal (`readOnly === false`), **"Licença Válida"** com mais de 5 dias até o vencimento, e a partir daí uma contagem regressiva **dia a dia** — "Faltam 5 dias - validade", "Faltam 4 dias - validade", "Faltam 3 dias"... até **"Falta 1 dia - validade"** (singular no último dia; não pula direto de 5 pra 2 — ajuste pedido pelo usuário). `expiresAt` vem do contexto `useLicenseAccess()` (propagado pelo `RootNavigator`, atualizado a cada reavaliação de 5 min do `useLicenseGuard` — não precisa focar/sair da tela pra atualizar). A tela nunca é alcançável com `status === 'blocked'` (aí é só `LicenseBlockedScreen`).
 - **Cards de resumo** (`StatCard`, 3 no total): "Vendido hoje" (soma de `total_net` das ordens não-canceladas criadas desde `00:00` do dia atual), "Pedidos emitidos" (contagem total de ordens, todos os tempos) e "Clientes cadastrados" (contagem total).
-- **Ações rápidas:** um botão grande em destaque "Nova Venda" → `NewOrder`, e uma linha de 3 atalhos secundários: "Novo Cliente" (→ `ClientForm`), "Catálogo" (→ `ProductList`), "Backup" (→ `Backup`).
-- **Últimos pedidos:** até 5 ordens mais recentes (`Q.sortBy('created_at', Q.desc), Q.take(5)`), cada uma com nome do cliente (resolvido via `order.client.fetch()` — busca pontual, não observável, porque a tela já se atualiza sozinha em cada foco), valor e `Badge` de status. `EmptyState` quando não há nenhum pedido ainda.
+- **Ações rápidas:** um botão grande em destaque "Nova Venda" → `NewOrder`, e uma linha de 2 atalhos secundários: "Novo Cliente" (→ `ClientForm`), "Catálogo" (→ `ProductList`). "Nova Venda" e "Novo Cliente" passam por `useReadOnlyGuard().guard(...)` (Fases 7/8) — em modo somente-leitura, mostram um aviso em vez de navegar.
+  > 🔁 **2026-09-01:** o atalho "Backup" foi removido desta linha (pedido do cliente, pra tirar da frente uma ação que não é do dia a dia de venda) — o backup continua acessível, só que exclusivamente pela tela de Configurações (seção "Dados, Backup e Armazenamento", ver abaixo). A rota `Backup` em si não foi removida, só perdeu este ponto de entrada.
+- **Últimos pedidos:** até 5 ordens mais recentes (`Q.sortBy('created_at', Q.desc), Q.take(5)`), cada uma com nome do cliente (resolvido via `order.client.fetch()` — busca pontual, não observável, porque a tela já se atualiza sozinha em cada foco), valor e `Badge` de status. Se o pedido tiver `delivery_date` definida (Fase 13), mostra uma linha extra "Entrega em dd/mm/aaaa" (ícone `cube-outline`) abaixo da data de criação — omitida quando não há data de entrega combinada. `EmptyState` quando não há nenhum pedido ainda.
 - **Atualização dos dados:** `useFocusEffect` (não um observable `withObservables`) — a cada vez que a tela ganha foco (ex: voltando de uma Nova Venda), os agregados são recalculados. Também suporta pull-to-refresh (`RefreshControl`). Optou-se por essa abordagem em vez de queries observáveis porque os dados exibidos são **agregados** (somas/contagens), que o `withObservables` não resolve tão diretamente quanto uma lista simples.
 - **Atalhos de módulo:** dois links de lista ("Gerenciar clientes", "Todas as ordens de venda") abaixo da seção de últimos pedidos, para quem quer ir direto às listagens completas.
 - **Debug Supabase:** preservado, mas só renderiza em `__DEV__` — mesmo comportamento de antes, movido para o fim da tela.
@@ -32,11 +46,13 @@ Redesenhada na Fase 10 como uma tela comercial de verdade (era um painel de diag
 
 ## 👥 Módulo Clientes
 
+> 🔁 **Fase 13:** endereço passou de um campo único de texto livre para **estruturado** (rua, número, complemento, cidade, UF, CEP) — necessário pro cabeçalho do PDF (endereço e cidade do cliente exibidos separadamente).
+
 ### `ClientListScreen` (`src/screens/clients/ClientListScreen.tsx`)
 - Lista reativa via `withObservables` (`@nozbe/watermelondb/react`) observando `clients`, ordenada por nome (`Q.sortBy('name', Q.asc)`).
 - Busca em tempo real (por `name` **ou** `document`, `Q.or` + `Q.like`) com debounce de 300ms — componente reutilizável [`SearchBar`](../src/components/SearchBar.tsx).
-- Card por cliente: `Avatar` com iniciais do nome (cor determinística por hash), nome, documento formatado (`maskCpfCnpj`), telefone formatado (`maskPhone`), endereço (se houver) e um botão de ícone (`Ionicons name="logo-whatsapp"`, antes um emoji 💬 de placeholder) que abre o WhatsApp do cliente (`utils/whatsapp.ts`, via `https://wa.me/55...`).
-- Toque no card → `ClientFormScreen` em modo edição. [`Fab`](../src/components/Fab.tsx) (botão flutuante "+") → `ClientFormScreen` em modo criação.
+- Card por cliente: `Avatar` com iniciais do nome (cor determinística por hash), nome, documento formatado (`maskCpfCnpj`), telefone formatado (`maskPhone`), endereço formatado em uma linha (`formatClientFullAddress()`, `src/utils/address.ts` — combina rua/número/complemento/cidade/UF/CEP, omitindo o que estiver vazio) e um botão de ícone (`Ionicons name="logo-whatsapp"`, antes um emoji 💬 de placeholder) que abre o WhatsApp do cliente (`utils/whatsapp.ts`, via `https://wa.me/55...`).
+- Toque no card → `ClientFormScreen` em modo edição (sempre permitido — é leitura). [`Fab`](../src/components/Fab.tsx) (botão flutuante "+") → `ClientFormScreen` em modo criação, passando por `useReadOnlyGuard().guard(...)` (Fases 7/8).
 - [`EmptyState`](../src/components/EmptyState.tsx) quando não há clientes cadastrados/nenhum resultado de busca.
 
 > 🚧 Não há soft delete via `is_active` (essa coluna não existe no schema real — ver [docs/03](./03-banco-de-dados.md#-tabela-clients)). A exclusão usa `client.markAsDeleted()`, o soft-delete nativo do WatermelonDB (marca `_status: 'deleted'` e exclui das queries automaticamente, sem apagar a linha fisicamente — preserva integridade caso já existam `orders` referenciando o cliente).
@@ -49,15 +65,26 @@ const clientSchema = z.object({
   name: z.string().trim().min(3, 'Nome muito curto'),
   document: z.string().refine(isValidCpfOuCnpj, 'CPF/CNPJ inválido'),
   phone: z.string().min(10, 'Telefone inválido'),
-  address: z.string().trim().optional(),
+  addressStreet: z.string().trim().optional(),
+  addressNumber: z.string().trim().optional(),
+  addressComplement: z.string().trim().optional(),
+  addressCity: z.string().trim().optional(),
+  addressState: z.string().trim().max(2, 'Use a sigla (UF)').optional(),
+  addressZip: z.string().optional(),
 });
 ```
 
 - Campos de CPF/CNPJ e telefone usam o componente reutilizável [`MaskedInput`](../src/components/MaskedInput.tsx) (`mask="cpfCnpj"` / `mask="phone"`), que mascara para exibição e mantém o valor em dígitos puros internamente.
+- **Endereço (Fase 13):** os mesmos 6 campos estruturados já usados em "Dados da Empresa" nas Configurações (rua, número, complemento, cidade, UF, CEP — `mask="cep"`), todos opcionais.
 - `isValidCpfOuCnpj` (`src/utils/validators.ts`) valida o dígito verificador real de CPF (11 dígitos) e CNPJ (14 dígitos) — não é só checagem de tamanho.
 - Validação de duplicidade: antes de salvar (criar ou editar), consulta se já existe outro cliente com o mesmo `document` (`Q.where('document', ...)`) e bloqueia com erro no campo.
 - Modo edição carrega o registro via `database.get('clients').find(id)` e usa `reset()` do React Hook Form para popular o formulário.
 - Botão "Excluir cliente" (só em modo edição) com `Alert.alert` de confirmação antes de chamar `markAsDeleted()`.
+- **Modo somente-leitura (Fases 7/8):** botões "Salvar"/"Excluir cliente" ficam `disabled` quando `useLicenseAccess().readOnly`, com um aviso acima deles — os campos continuam visíveis (o cliente pode ser consultado normalmente), só não dá pra persistir mudanças.
+- **Preenchimento automático por CNPJ/CEP (Fase 14, 2026-09-11):** dois links de busca opcionais, sempre por toque explícito do vendedor:
+  - "Buscar dados da empresa pelo CNPJ" aparece só quando o campo Documento contém um CNPJ com dígito verificador válido (`isValidCNPJ`). Consulta a [BrasilAPI](https://brasilapi.com.br/) (`services/cnpjLookupService.ts`) e preenche nome/razão social, telefone e endereço completo.
+  - "Buscar endereço pelo CEP" aparece quando o campo CEP tem 8 dígitos. Consulta o [ViaCEP](https://viacep.com.br/) (`services/cepLookupService.ts`) e preenche rua, cidade e UF (número/complemento continuam manuais).
+  - Ambas as buscas checam conectividade antes de tentar (`NetInfo`) e falham silenciosamente (toast informativo, sem bloquear) se estiverem offline, o CNPJ/CEP não existir, ou a API estiver fora do ar — todos os campos continuam editáveis manualmente antes e depois da busca. Só se aplica a CNPJ, não a CPF (não existe consulta pública equivalente para pessoa física).
 - **Não implementado nesta fase:** atalho "Salvar e criar pedido" (mencionado em versões anteriores deste doc) — depende do módulo de Ordem de Venda, que é a Fase 5.
 
 ---
@@ -71,8 +98,8 @@ const clientSchema = z.object({
 - Busca em tempo real por `name` (antes incluía `sku`, removido nesta fase) — mesmo padrão `Q.like` + debounce do módulo Clientes.
 - **Filtro por categoria:** linha de `Chip`s roláveis horizontalmente abaixo da busca — "Todas" + uma por categoria cadastrada. Selecionar uma categoria adiciona `Q.where('category_id', categoryId)` à query observada. Some da tela quando não há nenhuma categoria cadastrada ainda.
 - Ícone de pasta no cabeçalho da lista → `CategoryListScreen` (gestão de categorias).
-- Card por produto: nome, nome da categoria (ou "Sem categoria" — produtos cadastrados antes da Fase 12 podem não ter uma), unidade de medida e preço formatado em BRL (`formatCurrencyBRL`).
-- FAB "+" → `ProductFormScreen` em modo criação; toque no card → modo edição.
+- Card por produto: miniatura da foto (`item.photoPath`, se cadastrada) ou ícone genérico, nome, nome da categoria (ou "Sem categoria" — produtos cadastrados antes da Fase 12 podem não ter uma), unidade de medida e preço formatado em BRL (`formatCurrencyBRL`).
+- FAB "+" → `ProductFormScreen` em modo criação (via `useReadOnlyGuard().guard(...)`, Fases 7/8); toque no card → modo edição (sempre permitido).
 
 > 🚧 Soft delete via `is_active` não implementado, mesmo motivo do módulo Clientes (usa `markAsDeleted()`).
 
@@ -92,14 +119,17 @@ const productSchema = z.object({
 
 - Campo de preço usa `MaskedInput` com `mask="currency"`: o valor do form já trafega em **centavos** (string), evitando conversão reais↔centavos fora do componente de máscara — digitação funciona como uma calculadora (dígitos entram pela direita).
 - Unidade de medida é um seletor de chips (`UN`/`KG`/`CX`/`L`/`PC`), não um `<select>`/Picker — evita dependência extra (`@react-native-picker/picker` não está instalado).
-- **Categoria:** seletor de chips carregado da tabela `categories` (recarregado a cada foco da tela via `useFocusEffect`, para já refletir uma categoria criada na hora em `CategoryListScreen`); se não houver nenhuma categoria cadastrada, mostra um aviso com atalho direto para `CategoryListScreen` em vez de um seletor vazio.
+- **Categoria:** seletor de chips carregado da tabela `categories` (recarregado a cada foco da tela via `useFocusEffect`, para já refletir uma categoria criada em `CategoryListScreen`, **e também logo após criar uma categoria inline nesta própria tela** — ver abaixo). Um chip extra "Nova categoria" (ícone `+`) fica sempre disponível ao final da lista de chips, **mesmo quando já existem categorias** — corrige um bug da Fase 12, onde só era possível criar a primeira categoria direto do formulário (via um link que só aparecia com a lista vazia); com categorias já cadastradas, a única forma de criar uma nova era navegar até `CategoryListScreen`. Tocar em "Nova categoria" abre uma linha inline (`MaskedInput` + confirmar/cancelar, mesmo padrão de edição do `CategoryListScreen`) que cria a categoria (`categoryService.createCategory`, com a mesma checagem de nome duplicado) e já a seleciona no formulário, sem sair da tela.
 - Botão "Excluir produto" (modo edição) com confirmação via `Alert.alert` + `markAsDeleted()`.
+- **Modo somente-leitura (Fases 7/8):** "Salvar"/"Excluir produto" ficam `disabled` (com aviso) quando `useLicenseAccess().readOnly`; o chip "Nova categoria" e a linha inline de criação somem inteiramente (não só desabilitados) — mesma leitura de "isso é uma escrita, então não aparece" usada em `CategoryListScreen`. O botão de foto também fica `disabled`.
+- **Foto do produto (2026-09-01, `src/services/productPhotoService.ts`):** quadrado tocável no topo do formulário — mostra a foto atual (se houver) ou um ícone de câmera. Ao tocar, `Alert.alert` com opções "Tirar foto" (câmera) / "Escolher da galeria" / "Remover foto" (só aparece se já houver foto) / "Cancelar". A imagem escolhida é redimensionada para no máximo 640px de largura e recomprimida em JPEG (~60%) antes de ser salva em `product-photos/` no armazenamento do celular (`expo-file-system`, API `File`/`Directory`/`Paths`) — só o caminho (`photoPath`) é gravado no produto. Trocar a foto apaga o arquivo anterior do disco; excluir o produto também apaga o arquivo. **A foto é só para visualização no app** — nunca entra no PDF de pedido (`templates/orderTemplate.ts` não lê esse campo) nem no backup JSON (`backupService.ts` não exporta `photoPath` — ver módulo Backup). Requer permissão de câmera/galeria (`expo-image-picker`, configurado em `app.json` com mensagens em pt-BR); se negada, mostra um alerta explicando como liberar nas configurações do celular.
 
 ### `CategoryListScreen` (`src/screens/products/CategoryListScreen.tsx`)
 - Tela enxuta de gestão de categorias (sem tela de formulário separada — decisão deliberada pela simplicidade pedida pelo cliente): campo de texto + botão "Adicionar" fixos no topo, lista reativa (`withObservables`) abaixo, ordenada por nome.
 - Cada linha mostra o nome da categoria e a contagem de produtos nela (`category.products.fetchCount()`, resolvida sob demanda por linha). Toque no ícone de lápis troca a linha para modo de edição inline (`TextInput` + confirmar/cancelar) — sem `Alert.prompt`, que não existe no Android.
-- Validação de nome duplicado (case-insensitive, mesmo padrão de duplicidade dos outros módulos) tanto ao criar quanto ao renomear.
+- Validação de nome duplicado (case-insensitive, mesmo padrão de duplicidade dos outros módulos) tanto ao criar quanto ao renomear — lógica compartilhada com `ProductFormScreen` via `src/services/categoryService.ts` (`isCategoryNameTaken`, `createCategory`), extraído na Fase 13 pra evitar duplicar essa checagem nos dois lugares.
 - Exclusão (ícone de lixeira + `Alert.alert` de confirmação): **bloqueada** com aviso se algum produto ainda referencia a categoria (`category.products.fetchCount() > 0`) — evita produtos com `category_id` órfão; o vendedor precisa reatribuir os produtos antes de excluir.
+- **Modo somente-leitura (Fases 7/8):** o campo "Nova categoria" some (troca por um aviso), e os ícones de lápis/lixeira de cada linha somem — a lista de categorias continua visível, só a gestão fica indisponível.
 
 ---
 
@@ -107,7 +137,7 @@ const productSchema = z.object({
 
 | Componente | Arquivo | Uso |
 |---|---|---|
-| `MaskedInput` | `src/components/MaskedInput.tsx` | Input com label + erro, com máscara opcional (`cpfCnpj`, `phone`, `currency`) |
+| `MaskedInput` | `src/components/MaskedInput.tsx` | Input com label + erro, com máscara opcional (`cpfCnpj`, `phone`, `currency`, `cep`, `date` — este último desde a Fase 13) |
 | `DiscountInput` | `src/components/DiscountInput.tsx` | Alterna entre desconto em R$ e em % (sempre entrega centavos) — usado hoje só no desconto geral do pedido (`OrderReviewScreen`) |
 | `SearchBar` | `src/components/SearchBar.tsx` | Busca com debounce de 300ms embutido, ícone de lupa |
 | `Fab` | `src/components/Fab.tsx` | Botão flutuante para criar novo registro |
@@ -122,8 +152,10 @@ const productSchema = z.object({
 | `Toast` (`ToastProvider`/`useToast`) | `src/components/Toast.tsx` | Notificação flutuante de confirmação |
 | `OrderProgressBar` | `src/components/OrderProgressBar.tsx` | Indicador de progresso do wizard de Nova Venda (3 etapas) |
 | `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade |
+| `ReadOnlyBanner` | `src/components/ReadOnlyBanner.tsx` | Faixa fixa acima da navegação, mostrada em toda a app quando a licença está `expired` (Fases 7/8) |
+| `LicenseExpiryBanner` | `src/components/LicenseExpiryBanner.tsx` | Faixa dispensável (✕) acima da navegação, avisando vencimento próximo da licença — 5/2/1 dia, 2/1 hora antes (2026-09-01) |
 
-Utilitários: `src/utils/masks.ts` (formatação), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
+Utilitários: `src/utils/masks.ts` (formatação — inclui `maskDateBR`/`parseDateBR`, Fase 13, usados pelo `mask="date"` do `MaskedInput`), `src/utils/address.ts` (Fase 13 — formata o endereço estruturado do cliente para exibição/PDF), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 
 ---
 
@@ -141,7 +173,7 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Botão "Cadastrar novo cliente": usa `navigation.getParent()` para navegar até a rota `ClientForm` do stack **raiz** (fora do fluxo aninhado) — ao voltar, o cliente novo já aparece na lista (reativa) para ser selecionado.
 
 ### 2. `OrderItemsScreen` — Catálogo e carrinho
-- Catálogo de produtos em cards (nome, unidade, preço em destaque — SKU removido na Fase 12), em `FlatList` com `numColumns` responsivo (`useWindowDimensions` — 2 colunas a partir de 760px de largura, 1 coluna abaixo disso, comum em tablets em retrato vs. paisagem). Busca por nome + filtro por categoria (mesmos `Chip`s "Todas" + uma por categoria de `ProductListScreen`) no cabeçalho da lista.
+- Catálogo de produtos em cards (miniatura da foto se cadastrada — 2026-09-01, mesmo `photoPath` do módulo Produtos — ou ícone genérico, nome, unidade, preço em destaque — SKU removido na Fase 12), em `FlatList` com `numColumns` responsivo (`useWindowDimensions` — 2 colunas a partir de 760px de largura, 1 coluna abaixo disso, comum em tablets em retrato vs. paisagem). Busca por nome + filtro por categoria (mesmos `Chip`s "Todas" + uma por categoria de `ProductListScreen`) no cabeçalho da lista.
 - Produto **fora** do carrinho: card mostra botão "+ Adicionar". Produto **já no** carrinho: card troca para [`QuantityStepper`](../src/components/QuantityStepper.tsx) (+/-) + botão de lixeira (remove o item inteiro, independente da quantidade).
 - **Barra flutuante inferior fixa** (`bottomBar`): contagem total de itens, total geral (`totals.totalGross`) e botão "Avançar" (desabilitado com carrinho vazio) → `OrderReview`. Tocar na área de resumo abre um **modal de carrinho** (`Modal` nativo, slide de baixo para cima) listando cada item com stepper e remoção individual — forma rápida de revisar/ajustar sem sair da tela de catálogo.
 - **Mudança de escopo vs. versão anterior:** o desconto por item (`DiscountInput` por linha do carrinho) foi removido desta tela na Fase 10 — o carrinho aqui só lida com quantidade. Todo desconto agora é aplicado uma única vez, como desconto geral do pedido, na etapa seguinte (`OrderReviewScreen`). `CartItem.discountValue` (`src/types/orderDraft.ts`) continua existindo no tipo e é somado no cálculo de subtotal, mas nenhuma tela hoje o define como diferente de `0` — decisão deliberada para simplificar o fluxo visual (catálogo rápido → fechamento com desconto único), não uma remoção de capacidade do modelo de dados.
@@ -150,12 +182,14 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 ### 3. `OrderReviewScreen` — Resumo e fechamento
 - Mostra cliente e itens tabulados (somente leitura, sem coluna de desconto por item — ver mudança de escopo acima).
 - `DiscountInput` para o **desconto geral do pedido** (`orders.discount_total`, aplicado sobre `total_gross`).
+- **Data de entrega (Fase 13, opcional):** `MaskedInput` com `mask="date"` (novo tipo de máscara, `dd/mm/aaaa` — dígitos puros por baixo, mesma convenção de `cep`/`phone`; parser `parseDateBR()` em `src/utils/masks.ts`, que valida se a data realmente existe, ex: rejeita 31/02). Campo livre — deixar em branco significa "sem data combinada ainda" (`orders.delivery_date = null`). Se o usuário digitar uma data incompleta e tentar salvar, o campo mostra erro "Data de entrega inválida" e bloqueia o salvamento.
 - Seletor de forma de pagamento em `Chip`s com ícone (`PAYMENT_METHOD_LABELS` — Dinheiro, PIX, Boleto, Cartão de Crédito, Cartão de Débito, A Prazo).
 - Campo de observações gerais (`orders.notes`, opcional).
 - Botão **"Salvar pedido"** → `orderService.createOrder(...)`:
   1. Calcula `total_net = max(0, total_gross − discount_total)`.
-  2. Persiste `orders` + todos os `order_items` numa única transação (`database.write` + `database.batch(...)` — **atenção**: `database.batch()` só pode ser chamado de dentro de um `database.write()` nesta versão do WatermelonDB, ao contrário de `collection.create()`).
-  3. Zera o rascunho (`reset()`) e navega para `OrderSuccess` (dentro do próprio `OrderDraftNavigator`, não mais direto para `OrderDetail` do stack raiz — ver abaixo).
+  2. Calcula `order_number` (Fase 13): conta quantos pedidos esse cliente já tem (`Q.where('client_id', clientId)`) e soma 1 — é um número **por cliente**, não um id global.
+  3. Persiste `orders` + todos os `order_items` numa única transação (`database.write` + `database.batch(...)` — **atenção**: `database.batch()` só pode ser chamado de dentro de um `database.write()` nesta versão do WatermelonDB, ao contrário de `collection.create()`).
+  4. Zera o rascunho (`reset()`) e navega para `OrderSuccess` (dentro do próprio `OrderDraftNavigator`, não mais direto para `OrderDetail` do stack raiz — ver abaixo).
 
 ### 4. `OrderSuccessScreen` — Confirmação
 - Tela terminal do wizard (`headerBackVisible: false`, `gestureEnabled: false` — o vendedor não deve conseguir "voltar" para um pedido já salvo). Recebe `orderId` via params e recarrega `Order`/`Client`/`OrderItem[]` direto do WatermelonDB (não reaproveita o contexto do rascunho, que já foi zerado).
@@ -166,8 +200,8 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 ### `OrderListScreen` — Listagem
 - Lista reativa ordenada por `created_at` desc. Filtro por status (chips: Todos/Pendente/Concluído/Cancelado) e busca por nome do cliente via `Q.on('clients', Q.where('name', Q.like(...)))` — filtra pela tabela relacionada direto na query, sem carregar tudo em memória.
 - Cada card observa reativamente seu próprio cliente e contagem de itens (`withObservables(['order'], ({ order }) => ({ client: order.client.observe(), itemCount: order.items.observeCount() }))` — padrão comum do WatermelonDB para listas onde cada linha depende de uma relação).
-- Exibe: ID resumido (8 primeiros caracteres do `id`), nome do cliente, data/hora (`toLocaleString('pt-BR')`), contagem de itens, status (badge colorido) e `total_net` formatado em BRL.
-- FAB "+" → `NewOrder` (novo fluxo de criação).
+- Exibe: ID resumido (8 primeiros caracteres do `id`), nome do cliente, data/hora (`toLocaleString('pt-BR')`), contagem de itens, status (badge colorido) e `total_net` formatado em BRL. Se houver `delivery_date` (Fase 13), mostra "Entrega em dd/mm/aaaa" (ícone `cube-outline`) entre o nome do cliente e o rodapé do card — mesmo padrão usado nos cards de "Últimos pedidos" da `HomeScreen`.
+- FAB "+" → `NewOrder` (novo fluxo de criação), via `useReadOnlyGuard().guard(...)` (Fases 7/8) — junto com o botão "Nova Venda" da `HomeScreen`, são os dois únicos pontos de entrada do fluxo de criação, então bloqueá-los ali já é suficiente (as 3 telas do wizard em si não precisam de gating próprio).
 
 ### `OrderDetailScreen` — Detalhe
 - Carrega a `Order` por id (`database.get('orders').find(orderId)`) e observa reativamente cliente + itens.
@@ -177,6 +211,7 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
   - "Marcar como concluído" (só se `pending`) → `setOrderStatus(id, 'completed')`.
   - "Cancelar pedido" (se não já `cancelled`) → confirmação (`Alert.alert`) → `setOrderStatus(id, 'cancelled')`.
   - "Excluir pedido" → confirmação → `deleteOrder(id)`, que também marca todos os `order_items` associados como excluídos (`markAsDeleted`, em lote) antes do próprio pedido — evita itens órfãos.
+- **Modo somente-leitura (Fases 7/8):** os 4 botões (Compartilhar/Concluir/Cancelar/Excluir) ficam `disabled`, com um aviso acima — o detalhe do pedido continua totalmente visível.
 
 ### Cálculo de totais (`src/types/orderDraft.ts` + `src/services/orderService.ts`)
 
@@ -201,44 +236,54 @@ const totalNet = Math.max(0, totalGross - discountTotal); // discountTotal = des
 
 ## 🧾 Template do PDF (A4) — `templates/orderTemplate.ts`
 
-Implementado na Fase 10. O PDF é gerado a partir de uma string HTML (CSS inline, sem dependências externas) renderizada pelo `expo-print` (`Print.printToFileAsync`). Estrutura real:
+Implementado na Fase 10, com o cabeçalho **redesenhado na Fase 13** para incluir a logo/identidade do vendedor e mais dados do cliente/pedido. O PDF é gerado a partir de uma string HTML (CSS inline, sem dependências externas) renderizada pelo `expo-print` (`Print.printToFileAsync`). Estrutura real:
 
 ```text
-┌─────────────────────────────────────────────┐
-│  [Cabeçalho]                                  │
-│  Ordem de Venda #A1B2C3D4     Data: 21/08/2026│
-│  Forma de pagamento: PIX                      │
-│                                                │
-│  Cliente: João da Silva                       │
-│  CPF/CNPJ: 123.456.789-00                     │
-│  Telefone: (11) 99999-8888                    │
-│  Endereço: Rua Exemplo, 123 - São Paulo/SP    │
-├─────────────────────────────────────────────┤
-│  [Tabela de Itens]                            │
-│  Produto        Qtd   Unit.       Total       │
-│  ───────────────────────────────────────────  │
-│  Produto A       2   R$10,00     R$20,00      │
-│  Produto B       1   R$50,00     R$50,00      │
-├─────────────────────────────────────────────┤
-│  [Totais]                                     │
-│  Desconto:                          R$  5,00  │
-│  TOTAL:                             R$ 65,00  │
-├─────────────────────────────────────────────┤
-│  Documento gerado pelo app — não é NF-e       │
-└─────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│  [Logo ou nome da empresa]      ORDEM DE VENDA              │
+│                                  (11) 99999-8888             │
+│                                  João Vendedor (vendedor)     │
+│                                  21/08/2026 às 14:32          │
+├───────────────────────────────────────────────────────────┤
+│  Cliente                         Pedido nº (cliente)          │
+│  Maria Compradora                3                            │
+│  Entrega                         Cidade                       │
+│  25/08/2026                      São Paulo - SP               │
+│  Endereço                        CPF/CNPJ                     │
+│  Rua Exemplo, 123 - Sala 4       123.456.789-00               │
+│  Pagamento                                                     │
+│  PIX                                                            │
+├───────────────────────────────────────────────────────────┤
+│  [Tabela de Itens]                                            │
+│  Produto        Qtd   Unit.       Desconto      Subtotal      │
+│  ─────────────────────────────────────────────────────────    │
+│  Produto A       2   R$10,00         —          R$20,00       │
+│  Produto B       1   R$50,00         —          R$50,00       │
+├───────────────────────────────────────────────────────────┤
+│  [Totais]  Total bruto / Desconto geral / TOTAL LÍQUIDO        │
+├───────────────────────────────────────────────────────────┤
+│  Documento gerado offline pelo aplicativo Vendas App          │
+│  — sem validade fiscal.                                        │
+└───────────────────────────────────────────────────────────┘
 ```
 
-> O número exibido no cabeçalho (`#A1B2C3D4`) é derivado do `id` (WatermelonDB) da ordem — o schema v1 não tem uma coluna `order_number` sequencial dedicada (ver [docs/03-banco-de-dados.md](./03-banco-de-dados.md#-tabela-orders)). Uma numeração sequencial amigável pode ser adicionada em uma migration futura, se necessário.
+- **Cabeçalho (linha de cima):** à esquerda, a **logo da empresa** (`company_settings.logo_base64`, `<img>` com `max-height`/`object-fit: contain`) — se não houver logo cadastrada, cai no nome da empresa em texto (`nome_fantasia` → `razao_social`). À direita: telefone da empresa (`maskPhone`), nome do vendedor (`vendedor_nome`, omitido se vazio) e data/hora de emissão do pedido.
+- **Bloco de informações (duas colunas), Fase 13:**
+  - Coluna esquerda: nome do cliente, **data de entrega** (`order.deliveryDate`, ou "A combinar" se não tiver sido definida), **endereço** (`formatClientStreetLine()` — rua/número/complemento) e forma de pagamento.
+  - Coluna direita: **número do pedido do cliente** (`order.orderNumber` — "1", "2", "3"... por cliente, não um id global; pedidos criados antes da Fase 13 mostram o código curto do `id` como referência, já que não têm essa numeração), **cidade** (`formatClientCityLine()` — cidade/UF) e CPF/CNPJ do cliente.
+- O rodapé usa o **nome do app** (`APP_DISPLAY_NAME = 'Vendas App'`, `src/utils/appInfo.ts`) — não o nome da empresa do vendedor, que já aparece no cabeçalho.
 
 ### Função geradora real (`src/services/pdfService.ts`)
 
 ```ts
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { getOrCreateCompanySettings } from '@/services/settingsService';
 import { buildOrderHtml } from '@/templates/orderTemplate';
 
 export async function shareOrderPdf(order: Order, client: Client, items: OrderItem[]): Promise<void> {
-  const html = buildOrderHtml(order, client, items);
+  const company = await getOrCreateCompanySettings();
+  const html = buildOrderHtml(order, client, items, company);
   const { uri } = await Print.printToFileAsync({ html, base64: false });
 
   const canShare = await Sharing.isAvailableAsync();
@@ -252,11 +297,11 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
 }
 ```
 
-- `buildOrderHtml` recebe os **models** do WatermelonDB diretamente (`Order`, `Client`, `OrderItem[]`) — não um DTO intermediário — porque `OrderSuccessScreen` e `OrderDetailScreen` já têm essas instâncias em mãos (a segunda via `withObservables`, a primeira via fetch pontual por `orderId`).
+- `buildOrderHtml` recebe os **models** do WatermelonDB diretamente (`Order`, `Client`, `OrderItem[]`, e desde a Fase 13 também `CompanySettings`) — não um DTO intermediário — porque as telas chamadoras já têm essas instâncias em mãos, e `shareOrderPdf` busca `CompanySettings` internamente (`getOrCreateCompanySettings()`), sem precisar que `OrderSuccessScreen`/`OrderDetailScreen` passem esse dado.
 - Todo texto interpolado no HTML passa por um `escapeHtml()` local antes de entrar no template — nome do cliente, endereço, observações e nome de produto podem conter caracteres digitados livremente pelo usuário (`<`, `&`, etc.), e o HTML é montado por concatenação de string, não por um template engine com escaping automático.
 - Chamada a partir de dois pontos da UI: `OrderSuccessScreen` (botão verde "Compartilhar Ordem de Venda (PDF / WhatsApp)", logo após salvar) e `OrderDetailScreen` (botão "Compartilhar (PDF / WhatsApp)", para reemitir um pedido já existente a qualquer momento).
 - O compartilhamento usa o menu **nativo** do sistema (`expo-sharing`) — não há integração direta com a API do WhatsApp Business; o usuário escolhe o app de destino (WhatsApp, e-mail, Drive, etc.) no menu do sistema operacional.
-- Aviso explícito no rodapé do PDF: *"Documento gerado offline pelo aplicativo Força de Vendas — sem validade fiscal."*, reforçando o item "Fora de escopo" da Visão Geral.
+- Aviso explícito no rodapé do PDF, reforçando o item "Fora de escopo" da Visão Geral: *"Documento gerado offline pelo aplicativo Vendas App — sem validade fiscal."*
 - Sem testes automatizados ainda (pendente, Fase 9).
 
 ---
@@ -267,27 +312,55 @@ export async function shareOrderPdf(order: Order, client: Client, items: OrderIt
 - **Exportar — duas opções**, ambas geram o mesmo JSON (`vendas-app-backup-AAAA-MM-DD_HH-mm-ss.json`, via a API nova do `expo-file-system` — classes `File`/`Directory`/`Paths`, não a API legada `FileSystem.writeAsStringAsync`):
   - **"Compartilhar backup"** (`backupService.exportBackup()`): escreve o arquivo em `Paths.document` (armazenamento privado do app) e abre o menu nativo de compartilhamento (`expo-sharing`) — WhatsApp, e-mail, Drive, etc. Em alguns aparelhos/emuladores sem um app de "Arquivos" instalado, esse menu **não** mostra uma opção de "salvar no aparelho" (só apps que registram esse tipo de compartilhamento aparecem).
   - **"Salvar no dispositivo"** (`backupService.saveBackupToDevice()`): abre o seletor de pastas do próprio sistema (`Directory.pickDirectoryAsync()` — Storage Access Framework no Android) e grava o arquivo diretamente na pasta escolhida (ex: Downloads). Funciona independentemente de quais apps estão instalados — é a forma garantida de "baixar" o arquivo.
-- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros já existentes são ignorados na importação — clientes por `document`, categorias por `name` (case-insensitive) e, desde a Fase 12 (sem mais `sku`), produtos também por `name` (case-insensitive). Inserção em lote via `database.batch(...)` (uma única transação).
+- **Importar** (`backupService.pickAndPreviewBackupFile()` + `importBackup()`): abre o seletor de arquivos nativo (`File.pickFileAsync`, também da API nova do `expo-file-system` — não usa `expo-document-picker`, redundante), valida a estrutura com Zod, e mostra uma prévia na própria tela (quantos registros são novos vs. já existentes) antes do usuário confirmar. Registros já existentes são ignorados na importação — clientes por `document`, categorias por `name` (case-insensitive), produtos também por `name` (case-insensitive, desde a Fase 12, sem mais `sku`), e pedidos pela combinação cliente+`order_number` (ver abaixo). Inserção em lote via `database.batch(...)` (uma única transação).
 - **Categorias no backup (Fase 12):** exportadas por **nome**, não por `id` — cada produto carrega `category_name` (não `category_id`), já que um `id` gerado localmente não faz sentido ao restaurar em outro dispositivo. Na importação, categorias novas são criadas primeiro; produtos são então associados por nome (criando a categoria automaticamente se, por algum motivo, ainda não existir).
-- `license_control` nunca entra no backup (é específico do dispositivo, não faz sentido restaurar em outro aparelho).
+- **Pedidos no backup (Fase 8, completado em 2026-09-01):** cada pedido carrega `client_document` (não `client_id`, mesmo raciocínio de categoria/produto) e a lista de itens (`product_name_snapshot`, preço, quantidade, desconto, subtotal — não `product_id`, já que a relação com o produto nunca é lida pela UI, só o snapshot). Chave de deduplicação: `client_document` + `order_number` juntos (`order_number` é sequencial **por cliente**, não um id global — dois clientes diferentes podem ambos ter um "pedido nº 1"). Um pedido só é importado se o cliente dele existir localmente (já cadastrado, ou vindo junto no mesmo arquivo de backup) — senão fica de fora, contado como "ignorado" na prévia. Ao montar o item, `product_id` é resolvido por nome contra os produtos existentes/recém-importados (best-effort — fica em branco se o produto correspondente não existir mais, sem quebrar nada, já que essa relação nunca é lida pela UI).
+  > ⚠️ **Limitação conhecida:** a data de criação do pedido (`created_at`) **não é preservada** na importação — é um campo `@readonly` do WatermelonDB, sempre gravado como "agora" no momento em que o registro é criado, então um pedido de 2026-08-01 importado hoje nasce com a data de hoje. O JSON inclui `created_at` só como referência informativa; o campo `order_number`/`delivery_date`/status/valores são todos preservados corretamente.
+- `license_control` nunca entra no backup (é específico do dispositivo, não faz sentido restaurar em outro aparelho). `company_settings` também nunca entrou (config isolada, não é uma entidade de negócio compartilhável entre dispositivos).
+- **Foto do produto (2026-09-01) nunca entra no backup:** `photoPath` não é exportado no JSON — é só um caminho de arquivo local, sem sentido em outro dispositivo, e incluir a imagem em base64 infla o arquivo de backup à toa. Um produto importado nunca vem com foto (o vendedor re-adiciona se quiser).
+- **Modo somente-leitura (Fases 7/8):** único módulo com regra assimétrica — "Escolher arquivo de backup" (importar) fica `disabled` com aviso; **exportar continua sempre liberado**, inclusive quando `blocked` (nesse caso via um botão dedicado direto na `LicenseBlockedScreen`, já que essa tela nem chega a ser montada — ver [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active)).
+- **Endereço estruturado do cliente (Fase 13):** o antigo campo único `address` foi substituído por `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` no JSON, espelhando as novas colunas de `clients` (ver [docs/03](./03-banco-de-dados.md#-tabela-clients)).
 
 ```json
 {
   "exported_at": "2026-08-22T14:00:00.000Z",
   "app_version": "1.0.0",
   "clients": [
-    { "name": "João da Silva", "document": "11144477735", "phone": "11987654321", "address": "Rua Exemplo, 123" }
+    {
+      "name": "João da Silva",
+      "document": "11144477735",
+      "phone": "11987654321",
+      "address_street": "Rua Exemplo",
+      "address_number": "123",
+      "address_city": "São Paulo",
+      "address_state": "SP",
+      "address_zip": "01310100"
+    }
   ],
   "categories": [
     { "name": "Bebidas" }
   ],
   "products": [
     { "name": "Refrigerante 2L", "category_name": "Bebidas", "price": 990, "unit": "UN" }
+  ],
+  "orders": [
+    {
+      "client_document": "11144477735",
+      "status": "pending",
+      "total_gross": 1980,
+      "discount_total": 0,
+      "total_net": 1980,
+      "payment_method": "pix",
+      "order_number": 1,
+      "delivery_date": null,
+      "created_at": "2026-08-22T14:00:00.000Z",
+      "items": [
+        { "product_name_snapshot": "Refrigerante 2L", "unit_price": 990, "quantity": 2, "discount_value": 0, "subtotal": 1980 }
+      ]
+    }
   ]
 }
 ```
-
-> 🚧 **Escopo desta fase:** só `clients` e `products` — `orders`/`order_items` entram no backup quando o módulo de Ordem de Venda existir (Fase 5). **Também não está** disponível com licença `expired`/`blocked` ainda: o `RootNavigator` bloqueia toda a navegação (inclusive Backup) quando a licença não está `active` — a exceção "backup sempre acessível" descrita em [docs/04](./04-sistema-licenca.md#-o-que-fica-bloqueado-quando-a-licença-não-está-active) ainda não foi implementada (fica para quando essa distinção de acesso for construída).
 
 ## ⚙️ Módulo Configurações
 
@@ -297,9 +370,11 @@ Implementado na Fase 11. `SettingsScreen` (`src/screens/settings/SettingsScreen.
 
 ### 1. Dados da Empresa / Vendedor
 - Formulário React Hook Form + Zod, persistido na tabela `company_settings` (WatermelonDB — ver [docs/03](./03-banco-de-dados.md#-tabela-company_settings)) via `settingsService.getOrCreateCompanySettings()`/`saveCompanySettings()`.
-- Campos: Razão Social/Nome (obrigatório), Nome Fantasia, CNPJ/CPF (`MaskedInput mask="cpfCnpj"`, validado com `isValidCpfOuCnpj` só quando preenchido — diferente do cadastro de Clientes, aqui o campo pode ficar vazio até o vendedor preencher), I.E./I.M., Telefone/WhatsApp (obrigatório), E-mail comercial (validado por formato quando preenchido), endereço estruturado (Logradouro/Número/Bairro/Cidade/UF/CEP — `MaskedInput mask="cep"`, máscara nova em `utils/masks.ts`), Chave PIX (texto livre, sem validação de formato).
+- Campos: Razão Social/Nome (obrigatório), Nome Fantasia, **Nome do Vendedor** (Fase 13 — opcional; exibido na saudação da `HomeScreen` e no cabeçalho do PDF, com prioridade sobre Nome Fantasia/Razão Social nesses dois lugares), CNPJ/CPF (`MaskedInput mask="cpfCnpj"`, validado com `isValidCpfOuCnpj` só quando preenchido — diferente do cadastro de Clientes, aqui o campo pode ficar vazio até o vendedor preencher), I.E./I.M., Telefone/WhatsApp (obrigatório), E-mail comercial (validado por formato quando preenchido), endereço estruturado (Logradouro/Número/Bairro/Cidade/UF/CEP — `MaskedInput mask="cep"`, máscara nova em `utils/masks.ts`), Chave PIX (texto livre, sem validação de formato).
+- **Logo da Empresa (Fase 13):** preview 72×72 (ou um placeholder tracejado se não houver logo) + botão "Selecionar logo"/"Trocar logo" (`settingsService.pickCompanyLogo()`) + botão "Remover" quando já existe uma. `pickCompanyLogo()` reaproveita o seletor de arquivos do sistema (`File.pickFileAsync`, mesma API já usada no módulo Backup) filtrado por `image/png`/`image/jpeg` — decisão deliberada para **não instalar `expo-image-picker`** só para isso (mesma filosofia de evitar dependência extra já registrada para o seletor de unidade de Produtos). Limite de 2MB no arquivo original; lê o conteúdo como base64 (`file.base64()`) e monta um data URI (`data:image/png;base64,...`), salvo direto em `company_settings.logo_base64` — diferente do restante do formulário, a logo é salva **imediatamente** ao selecionar (não espera o botão "Salvar Dados da Empresa"), para o vendedor não perder a seleção se esquecer de salvar o resto.
 - Botão "Salvar Dados da Empresa" → `Toast` de sucesso ("Dados da empresa salvos com sucesso!").
 - Ao entrar na tela, os campos são carregados automaticamente (registro único, criado sob demanda na primeira visita).
+- **Modo somente-leitura (Fases 7/8):** "Salvar Dados da Empresa", "Selecionar/Trocar logo" e "Remover" (logo) ficam `disabled` quando `useLicenseAccess().readOnly` — os dados continuam visíveis, só não editáveis.
 
 ### 2. Sistema e Sobre
 - **ID do Dispositivo:** reaproveita o `device_id` já gerado por `licenseService` (UUID v4, o mesmo registrado na tabela `licenses` do Supabase) — **não** usa `expo-application`/Android ID. Foi uma decisão deliberada: o ID mostrado precisa ser exatamente o mesmo que o suporte consulta no Supabase para liberar a licença; um identificador nativo diferente (Android ID) quebraria esse fluxo, já que não seria o valor cadastrado remotamente. Exibido em `fontFamily: 'monospace'` (`Platform`-neutro o suficiente: `'monospace'` resolve tanto no Android quanto no iOS via Courier/fonte mono padrão do sistema).
@@ -314,7 +389,9 @@ Implementado na Fase 11. `SettingsScreen` (`src/screens/settings/SettingsScreen.
 - **Resumo do banco local:** contadores de Clientes/Produtos/Ordens de Venda (`settingsService.getDatabaseSummary()`), atualizados a cada vez que a tela ganha foco (`useFocusEffect`, mesmo padrão da `HomeScreen`) — assim os números refletem mudanças feitas em outras telas (ex: voltar de uma Nova Venda).
 - **Exportar Backup (JSON):** botão chama `backupService.exportBackup()` diretamente (a mesma função usada pelo botão "Compartilhar backup" da `BackupScreen`) — abre o menu nativo de compartilhamento.
 - **Importar/Restaurar Backup:** em vez de duplicar o fluxo de seleção de arquivo + prévia + confirmação já implementado em `BackupScreen` (não é uma ação de um toque só — precisa de uma tela própria para mostrar a prévia de registros novos/duplicados antes de confirmar), o botão navega para a tela `Backup` já existente (`navigation.navigate('Backup')`). Decisão deliberada para não duplicar ~80 linhas de lógica de preview/confirmação entre duas telas.
+- **Enviar backup por e-mail (suporte) (2026-09-01, `backupService.emailBackup()`):** botão que gera o mesmo JSON de backup e abre o app de e-mail já configurado no celular (`expo-mail-composer`) com o destinatário pré-preenchido (`EXPO_PUBLIC_SUPPORT_EMAIL`, mesmo padrão opcional-via-`.env` já usado pro WhatsApp de suporte), assunto e corpo prontos, e o arquivo anexado — o vendedor só confirma o envio no próprio app de e-mail. Pensado para quando o vendedor tem um problema no aparelho: ele manda o backup pro suporte, que restaura os dados manualmente depois. Não existe servidor de e-mail próprio nem envio automático em segundo plano — depende do app de e-mail do celular e de internet no momento do envio. Botão fica `disabled` (com aviso) se `EXPO_PUBLIC_SUPPORT_EMAIL` não estiver configurado, ou se o celular não tiver nenhum app de e-mail configurado (`MailComposer.isAvailableAsync()`).
 - **Zona de perigo — "Limpar Pedidos de Teste":** remove todas as `orders`/`order_items` (não toca em `clients`/`products`), via nova função `orderService.clearAllOrders()` (soft-delete em lote, mesmo padrão de `deleteOrder`). Protegido por um modal de confirmação customizado (não o `Alert.alert` nativo usado nas outras exclusões do app) — ícone de aviso, contagem de quantos pedidos serão removidos, texto explícito "não pode ser desfeita", botões "Cancelar"/"Sim, limpar tudo". Justificativa para o modal customizado em vez do `Alert` padrão: esta é uma ação destrutiva em massa (todos os pedidos, não um registro isolado), então merece um passo de confirmação visualmente mais explícito que os `Alert.alert` de exclusão individual já usados em `ClientFormScreen`/`ProductFormScreen`/`OrderDetailScreen`.
+- **Modo somente-leitura (Fases 7/8):** só "Limpar Pedidos de Teste" fica `disabled` — "Exportar Backup", "Enviar backup por e-mail" e o botão que navega para `Backup` continuam liberados (são leitura/exportação, não escrita; a tela `Backup` já trata a distinção importar/exportar internamente); "Verificar Licença Agora" também continua liberado (é a própria ação de tentar sair do modo somente-leitura).
 
 ## 📎 Documentos relacionados
 

@@ -10,8 +10,9 @@ const TRIAL_PERIOD_MS = 15 * 24 * 60 * 60 * 1000;
 
 export type LicenseCheckResult = {
   status: LicenseStatus;
-  reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered';
+  reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered' | 'grace_period_exceeded';
   deviceId: string;
+  expiresAt: Date;
 };
 
 type RemoteLicenseRecord = {
@@ -71,7 +72,17 @@ async function fetchLicenseFromSupabase(deviceId: string): Promise<{ expiresAt: 
     throw new LicenseRenewalRejectedError(`remote_status_${record.license_status}`);
   }
 
-  return { expiresAt: new Date(record.license_expires_at).getTime(), status: record.license_status };
+  // Não confia cegamente em `license_status`: o Postgres não atualiza essa coluna sozinho quando
+  // a data passa (só reage a um job agendado, opcional — ver docs/04-sistema-licenca.md). Sem
+  // esse job configurado (ou antes da 1ª execução dele), uma licença vencida com a coluna ainda
+  // dizendo `active` ficaria válida pra sempre enquanto online, já que o resto desta função nunca
+  // olha a data. Essa checagem torna o cliente resiliente independente de o job existir ou não.
+  const expiresAt = new Date(record.license_expires_at).getTime();
+  if (expiresAt <= Date.now()) {
+    throw new LicenseRenewalRejectedError('remote_active_but_expired');
+  }
+
+  return { expiresAt, status: record.license_status };
 }
 
 async function persistActive(license: LicenseControl, expiresAt: number, now: number) {
@@ -95,6 +106,23 @@ async function persistStatus(license: LicenseControl, status: LicenseStatus, now
   });
 }
 
+function startOfDay(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// Já passou pelo menos um dia completo desde o vencimento (não é mais "o dia que venceu", é o
+// dia seguinte em diante) — usado para escalar de `expired` (somente leitura) para `blocked`.
+function isPastGraceDay(expiresAt: Date, now: Date): boolean {
+  return startOfDay(now) > startOfDay(expiresAt);
+}
+
+async function isOnline(): Promise<boolean> {
+  const netState = await NetInfo.fetch();
+  return netState.isConnected === true && netState.isInternetReachable !== false;
+}
+
 // Só para testes manuais (ex: botão de debug na HomeScreen) — consulta o Supabase mas
 // NÃO persiste nada localmente, ao contrário de evaluateLicense().
 export async function testSupabaseFetch(): Promise<{ ok: boolean; deviceId: string; message: string }> {
@@ -110,7 +138,11 @@ export async function testSupabaseFetch(): Promise<{ ok: boolean; deviceId: stri
     return { ok: true, deviceId: license.deviceId, message: `status=${status}, expira em ${expiresAtLabel}` };
   } catch (error) {
     if (error instanceof DeviceNotRegisteredError) {
-      return { ok: false, deviceId: license.deviceId, message: 'Dispositivo não encontrado na tabela licenses (array vazio).' };
+      return {
+        ok: false,
+        deviceId: license.deviceId,
+        message: 'Dispositivo não encontrado na tabela licenses (array vazio).',
+      };
     }
     if (error instanceof LicenseRenewalRejectedError) {
       return { ok: false, deviceId: license.deviceId, message: `Rejeitado pelo Supabase: ${error.message}` };
@@ -135,43 +167,72 @@ export async function getCurrentLicenseSnapshot(): Promise<{
 export async function evaluateLicense(): Promise<LicenseCheckResult> {
   const license = await getOrCreateLicense();
   const now = Date.now();
+  const nowDate = new Date(now);
 
   // Anti-fraude de relógio: NÃO atualiza last_opened_at aqui. Se atualizássemos com um
   // "agora" potencialmente fraudado, o usuário poderia voltar o relógio, ser bloqueado,
   // e depois avançar o relógio de novo para "limpar" o rastro do último uso legítimo.
   if (now < license.lastOpenedAt.getTime()) {
     await persistStatus(license, 'blocked');
-    return { status: 'blocked', reason: 'clock_tampered', deviceId: license.deviceId };
+    return {
+      status: 'blocked',
+      reason: 'clock_tampered',
+      deviceId: license.deviceId,
+      expiresAt: license.licenseExpiresAt,
+    };
   }
 
+  // Sempre tenta validar com o servidor quando possível — na abertura do app e a cada 5 min
+  // (useLicenseGuard), esteja a licença perto ou longe do vencimento. Se conseguir, a licença
+  // é renovada/confirmada sem o vendedor perceber nada; se não der (sem internet, Supabase não
+  // configurado, timeout), não mostra nenhum erro — só cai no tratamento local abaixo.
+  if (isSupabaseConfigured() && (await isOnline())) {
+    try {
+      const { expiresAt } = await fetchLicenseFromSupabase(license.deviceId);
+      await persistActive(license, expiresAt, now);
+      return { status: 'active', deviceId: license.deviceId, expiresAt: new Date(expiresAt) };
+    } catch (error) {
+      if (error instanceof DeviceNotRegisteredError) {
+        await persistStatus(license, 'blocked', now);
+        return {
+          status: 'blocked',
+          reason: 'not_registered',
+          deviceId: license.deviceId,
+          expiresAt: license.licenseExpiresAt,
+        };
+      }
+      if (error instanceof LicenseRenewalRejectedError) {
+        await persistStatus(license, 'blocked', now);
+        return {
+          status: 'blocked',
+          reason: 'server_rejected',
+          deviceId: license.deviceId,
+          expiresAt: license.licenseExpiresAt,
+        };
+      }
+      // Falha de rede/timeout apesar do NetInfo dizer online: trata como offline abaixo, sem
+      // mostrar erro nenhum pro vendedor.
+    }
+  }
+
+  // Sem internet (ou Supabase não configurado, ou falha de rede acima). Nunca bloqueia só por
+  // isso — só bloqueia se a validade já registrada for anterior a hoje (1 dia de tolerância a
+  // partir do vencimento, contando o próprio dia em que venceu).
   if (now < license.licenseExpiresAt.getTime()) {
     await persistActive(license, license.licenseExpiresAt.getTime(), now);
-    return { status: 'active', deviceId: license.deviceId };
+    return { status: 'active', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
   }
 
-  const netState = await NetInfo.fetch();
-  const isOnline = netState.isConnected === true && netState.isInternetReachable !== false;
-
-  if (!isOnline || !isSupabaseConfigured()) {
-    await persistStatus(license, 'expired', now);
-    return { status: 'expired', reason: 'offline', deviceId: license.deviceId };
+  if (isPastGraceDay(license.licenseExpiresAt, nowDate)) {
+    await persistStatus(license, 'blocked', now);
+    return {
+      status: 'blocked',
+      reason: 'grace_period_exceeded',
+      deviceId: license.deviceId,
+      expiresAt: license.licenseExpiresAt,
+    };
   }
 
-  try {
-    const { expiresAt } = await fetchLicenseFromSupabase(license.deviceId);
-    await persistActive(license, expiresAt, now);
-    return { status: 'active', deviceId: license.deviceId };
-  } catch (error) {
-    if (error instanceof DeviceNotRegisteredError) {
-      await persistStatus(license, 'blocked', now);
-      return { status: 'blocked', reason: 'not_registered', deviceId: license.deviceId };
-    }
-    if (error instanceof LicenseRenewalRejectedError) {
-      await persistStatus(license, 'blocked', now);
-      return { status: 'blocked', reason: 'server_rejected', deviceId: license.deviceId };
-    }
-    // Falha de rede/timeout apesar do NetInfo reportar conexão: trata como expirado offline.
-    await persistStatus(license, 'expired', now);
-    return { status: 'expired', reason: 'offline', deviceId: license.deviceId };
-  }
+  await persistStatus(license, 'expired', now);
+  return { status: 'expired', reason: 'offline', deviceId: license.deviceId, expiresAt: license.licenseExpiresAt };
 }

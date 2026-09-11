@@ -10,16 +10,12 @@ import Product from '@/database/models/Product';
 import { EmptyState } from '@/components/EmptyState';
 import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
+import { createCategory, isCategoryNameTaken } from '@/services/categoryService';
+import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CategoryList'>;
-
-async function isCategoryNameTaken(name: string, ignoreId?: string): Promise<boolean> {
-  const categories = await database.get<Category>('categories').query().fetch();
-  const normalized = name.trim().toLowerCase();
-  return categories.some((category) => category.id !== ignoreId && category.name.trim().toLowerCase() === normalized);
-}
 
 type RowProps = {
   category: Category;
@@ -31,13 +27,10 @@ function CategoryRow({ category }: RowProps) {
   const [saving, setSaving] = useState(false);
   const [productsCount, setProductsCount] = useState<number | null>(null);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   useEffect(() => {
-    database
-      .get<Product>('products')
-      .query(Q.where('category_id', category.id))
-      .fetchCount()
-      .then(setProductsCount);
+    database.get<Product>('products').query(Q.where('category_id', category.id)).fetchCount().then(setProductsCount);
   }, [category.id]);
 
   async function handleSave() {
@@ -135,16 +128,22 @@ function CategoryRow({ category }: RowProps) {
         <Text style={styles.rowName} numberOfLines={1}>
           {category.name}
         </Text>
-        <Text style={styles.rowCount}>
-          {productsCount === null ? '...' : `${productsCount} produto(s)`}
-        </Text>
+        <Text style={styles.rowCount}>{productsCount === null ? '...' : `${productsCount} produto(s)`}</Text>
       </View>
-      <TouchableOpacity style={styles.iconButton} onPress={() => setEditing(true)} accessibilityLabel="Renomear categoria">
-        <Ionicons name="pencil-outline" size={18} color={colors.slate600} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.iconButton} onPress={handleDelete} accessibilityLabel="Excluir categoria">
-        <Ionicons name="trash-outline" size={18} color={colors.danger} />
-      </TouchableOpacity>
+      {readOnly ? null : (
+        <>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => setEditing(true)}
+            accessibilityLabel="Renomear categoria"
+          >
+            <Ionicons name="pencil-outline" size={18} color={colors.slate600} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconButton} onPress={handleDelete} accessibilityLabel="Excluir categoria">
+            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 }
@@ -155,6 +154,7 @@ function CategoryListScreenBase({ categories }: ListProps) {
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
   const { showToast } = useToast();
+  const { readOnly } = useLicenseAccess();
 
   async function handleAdd() {
     const trimmed = newName.trim();
@@ -166,11 +166,7 @@ function CategoryListScreenBase({ categories }: ListProps) {
         Alert.alert('Categoria já existe', 'Já existe uma categoria cadastrada com esse nome.');
         return;
       }
-      await database.write(async () => {
-        await database.get<Category>('categories').create((record) => {
-          record.name = trimmed;
-        });
-      });
+      await createCategory(trimmed);
       setNewName('');
       showToast('Categoria criada!', 'success');
     } finally {
@@ -181,18 +177,30 @@ function CategoryListScreenBase({ categories }: ListProps) {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <View style={styles.addRow}>
-          <TextInput
-            style={styles.addInput}
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="Nova categoria (ex: Bebidas)"
-            placeholderTextColor={colors.slate400}
-            onSubmitEditing={handleAdd}
-            returnKeyType="done"
-          />
-          <PrimaryButton label="Adicionar" onPress={handleAdd} loading={adding} disabled={!newName.trim()} style={styles.addButton} />
-        </View>
+        {readOnly ? (
+          <Text style={styles.readOnlyNotice}>
+            Licença expirada — somente leitura, gestão de categorias indisponível.
+          </Text>
+        ) : (
+          <View style={styles.addRow}>
+            <TextInput
+              style={styles.addInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Nova categoria (ex: Bebidas)"
+              placeholderTextColor={colors.slate400}
+              onSubmitEditing={handleAdd}
+              returnKeyType="done"
+            />
+            <PrimaryButton
+              label="Adicionar"
+              onPress={handleAdd}
+              loading={adding}
+              disabled={!newName.trim()}
+              style={styles.addButton}
+            />
+          </View>
+        )}
 
         <FlatList
           data={categories}
@@ -237,6 +245,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  readOnlyNotice: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.warningStrong,
+    textAlign: 'center',
     padding: spacing.lg,
     paddingBottom: spacing.xs,
   },
