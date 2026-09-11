@@ -409,6 +409,12 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** A pedido do cliente, a `delivery_date` (adicionada mais cedo nesta mesma fase) passou a aparecer nos cards de pedido onde antes só existia no PDF e no detalhe: nos "Últimos pedidos" da `HomeScreen` e na listagem `OrderListScreen`. Em ambos, uma linha "Entrega em dd/mm/aaaa" (ícone `cube-outline`, cor de destaque) aparece só quando o pedido tem data de entrega definida — omitida por completo quando não há.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-11 — Fix: seleção de logo rejeitava PNG/JPEG genuínos vindos da galeria do Android
+- **Tipo:** fix
+- **Resumo:** Bug reportado pelo cliente: ao tentar definir a logo da empresa a partir de um print/imagem escolhido pela galeria do Android, o app recusava com "Formato não suportado. Escolha um arquivo PNG ou JPG." mesmo o arquivo sendo um PNG válido de verdade (confirmado byte a byte). **Causa raiz:** `settingsService.pickCompanyLogo()` validava o formato olhando só a **extensão do nome do arquivo** (`file.extension`, ex: `.png`) — mas o seletor de arquivos do Android (galeria/Fotos, Google Drive, etc.) frequentemente devolve um `content://` URI sem nome/extensão utilizável, mesmo quando o conteúdo é uma imagem válida das que o próprio seletor já filtrou (`mimeTypes: ['image/png', 'image/jpeg']`). **Fix:** `detectImageMimeType()` passou a checar a **assinatura mágica dos bytes reais do arquivo** (lida a partir do prefixo do base64 já carregado, sem I/O extra) em vez de confiar no nome — `iVBORw0K...` para PNG, `/9j/...` para JPEG —, robusto independente de qual app/seletor de origem foi usado.
+- **Testes:** novo `settingsService.test.ts` (4 testes) cobrindo PNG, JPEG, GIF (rejeitado) e string vazia. Suíte completa: 63 testes.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)
