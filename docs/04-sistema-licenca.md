@@ -171,7 +171,7 @@ dia_vencimento = dia calendário de license_expires_at
 ### Como é implementado
 
 - **`blocked`**: `RootNavigator` continua mostrando só `LicenseBlockedScreen`, sem montar nenhuma tela de negócio — mas essa tela agora tem um botão **"Exportar meus dados (Backup)"**, que chama `backupService.exportBackup()` diretamente (sem precisar navegar, já que não há navegação nenhuma montada nesse estado). Se o botão "Tentar novamente" falhar de novo (o componente continua montado — se tivesse dado certo, o `RootNavigator` já teria trocado de tela), aparece um aviso inline *"Ainda não foi possível validar sua licença..."* — sinal explícito de que a tentativa não funcionou (2026-09-01).
-- **`expired`**: `RootNavigator` monta o app inteiro normalmente (todas as telas continuam navegáveis), mas envolve a árvore com `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`, contexto simples `{ readOnly: boolean }`) com `readOnly = true`, e exibe uma faixa fixa no topo (`ReadOnlyBanner`, acima do próprio `NavigationContainer` — visível em qualquer tela) com o aviso e um botão de retry.
+- **`expired`**: `RootNavigator` monta o app inteiro normalmente (todas as telas continuam navegáveis), mas envolve a árvore com `LicenseAccessProvider` (`src/hooks/useLicenseAccess.tsx`, contexto `{ readOnly, expiresAt, retry }` — `retry` é a mesma instância de `useLicenseGuard().retry` do `RootNavigator`, ver nota de fix abaixo) com `readOnly = true`, e exibe uma faixa fixa no topo (`ReadOnlyBanner`, acima do próprio `NavigationContainer` — visível em qualquer tela) com o aviso e um botão de retry.
   - `useReadOnlyGuard()` (mesmo arquivo) expõe `{ readOnly, guard }` — `guard(acao)` executa a ação normalmente se `readOnly` for `false`, ou mostra um `Alert` explicativo e não faz nada se for `true`. Usado nos pontos de entrada de criação (FABs de Clientes/Produtos/Ordens, botão "Nova Venda" da `HomeScreen`).
   - Dentro das telas de formulário/detalhe (`ClientFormScreen`, `ProductFormScreen`, `CategoryListScreen`, `OrderDetailScreen`, `SettingsScreen`, `BackupScreen`), o padrão é ler `const { readOnly } = useLicenseAccess()` diretamente e desabilitar (`disabled={readOnly}`) os botões que escrevem dados — a visualização continua acessível normalmente, sem gating adicional.
   - `BackupScreen` é a única tela com uma regra assimétrica: exportar continua sempre habilitado, só o botão de **importar** é desabilitado quando `readOnly`.
@@ -257,6 +257,8 @@ Content-Type: application/json
 ### `license_expires_at` é a fonte da verdade, não `license_status`
 
 O Postgres não atualiza colunas sozinho quando uma data passa — só reage a jobs agendados ou a valores computados na leitura. Por isso `fetchLicenseFromSupabase` **não confia cegamente** em `license_status`: mesmo que a coluna ainda diga `active` (porque o job de expiração no Supabase ainda não rodou), se `license_expires_at <= agora` a licença é tratada como rejeitada (`server_rejected`) no app. Isso torna o cliente resiliente independentemente de haver ou não um job configurado no banco.
+
+> 🐛 **Fix (2026-09-11):** essa checagem de `license_expires_at <= agora` estava documentada aqui, mas nunca tinha sido de fato implementada em código — `fetchLicenseFromSupabase` só checava `license_status`, sem olhar a data. Na prática, sem o job `pg_cron` abaixo configurado (é um passo **manual**, feito fora deste repo, fácil de esquecer), uma licença vencida com `license_status` ainda `active` no banco ficaria válida pra sempre enquanto o app tivesse internet — o oposto do que este parágrafo sempre disse que acontecia. Corrigido em `licenseService.ts` (novo teste de regressão em `licenseService.test.ts`).
 
 Ainda assim, para manter a coluna `license_status` em si correta no painel/Table Editor do Supabase (útil para quem administra as licenças visualmente), configure um job `pg_cron` que sincroniza o status a partir da data periodicamente — **nos dois sentidos** (`active → expired` quando vence, e `expired → active` quando a data é renovada), mas **nunca mexe em `blocked`** (esse é só manual — ver [decisão de design](#-por-que-license_status-além-de-license_expires_at) abaixo):
 
@@ -368,7 +370,7 @@ function useLicenseGuard(): {
   reason?: 'clock_tampered' | 'offline' | 'server_rejected' | 'not_registered' | 'grace_period_exceeded';
   deviceId?: string;
   expiresAt: Date | null;
-  retry: () => Promise<void>;
+  retry: () => Promise<LicenseCheckResult>;
 } {
   // 1. Lê/cria license_control local (evaluateLicense em services/licenseService.ts)
   // 2. Aplica a árvore de decisão descrita acima (com fetchLicenseFromSupabase quando aplicável)
@@ -380,6 +382,8 @@ function useLicenseGuard(): {
 ```
 
 O `RootNavigator` (em `src/navigation/`) deve consumir `useLicenseGuard` **antes** de montar qualquer stack de telas de negócio, garantindo que nenhuma tela sensível seja acessível com licença inválida.
+
+> 🔁 **Fix (2026-09-11): `retry` nunca mais passa por `checking: true`.** Antes, qualquer chamada de `retry()` (banners, `LicenseBlockedScreen`, e o botão "Verificar Licença Agora" das Configurações) resetava `checking` pra `true`, e o `RootNavigator` desmonta a árvore de navegação **inteira** enquanto `checking` é `true` (`if (checking...) return <LoadingView/>`) — perdendo o estado de qualquer tela (scroll, formulário em edição) e, em Configurações especificamente, criava a impressão de que um bloqueio detectado ali "demorava" a valer: o botão só atualizava o snapshot local da própria tela (via `evaluateLicense()` chamado direto, sem passar pelo hook compartilhado), então o `RootNavigator` só refletia isso na sua **própria** reavaliação periódica seguinte (até 5 min depois). Agora `retry()` só atualiza `result` silenciosamente (mesmo padrão já usado pelo `setInterval`), e `LicenseAccessContext` passou a expor esse `retry` compartilhado (`src/hooks/useLicenseAccess.tsx`) — `SettingsScreen` chama esse `retry` em vez de `evaluateLicense()` direto, garantindo que um bloqueio detectado no botão "Verificar Licença Agora" reflita **imediatamente** em todo o app (troca pra `LicenseBlockedScreen` na hora), não só no snapshot local da tela de Configurações.
 
 ## ✅ Checklist ao alterar esta regra
 

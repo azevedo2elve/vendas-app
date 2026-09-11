@@ -72,7 +72,17 @@ async function fetchLicenseFromSupabase(deviceId: string): Promise<{ expiresAt: 
     throw new LicenseRenewalRejectedError(`remote_status_${record.license_status}`);
   }
 
-  return { expiresAt: new Date(record.license_expires_at).getTime(), status: record.license_status };
+  // Não confia cegamente em `license_status`: o Postgres não atualiza essa coluna sozinho quando
+  // a data passa (só reage a um job agendado, opcional — ver docs/04-sistema-licenca.md). Sem
+  // esse job configurado (ou antes da 1ª execução dele), uma licença vencida com a coluna ainda
+  // dizendo `active` ficaria válida pra sempre enquanto online, já que o resto desta função nunca
+  // olha a data. Essa checagem torna o cliente resiliente independente de o job existir ou não.
+  const expiresAt = new Date(record.license_expires_at).getTime();
+  if (expiresAt <= Date.now()) {
+    throw new LicenseRenewalRejectedError('remote_active_but_expired');
+  }
+
+  return { expiresAt, status: record.license_status };
 }
 
 async function persistActive(license: LicenseControl, expiresAt: number, now: number) {

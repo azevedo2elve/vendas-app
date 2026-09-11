@@ -16,7 +16,7 @@ import { PrimaryButton } from '@/components/PrimaryButton';
 import { useToast } from '@/components/Toast';
 import { isSupportEmailConfigured, isSupportPhoneConfigured, SUPPORT_WHATSAPP_PHONE } from '@/services/api';
 import { emailBackup, exportBackup } from '@/services/backupService';
-import { evaluateLicense, getCurrentLicenseSnapshot } from '@/services/licenseService';
+import { getCurrentLicenseSnapshot } from '@/services/licenseService';
 import { clearAllOrders } from '@/services/orderService';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import {
@@ -90,7 +90,7 @@ export function SettingsScreen({ navigation }: Props) {
   const [pickingLogo, setPickingLogo] = useState(false);
   const { showToast } = useToast();
   const netInfo = useNetInfo();
-  const { readOnly } = useLicenseAccess();
+  const { readOnly, retry: retryLicense } = useLicenseAccess();
 
   function toggleSection(section: 'company' | 'system' | 'data') {
     setExpandedSection((current) => (current === section ? null : section));
@@ -228,13 +228,15 @@ export function SettingsScreen({ navigation }: Props) {
   async function handleCheckLicense() {
     setCheckingLicense(true);
     try {
-      await evaluateLicense();
-      const snapshot = await getCurrentLicenseSnapshot();
-      setLicense(snapshot);
-      if (snapshot.status === 'active') {
+      // Usa o `retry` compartilhado com o RootNavigator (via LicenseAccessProvider), não um
+      // evaluateLicense() isolado — senão o app só reagiria a um bloqueio recém-detectado aqui
+      // até 5 minutos depois, na próxima reavaliação periódica automática do RootNavigator.
+      const result = await retryLicense();
+      setLicense({ status: result.status, expiresAt: result.expiresAt, deviceId: result.deviceId });
+      if (result.status === 'active') {
         showToast('Licença verificada: está ativa!', 'success');
       } else {
-        showToast(`Licença ${LICENSE_STATUS_LABELS[snapshot.status].toLowerCase()}.`, 'error');
+        showToast(`Licença ${LICENSE_STATUS_LABELS[result.status].toLowerCase()}.`, 'error');
       }
     } catch (error) {
       showToast(`Não foi possível verificar a licença: ${String(error)}`, 'error');
