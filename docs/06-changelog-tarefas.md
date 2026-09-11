@@ -456,6 +456,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** A partir de agora, `feature/*` deixam de ser mergeadas direto em `main` (produção). Nova branch `hml` (criada a partir de `main`, logo após o merge da Fase 12) passa a ser o destino intermediário: `feature/*` → `hml` (testes de homologação) → `main` (produção). A branch `feature/categorias-produtos-sem-sku` (Fase 12, já mergeada em `main`) foi excluída local e remotamente.
 - **Docs afetados:** `docs/02-arquitetura.md` (nova seção "Estratégia de branches"), `docs/06-changelog-tarefas.md`.
 
+### 2026-09-11 — Primeira promoção `hml` → `main`: v1.0.0 em produção
+- **Tipo:** chore (release)
+- **Resumo:** Primeira vez que `hml` é promovida para `main` desde a adoção do fluxo (2026-09-01) — até aqui, `main` seguia parada na Fase 12. Testado pelo usuário em HML (checklist completo: instalação, Fase 14, fix da logo, fluxo essencial, offline, configurações/backup — ver entradas de 2026-09-08 a 2026-09-11 acima), com 3 bugs reais encontrados e corrigidos durante os testes (reimportação de backup, seleção de logo, validação remota de licença — PRs #26/#27/#28). PRs #24–#28 mergeados em `hml` (5 PRs, `--merge`, branches excluídas) e `hml` promovida para `main` em seguida. `android.package` definitivo (`com.gabrielazevedo.vendasapp`), `versionCode 1` / `versionName "1.0.0"` — release de produção de verdade, mesma chave de assinatura usada nos builds de teste (para instalações futuras poderem atualizar por cima, sem precisar desinstalar).
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## 📎 Documentos relacionados
