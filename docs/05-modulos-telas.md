@@ -151,7 +151,7 @@ const productSchema = z.object({
 | `SectionHeader` | `src/components/SectionHeader.tsx` | Título de seção + ação opcional |
 | `Toast` (`ToastProvider`/`useToast`) | `src/components/Toast.tsx` | Notificação flutuante de confirmação |
 | `OrderProgressBar` | `src/components/OrderProgressBar.tsx` | Indicador de progresso do wizard de Nova Venda (3 etapas) |
-| `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade |
+| `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade — `N` é um `TextInput` numérico editável (Fase 15), não só texto, para digitar quantidades grandes direto pelo teclado |
 | `ReadOnlyBanner` | `src/components/ReadOnlyBanner.tsx` | Faixa fixa acima da navegação, mostrada em toda a app quando a licença está `expired` (Fases 7/8) |
 | `LicenseExpiryBanner` | `src/components/LicenseExpiryBanner.tsx` | Faixa dispensável (✕) acima da navegação, avisando vencimento próximo da licença — 5/2/1 dia, 2/1 hora antes (2026-09-01) |
 
@@ -237,6 +237,8 @@ const totalNet = Math.max(0, totalGross - discountTotal); // discountTotal = des
 ## 🧾 Template do PDF (A4) — `templates/orderTemplate.ts`
 
 Implementado na Fase 10, com o cabeçalho **redesenhado na Fase 13** para incluir a logo/identidade do vendedor e mais dados do cliente/pedido. O PDF é gerado a partir de uma string HTML (CSS inline, sem dependências externas) renderizada pelo `expo-print` (`Print.printToFileAsync`). Estrutura real:
+
+> 🔁 **Fase 15:** espaço em branco acima do cabeçalho reduzido (`body { padding: 18px 40px 36px }`, era `36px 40px` nos quatro lados) — pedido do cliente pra "subir" o cabeçalho, deixando a logo/nome da empresa mais perto do topo da folha.
 
 ```text
 ┌───────────────────────────────────────────────────────────┐

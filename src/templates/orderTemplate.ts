@@ -66,7 +66,9 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[],
     font-family: -apple-system, Helvetica, Arial, sans-serif;
     color: #0F172A;
     margin: 0;
-    padding: 36px 40px;
+    /* Topo reduzido (era 36px) — pedido do cliente pra subir o cabeçalho, menos espaço em
+       branco antes da logo/nome da empresa. */
+    padding: 18px 40px 36px;
     font-size: 12px;
   }
   .header {

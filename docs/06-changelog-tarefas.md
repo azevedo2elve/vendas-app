@@ -34,6 +34,7 @@ Este arquivo é o registro histórico de mudanças do projeto, organizado por **
 | **Fase 12** | Categorias de produtos + remoção do SKU | 🟢 Concluído |
 | **Fase 13** | PDF personalizado (logo, vendedor, endereço) + endereço estruturado do cliente | 🟢 Concluído |
 | **Fase 14** | Preenchimento automático de cadastro (CNPJ e CEP) | 🟢 Concluído |
+| **Fase 15** | Ajustes pós-lançamento (pedidos do cliente já em produção) | 🟢 Concluído |
 
 Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqueado
 
@@ -446,6 +447,19 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
   - Passa a ser o **terceiro** ponto de rede real do app (além de licença e backup remoto) — `docs/01-visao-geral.md` e `docs/02-arquitetura.md` atualizados.
 - **Testes:** 11 novos testes (`cnpjLookupService.test.ts`, `cepLookupService.test.ts`) cobrindo entrada inválida, offline, sucesso, CNPJ/CEP não encontrado, HTTP não-ok e falha de rede — mesmo padrão de mock de `NetInfo`/`global.fetch` já usado em `licenseService.test.ts`. Suíte completa: 59 testes, todos passando. `tsc --noEmit` e `expo lint` limpos (0 erros, 0 warnings); `expo export --platform android` compila o bundle sem erro.
 - **Docs afetados:** `docs/01-visao-geral.md`, `docs/02-arquitetura.md`, `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+---
+
+## Fase 15 — Ajustes pós-lançamento (pedidos do cliente já em produção)
+
+> A v1.0.0 foi entregue e testada com o cliente (ver "Primeira promoção `hml` → `main`" abaixo). Esta fase reúne os pedidos de ajuste feitos pelo cliente depois de já estar usando o app de verdade — cada um pequeno o suficiente para não justificar uma fase própria.
+
+### 2026-09-11 — Quantidade do carrinho digitável pelo teclado numérico + cabeçalho do PDF mais alto
+- **Tipo:** feature / fix
+- **Resumo:** Dois pedidos do cliente após usar o app em produção:
+  1. **Quantidade por teclado numérico:** em vendas com quantidades grandes, tocar "+" um por um no carrinho (`OrderItemsScreen`) era lento. `QuantityStepper` (`src/components/QuantityStepper.tsx`, usado no card do catálogo e no modal do carrinho) trocou o número central de `Text` estático para um `TextInput` (`keyboardType="number-pad"`, `selectTextOnFocus` — tocar já seleciona tudo, pronto pra sobrescrever) — os botões "+"/"−" continuam funcionando normalmente, lado a lado com a digitação direta. Campo vazio momentâneo (apagando pra digitar de novo) não força a quantidade mínima até o campo perder o foco, senão não daria pra apagar "1" pra digitar "50". Sincronização entre o texto exibido e a quantidade real (quando ela muda por fora, ex: os próprios botões +/−) feita comparando o valor recebido durante a renderização (sem `useEffect` — evita o aviso do React Compiler `react-hooks/set-state-in-effect`, mesmo cuidado já tomado no `useLicenseGuard` na Fase 7).
+  2. **Cabeçalho do PDF mais alto:** `templates/orderTemplate.ts` tinha `padding: 36px 40px` no `body`, deixando um espaço em branco grande antes da logo/nome da empresa. Reduzido só o espaçamento do topo (`padding: 18px 40px 36px`) — cabeçalho sobe, mantendo as margens laterais e inferior iguais.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
 ---
 
