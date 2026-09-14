@@ -22,9 +22,15 @@ import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetail'>;
 
-type DetailProps = { order: Order; client: Client; items: OrderItem[]; onBack: () => void };
+type DetailProps = {
+  order: Order;
+  client: Client;
+  items: OrderItem[];
+  onBack: () => void;
+  onEdit: () => void;
+};
 
-function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
+function OrderDetailScreenBase({ order, client, items, onBack, onEdit }: DetailProps) {
   const [updating, setUpdating] = useState(false);
   const [sharing, setSharing] = useState(false);
   const { showToast } = useToast();
@@ -156,10 +162,19 @@ function OrderDetailScreenBase({ order, client, items, onBack }: DetailProps) {
 
       {readOnly ? (
         <Text style={styles.readOnlyNotice}>
-          Licença expirada — somente leitura. Compartilhar, concluir, cancelar e excluir ficam indisponíveis.
+          Licença expirada — somente leitura. Editar, compartilhar, concluir, cancelar e excluir ficam indisponíveis.
         </Text>
       ) : null}
 
+      {order.status !== 'cancelled' ? (
+        <PrimaryButton
+          label="Editar pedido"
+          variant="outline"
+          icon="create-outline"
+          onPress={onEdit}
+          disabled={readOnly}
+        />
+      ) : null}
       <PrimaryButton
         label="Compartilhar (PDF / WhatsApp)"
         variant="success"
@@ -225,7 +240,13 @@ export function OrderDetailScreen({ route, navigation }: Props) {
     return <LoadingView message="Carregando pedido..." />;
   }
 
-  return <EnhancedOrderDetail order={order} onBack={() => navigation.goBack()} />;
+  return (
+    <EnhancedOrderDetail
+      order={order}
+      onBack={() => navigation.goBack()}
+      onEdit={() => navigation.navigate('OrderEdit', { orderId })}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

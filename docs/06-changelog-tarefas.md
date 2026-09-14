@@ -461,6 +461,16 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
   2. **Cabeçalho do PDF mais alto:** `templates/orderTemplate.ts` tinha `padding: 36px 40px` no `body`, deixando um espaço em branco grande antes da logo/nome da empresa. Reduzido só o espaçamento do topo (`padding: 18px 40px 36px`) — cabeçalho sobe, mantendo as margens laterais e inferior iguais.
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
+### 2026-09-14 — Edição de pedido já finalizado
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: os compradores dele às vezes pedem pra mudar algo do pedido depois de já "fechado" (adicionar/remover item, trocar quantidade, forma de pagamento, data de entrega) — antes só dava pra cancelar e criar um pedido novo do zero.
+  - **`orderService.updateOrder(orderId, input)`** (novo): recalcula `total_gross`/`total_net` a partir da lista de itens editada, substitui todos os `order_items` antigos por completo (marca como excluído + recria em lote — mais simples e seguro do que casar item a item com o carrinho editado) e atualiza `discount_total`/`payment_method`/`notes`/`delivery_date` do pedido. Não mexe em `status`, `order_number` nem `created_at`.
+  - **`OrderEditScreen`** (nova tela, `src/screens/orders/OrderEditScreen.tsx`): formulário único (diferente do wizard de 3 passos da criação) — carrega o pedido uma vez pra um estado local editável, só grava de volta ao confirmar. Cliente do pedido não pode ser trocado (evitaria repensar a lógica de `order_number` sequencial por cliente). Itens com `QuantityStepper`/remoção; "Adicionar produto" abre um modal de busca+categoria (versão modal do catálogo, não a tela cheia de `OrderItemsScreen`); campos de fechamento (desconto, data de entrega, forma de pagamento, observações) replicados de `OrderReviewScreen`.
+  - **Decisão de design:** a tela de edição **não reaproveita** `useOrderDraft`/`OrderDraftNavigator`/`OrderItemsScreen`/`OrderReviewScreen` do fluxo de criação — foi cogitado (hidratar o mesmo contexto com os dados do pedido existente e navegar direto pra `OrderItems`), mas decidido contra por risco: esse fluxo já está testado e aprovado pelo cliente em produção, e emendar um "modo edição" nele exigiria roteamento condicional em várias telas por um ganho de reuso que não compensa o risco de regressão. A tela de edição duplica uma quantidade modesta de UI (campos de fechamento, um catálogo simplificado em modal) como um componente novo e isolado.
+  - **Regra de acesso:** botão "Editar pedido" em `OrderDetailScreen`, disponível em qualquer status **exceto `cancelled`** — inclusive `completed` (é justamente o caso relatado pelo cliente: pedido já concluído, comprador pede uma mudança). Desabilitado em modo somente-leitura (licença expirada), mesmo padrão dos outros botões de escrita do pedido.
+- **Gap de teste conhecido:** `updateOrder()` (como `createOrder`/`deleteOrder`/`setOrderStatus`, já existentes) não tem teste automatizado — exigiria mockar `database.batch()`/`prepareCreate`/`prepareUpdate`/`prepareMarkAsDeleted` de forma mais elaborada do que o padrão atual de testes (mock simples de `query().fetch()`/`create()`), gap já documentado desde a Fase 9 pra todo o `orderService`.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)
