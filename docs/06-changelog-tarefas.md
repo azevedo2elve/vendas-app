@@ -471,6 +471,12 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Gap de teste conhecido:** `updateOrder()` (como `createOrder`/`deleteOrder`/`setOrderStatus`, já existentes) não tem teste automatizado — exigiria mockar `database.batch()`/`prepareCreate`/`prepareUpdate`/`prepareMarkAsDeleted` de forma mais elaborada do que o padrão atual de testes (mock simples de `query().fetch()`/`create()`), gap já documentado desde a Fase 9 pra todo o `orderService`.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-15 — Quantidade visível/editável ao adicionar produto no modal da edição de pedido
+- **Tipo:** feature
+- **Resumo:** Ajuste pedido pelo cliente ao testar a edição de pedido (entrada acima): no modal "Adicionar produto" (`OrderEditScreen`), tocar num produto só incrementava a quantidade sem mostrar nada — pra ver/ajustar quanto já tinha adicionado, precisava fechar o modal e olhar a lista principal. Agora, assim que um produto é adicionado, a linha dele no próprio modal troca o ícone de "+" por um [`QuantityStepper`](../src/components/QuantityStepper.tsx) mostrando a quantidade — editável ali mesmo (+/- ou digitando direto no teclado numérico, mesmo componente da Fase 15), sem precisar fechar o modal pra ajustar.
+- **`OrderEditScreen` também recebeu o fix de teclado cobrindo campo em edição** (`KeyboardAvoidingScreen`, ver entrada dedicada abaixo) — reportado pelo cliente justamente no campo "Observações" desta tela.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)

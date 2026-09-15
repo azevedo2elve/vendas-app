@@ -11,6 +11,7 @@ import { Card } from '@/components/Card';
 import { Chip } from '@/components/Chip';
 import { DiscountInput } from '@/components/DiscountInput';
 import { EmptyState } from '@/components/EmptyState';
+import { KeyboardAvoidingScreen } from '@/components/KeyboardAvoidingScreen';
 import { LoadingView } from '@/components/LoadingView';
 import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -186,7 +187,7 @@ export function OrderEditScreen({ route, navigation }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingScreen style={styles.container}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <Card style={styles.card}>
           <Text style={styles.cardTitle}>Cliente</Text>
@@ -347,25 +348,38 @@ export function OrderEditScreen({ route, navigation }: Props) {
               data={products}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.modalListContent}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.productRow} onPress={() => addProduct(item)} activeOpacity={0.7}>
-                  <View style={styles.productRowInfo}>
-                    <Text style={styles.productRowName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.productRowPrice}>
-                      {formatCurrencyBRL(item.price)} / {item.unit}
-                    </Text>
+              renderItem={({ item }) => {
+                const cartItem = items.find((current) => current.productId === item.id);
+                return (
+                  <View style={styles.productRow}>
+                    <View style={styles.productRowInfo}>
+                      <Text style={styles.productRowName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.productRowPrice}>
+                        {formatCurrencyBRL(item.price)} / {item.unit}
+                      </Text>
+                    </View>
+                    {cartItem ? (
+                      <QuantityStepper value={cartItem.quantity} onChange={(q) => updateQuantity(item.id, q)} />
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => addProduct(item)}
+                        accessibilityLabel={`Adicionar ${item.name}`}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="add-circle" size={26} color={colors.accent} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                  <Ionicons name="add-circle" size={26} color={colors.accent} />
-                </TouchableOpacity>
-              )}
+                );
+              }}
               ListEmptyComponent={<EmptyState icon="cube-outline" title="Nenhum produto encontrado" />}
             />
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingScreen>
   );
 }
 
