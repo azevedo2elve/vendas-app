@@ -477,6 +477,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **`OrderEditScreen` também recebeu o fix de teclado cobrindo campo em edição** (`KeyboardAvoidingScreen`, ver entrada dedicada abaixo) — reportado pelo cliente justamente no campo "Observações" desta tela.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-09-15 — Fix: "-" em 1 não removia o produto no modal de adicionar produto
+- **Tipo:** fix
+- **Resumo:** Ajuste pedido pelo cliente logo após o anterior: no `QuantityStepper` do modal "Adicionar produto" (`OrderEditScreen`), o botão "−" parava em 1 e não descia mais — diferente da lista principal de itens, esse modal não tem um botão de lixeira separado, então "−" em 1 ficava sem função útil pra tirar o produto de novo (só fechando o modal e removendo pela lista principal). `QuantityStepper` passou a ser usado com `min={0}` só aqui (a lista principal de itens continua com o `min` padrão de 1 — lá a remoção é sempre pelo ícone de lixeira dedicado, de propósito, pra não remover sem querer); o `onChange` do modal intercepta `0` e chama `removeItem` em vez de `updateQuantity`, voltando a linha do produto pro botão azul "+" de adicionar.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)

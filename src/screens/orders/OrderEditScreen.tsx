@@ -361,7 +361,11 @@ export function OrderEditScreen({ route, navigation }: Props) {
                       </Text>
                     </View>
                     {cartItem ? (
-                      <QuantityStepper value={cartItem.quantity} onChange={(q) => updateQuantity(item.id, q)} />
+                      <QuantityStepper
+                        value={cartItem.quantity}
+                        min={0}
+                        onChange={(q) => (q <= 0 ? removeItem(item.id) : updateQuantity(item.id, q))}
+                      />
                     ) : (
                       <TouchableOpacity
                         onPress={() => addProduct(item)}
