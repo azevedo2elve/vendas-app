@@ -482,6 +482,13 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Ajuste pedido pelo cliente logo após o anterior: no `QuantityStepper` do modal "Adicionar produto" (`OrderEditScreen`), o botão "−" parava em 1 e não descia mais — diferente da lista principal de itens, esse modal não tem um botão de lixeira separado, então "−" em 1 ficava sem função útil pra tirar o produto de novo (só fechando o modal e removendo pela lista principal). `QuantityStepper` passou a ser usado com `min={0}` só aqui (a lista principal de itens continua com o `min` padrão de 1 — lá a remoção é sempre pelo ícone de lixeira dedicado, de propósito, pra não remover sem querer); o `onChange` do modal intercepta `0` e chama `removeItem` em vez de `updateQuantity`, voltando a linha do produto pro botão azul "+" de adicionar.
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
+### 2026-09-15 — Fix: teclado cobrindo o campo em edição em telas de formulário
+- **Tipo:** fix
+- **Resumo:** Reportado pelo cliente: em várias telas com formulário (relatado especificamente no campo "Observações" da edição de pedido, mas o mesmo problema existia em qualquer campo perto do fim de uma tela longa), o teclado abria por cima do campo sendo digitado, escondendo o que estava sendo escrito.
+  - **Causa:** o app já usa `windowSoftInputMode="adjustResize"` no Android (padrão do template Expo — a janela é redimensionada quando o teclado abre), mas isso sozinho não garante que o `ScrollView` role até o campo focado ficar visível dentro da área que sobrou; no iOS não existe nenhum resize automático de janela nenhuma, então o problema era ainda mais evidente lá.
+  - **Fix:** novo componente [`KeyboardAvoidingScreen`](../src/components/KeyboardAvoidingScreen.tsx) — wrapper fino sobre o `KeyboardAvoidingView` nativo do React Native (`behavior="padding"` no iOS, `"height"` no Android), sem nenhuma dependência nova. Aplicado como wrapper do `ScrollView` nas telas de formulário: `ClientFormScreen`, `ProductFormScreen`, `SettingsScreen`, `OrderReviewScreen` (a `OrderEditScreen`, mais recente, já recebeu isso na própria Fase 15 — ver entrada de 2026-09-14/15 acima).
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)
