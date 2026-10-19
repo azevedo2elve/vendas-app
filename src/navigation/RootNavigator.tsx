@@ -17,6 +17,7 @@ import { CategoryListScreen } from '@/screens/products/CategoryListScreen';
 import { BackupScreen } from '@/screens/backup/BackupScreen';
 import { OrderListScreen } from '@/screens/orders/OrderListScreen';
 import { OrderDetailScreen } from '@/screens/orders/OrderDetailScreen';
+import { OrderEditScreen } from '@/screens/orders/OrderEditScreen';
 import { SettingsScreen } from '@/screens/settings/SettingsScreen';
 import { OrderDraftNavigator } from './OrderDraftNavigator';
 import { colors } from '@/theme';
@@ -77,6 +78,7 @@ export function RootNavigator() {
             <Stack.Screen name="Backup" component={BackupScreen} options={{ title: 'Backup' }} />
             <Stack.Screen name="OrderList" component={OrderListScreen} options={{ title: 'Ordens de Venda' }} />
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Pedido' }} />
+            <Stack.Screen name="OrderEdit" component={OrderEditScreen} options={{ title: 'Editar pedido' }} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Configurações' }} />
             <Stack.Screen name="NewOrder" component={OrderDraftNavigator} options={{ headerShown: false }} />
           </Stack.Navigator>
