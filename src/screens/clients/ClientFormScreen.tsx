@@ -10,6 +10,7 @@ import { database } from '@/database';
 import Client from '@/database/models/Client';
 import { MaskedInput } from '@/components/MaskedInput';
 import { PrimaryButton } from '@/components/PrimaryButton';
+import { KeyboardAvoidingScreen } from '@/components/KeyboardAvoidingScreen';
 import { LoadingView } from '@/components/LoadingView';
 import { useToast } from '@/components/Toast';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
@@ -224,180 +225,182 @@ export function ClientFormScreen({ navigation, route }: Props) {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Controller
-        control={control}
-        name="name"
-        render={({ field }) => (
-          <MaskedInput
-            label="Nome / Razão social"
-            placeholder="Nome completo ou razão social"
-            value={field.value}
-            onChangeText={field.onChange}
-            error={errors.name?.message}
-          />
-        )}
-      />
-
-      <Controller
-        control={control}
-        name="document"
-        render={({ field }) => (
-          <MaskedInput
-            label="CPF / CNPJ"
-            mask="cpfCnpj"
-            placeholder="000.000.000-00"
-            value={field.value}
-            onChangeText={field.onChange}
-            error={errors.document?.message}
-          />
-        )}
-      />
-
-      {canLookupCnpj ? (
-        <TouchableOpacity style={styles.lookupLink} onPress={handleLookupCnpj} disabled={cnpjLookupLoading}>
-          {cnpjLookupLoading ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : (
-            <Ionicons name="search-outline" size={16} color={colors.accent} />
+    <KeyboardAvoidingScreen style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Controller
+          control={control}
+          name="name"
+          render={({ field }) => (
+            <MaskedInput
+              label="Nome / Razão social"
+              placeholder="Nome completo ou razão social"
+              value={field.value}
+              onChangeText={field.onChange}
+              error={errors.name?.message}
+            />
           )}
-          <Text style={styles.lookupLinkText}>Buscar dados da empresa pelo CNPJ</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      <Controller
-        control={control}
-        name="phone"
-        render={({ field }) => (
-          <MaskedInput
-            label="Telefone / WhatsApp"
-            mask="phone"
-            placeholder="(00) 00000-0000"
-            value={field.value}
-            onChangeText={field.onChange}
-            error={errors.phone?.message}
-          />
-        )}
-      />
-
-      <Text style={styles.sectionLabel}>Endereço</Text>
-
-      <Controller
-        control={control}
-        name="addressStreet"
-        render={({ field }) => (
-          <MaskedInput
-            label="Rua / Logradouro"
-            placeholder="Rua, avenida..."
-            value={field.value ?? ''}
-            onChangeText={field.onChange}
-          />
-        )}
-      />
-
-      <View style={styles.formRow}>
-        <View style={styles.formRowItem}>
-          <Controller
-            control={control}
-            name="addressNumber"
-            render={({ field }) => (
-              <MaskedInput label="Número" value={field.value ?? ''} onChangeText={field.onChange} />
-            )}
-          />
-        </View>
-        <View style={styles.formRowItemWide}>
-          <Controller
-            control={control}
-            name="addressComplement"
-            render={({ field }) => (
-              <MaskedInput
-                label="Complemento"
-                placeholder="Opcional"
-                value={field.value ?? ''}
-                onChangeText={field.onChange}
-              />
-            )}
-          />
-        </View>
-      </View>
-
-      <View style={styles.formRow}>
-        <View style={styles.formRowItemWide}>
-          <Controller
-            control={control}
-            name="addressCity"
-            render={({ field }) => (
-              <MaskedInput label="Cidade" value={field.value ?? ''} onChangeText={field.onChange} />
-            )}
-          />
-        </View>
-        <View style={styles.formRowItem}>
-          <Controller
-            control={control}
-            name="addressState"
-            render={({ field }) => (
-              <MaskedInput
-                label="UF"
-                placeholder="SP"
-                autoCapitalize="characters"
-                maxLength={2}
-                value={field.value ?? ''}
-                onChangeText={field.onChange}
-                error={errors.addressState?.message}
-              />
-            )}
-          />
-        </View>
-      </View>
-
-      <Controller
-        control={control}
-        name="addressZip"
-        render={({ field }) => (
-          <MaskedInput
-            label="CEP"
-            mask="cep"
-            placeholder="00000-000"
-            value={field.value ?? ''}
-            onChangeText={field.onChange}
-          />
-        )}
-      />
-
-      {canLookupCep ? (
-        <TouchableOpacity style={styles.lookupLink} onPress={handleLookupCep} disabled={cepLookupLoading}>
-          {cepLookupLoading ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : (
-            <Ionicons name="search-outline" size={16} color={colors.accent} />
-          )}
-          <Text style={styles.lookupLinkText}>Buscar endereço pelo CEP</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      {readOnly ? (
-        <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, não é possível salvar.</Text>
-      ) : null}
-
-      <PrimaryButton
-        label="Salvar"
-        icon="checkmark-circle-outline"
-        onPress={handleSubmit(onSubmit)}
-        loading={saving}
-        disabled={readOnly}
-      />
-
-      {isEditing ? (
-        <PrimaryButton
-          label="Excluir cliente"
-          variant="danger"
-          icon="trash-outline"
-          onPress={handleDelete}
-          disabled={readOnly}
-          style={styles.deleteButton}
         />
-      ) : null}
-    </ScrollView>
+
+        <Controller
+          control={control}
+          name="document"
+          render={({ field }) => (
+            <MaskedInput
+              label="CPF / CNPJ"
+              mask="cpfCnpj"
+              placeholder="000.000.000-00"
+              value={field.value}
+              onChangeText={field.onChange}
+              error={errors.document?.message}
+            />
+          )}
+        />
+
+        {canLookupCnpj ? (
+          <TouchableOpacity style={styles.lookupLink} onPress={handleLookupCnpj} disabled={cnpjLookupLoading}>
+            {cnpjLookupLoading ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Ionicons name="search-outline" size={16} color={colors.accent} />
+            )}
+            <Text style={styles.lookupLinkText}>Buscar dados da empresa pelo CNPJ</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <Controller
+          control={control}
+          name="phone"
+          render={({ field }) => (
+            <MaskedInput
+              label="Telefone / WhatsApp"
+              mask="phone"
+              placeholder="(00) 00000-0000"
+              value={field.value}
+              onChangeText={field.onChange}
+              error={errors.phone?.message}
+            />
+          )}
+        />
+
+        <Text style={styles.sectionLabel}>Endereço</Text>
+
+        <Controller
+          control={control}
+          name="addressStreet"
+          render={({ field }) => (
+            <MaskedInput
+              label="Rua / Logradouro"
+              placeholder="Rua, avenida..."
+              value={field.value ?? ''}
+              onChangeText={field.onChange}
+            />
+          )}
+        />
+
+        <View style={styles.formRow}>
+          <View style={styles.formRowItem}>
+            <Controller
+              control={control}
+              name="addressNumber"
+              render={({ field }) => (
+                <MaskedInput label="Número" value={field.value ?? ''} onChangeText={field.onChange} />
+              )}
+            />
+          </View>
+          <View style={styles.formRowItemWide}>
+            <Controller
+              control={control}
+              name="addressComplement"
+              render={({ field }) => (
+                <MaskedInput
+                  label="Complemento"
+                  placeholder="Opcional"
+                  value={field.value ?? ''}
+                  onChangeText={field.onChange}
+                />
+              )}
+            />
+          </View>
+        </View>
+
+        <View style={styles.formRow}>
+          <View style={styles.formRowItemWide}>
+            <Controller
+              control={control}
+              name="addressCity"
+              render={({ field }) => (
+                <MaskedInput label="Cidade" value={field.value ?? ''} onChangeText={field.onChange} />
+              )}
+            />
+          </View>
+          <View style={styles.formRowItem}>
+            <Controller
+              control={control}
+              name="addressState"
+              render={({ field }) => (
+                <MaskedInput
+                  label="UF"
+                  placeholder="SP"
+                  autoCapitalize="characters"
+                  maxLength={2}
+                  value={field.value ?? ''}
+                  onChangeText={field.onChange}
+                  error={errors.addressState?.message}
+                />
+              )}
+            />
+          </View>
+        </View>
+
+        <Controller
+          control={control}
+          name="addressZip"
+          render={({ field }) => (
+            <MaskedInput
+              label="CEP"
+              mask="cep"
+              placeholder="00000-000"
+              value={field.value ?? ''}
+              onChangeText={field.onChange}
+            />
+          )}
+        />
+
+        {canLookupCep ? (
+          <TouchableOpacity style={styles.lookupLink} onPress={handleLookupCep} disabled={cepLookupLoading}>
+            {cepLookupLoading ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Ionicons name="search-outline" size={16} color={colors.accent} />
+            )}
+            <Text style={styles.lookupLinkText}>Buscar endereço pelo CEP</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {readOnly ? (
+          <Text style={styles.readOnlyNotice}>Licença expirada — somente leitura, não é possível salvar.</Text>
+        ) : null}
+
+        <PrimaryButton
+          label="Salvar"
+          icon="checkmark-circle-outline"
+          onPress={handleSubmit(onSubmit)}
+          loading={saving}
+          disabled={readOnly}
+        />
+
+        {isEditing ? (
+          <PrimaryButton
+            label="Excluir cliente"
+            variant="danger"
+            icon="trash-outline"
+            onPress={handleDelete}
+            disabled={readOnly}
+            style={styles.deleteButton}
+          />
+        ) : null}
+      </ScrollView>
+    </KeyboardAvoidingScreen>
   );
 }
 

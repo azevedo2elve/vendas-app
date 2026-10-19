@@ -461,6 +461,34 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
   2. **Cabeçalho do PDF mais alto:** `templates/orderTemplate.ts` tinha `padding: 36px 40px` no `body`, deixando um espaço em branco grande antes da logo/nome da empresa. Reduzido só o espaçamento do topo (`padding: 18px 40px 36px`) — cabeçalho sobe, mantendo as margens laterais e inferior iguais.
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
+### 2026-09-14 — Edição de pedido já finalizado
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: os compradores dele às vezes pedem pra mudar algo do pedido depois de já "fechado" (adicionar/remover item, trocar quantidade, forma de pagamento, data de entrega) — antes só dava pra cancelar e criar um pedido novo do zero.
+  - **`orderService.updateOrder(orderId, input)`** (novo): recalcula `total_gross`/`total_net` a partir da lista de itens editada, substitui todos os `order_items` antigos por completo (marca como excluído + recria em lote — mais simples e seguro do que casar item a item com o carrinho editado) e atualiza `discount_total`/`payment_method`/`notes`/`delivery_date` do pedido. Não mexe em `status`, `order_number` nem `created_at`.
+  - **`OrderEditScreen`** (nova tela, `src/screens/orders/OrderEditScreen.tsx`): formulário único (diferente do wizard de 3 passos da criação) — carrega o pedido uma vez pra um estado local editável, só grava de volta ao confirmar. Cliente do pedido não pode ser trocado (evitaria repensar a lógica de `order_number` sequencial por cliente). Itens com `QuantityStepper`/remoção; "Adicionar produto" abre um modal de busca+categoria (versão modal do catálogo, não a tela cheia de `OrderItemsScreen`); campos de fechamento (desconto, data de entrega, forma de pagamento, observações) replicados de `OrderReviewScreen`.
+  - **Decisão de design:** a tela de edição **não reaproveita** `useOrderDraft`/`OrderDraftNavigator`/`OrderItemsScreen`/`OrderReviewScreen` do fluxo de criação — foi cogitado (hidratar o mesmo contexto com os dados do pedido existente e navegar direto pra `OrderItems`), mas decidido contra por risco: esse fluxo já está testado e aprovado pelo cliente em produção, e emendar um "modo edição" nele exigiria roteamento condicional em várias telas por um ganho de reuso que não compensa o risco de regressão. A tela de edição duplica uma quantidade modesta de UI (campos de fechamento, um catálogo simplificado em modal) como um componente novo e isolado.
+  - **Regra de acesso:** botão "Editar pedido" em `OrderDetailScreen`, disponível em qualquer status **exceto `cancelled`** — inclusive `completed` (é justamente o caso relatado pelo cliente: pedido já concluído, comprador pede uma mudança). Desabilitado em modo somente-leitura (licença expirada), mesmo padrão dos outros botões de escrita do pedido.
+- **Gap de teste conhecido:** `updateOrder()` (como `createOrder`/`deleteOrder`/`setOrderStatus`, já existentes) não tem teste automatizado — exigiria mockar `database.batch()`/`prepareCreate`/`prepareUpdate`/`prepareMarkAsDeleted` de forma mais elaborada do que o padrão atual de testes (mock simples de `query().fetch()`/`create()`), gap já documentado desde a Fase 9 pra todo o `orderService`.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-15 — Quantidade visível/editável ao adicionar produto no modal da edição de pedido
+- **Tipo:** feature
+- **Resumo:** Ajuste pedido pelo cliente ao testar a edição de pedido (entrada acima): no modal "Adicionar produto" (`OrderEditScreen`), tocar num produto só incrementava a quantidade sem mostrar nada — pra ver/ajustar quanto já tinha adicionado, precisava fechar o modal e olhar a lista principal. Agora, assim que um produto é adicionado, a linha dele no próprio modal troca o ícone de "+" por um [`QuantityStepper`](../src/components/QuantityStepper.tsx) mostrando a quantidade — editável ali mesmo (+/- ou digitando direto no teclado numérico, mesmo componente da Fase 15), sem precisar fechar o modal pra ajustar.
+- **`OrderEditScreen` também recebeu o fix de teclado cobrindo campo em edição** (`KeyboardAvoidingScreen`, ver entrada dedicada abaixo) — reportado pelo cliente justamente no campo "Observações" desta tela.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-09-15 — Fix: "-" em 1 não removia o produto no modal de adicionar produto
+- **Tipo:** fix
+- **Resumo:** Ajuste pedido pelo cliente logo após o anterior: no `QuantityStepper` do modal "Adicionar produto" (`OrderEditScreen`), o botão "−" parava em 1 e não descia mais — diferente da lista principal de itens, esse modal não tem um botão de lixeira separado, então "−" em 1 ficava sem função útil pra tirar o produto de novo (só fechando o modal e removendo pela lista principal). `QuantityStepper` passou a ser usado com `min={0}` só aqui (a lista principal de itens continua com o `min` padrão de 1 — lá a remoção é sempre pelo ícone de lixeira dedicado, de propósito, pra não remover sem querer); o `onChange` do modal intercepta `0` e chama `removeItem` em vez de `updateQuantity`, voltando a linha do produto pro botão azul "+" de adicionar.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
+### 2026-09-15 — Fix: teclado cobrindo o campo em edição em telas de formulário
+- **Tipo:** fix
+- **Resumo:** Reportado pelo cliente: em várias telas com formulário (relatado especificamente no campo "Observações" da edição de pedido, mas o mesmo problema existia em qualquer campo perto do fim de uma tela longa), o teclado abria por cima do campo sendo digitado, escondendo o que estava sendo escrito.
+  - **Causa:** o app já usa `windowSoftInputMode="adjustResize"` no Android (padrão do template Expo — a janela é redimensionada quando o teclado abre), mas isso sozinho não garante que o `ScrollView` role até o campo focado ficar visível dentro da área que sobrou; no iOS não existe nenhum resize automático de janela nenhuma, então o problema era ainda mais evidente lá.
+  - **Fix:** novo componente [`KeyboardAvoidingScreen`](../src/components/KeyboardAvoidingScreen.tsx) — wrapper fino sobre o `KeyboardAvoidingView` nativo do React Native (`behavior="padding"` no iOS, `"height"` no Android), sem nenhuma dependência nova. Aplicado como wrapper do `ScrollView` nas telas de formulário: `ClientFormScreen`, `ProductFormScreen`, `SettingsScreen`, `OrderReviewScreen` (a `OrderEditScreen`, mais recente, já recebeu isso na própria Fase 15 — ver entrada de 2026-09-14/15 acima).
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)

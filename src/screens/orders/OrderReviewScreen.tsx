@@ -7,6 +7,7 @@ import { createOrder } from '@/services/orderService';
 import { Card } from '@/components/Card';
 import { Chip } from '@/components/Chip';
 import { DiscountInput } from '@/components/DiscountInput';
+import { KeyboardAvoidingScreen } from '@/components/KeyboardAvoidingScreen';
 import { MaskedInput } from '@/components/MaskedInput';
 import { OrderProgressBar } from '@/components/OrderProgressBar';
 import { PrimaryButton } from '@/components/PrimaryButton';
@@ -66,7 +67,7 @@ export function OrderReviewScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingScreen style={styles.container}>
       <OrderProgressBar step={3} />
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
@@ -166,7 +167,7 @@ export function OrderReviewScreen({ navigation }: Props) {
           disabled={!clientId || items.length === 0}
         />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingScreen>
   );
 }
 

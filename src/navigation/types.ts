@@ -9,6 +9,7 @@ export type RootStackParamList = {
   NewOrder: undefined;
   OrderList: undefined;
   OrderDetail: { orderId: string };
+  OrderEdit: { orderId: string };
   Settings: undefined;
 };
 

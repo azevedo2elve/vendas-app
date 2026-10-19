@@ -60,6 +60,56 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   return createdOrder;
 }
 
+export type UpdateOrderInput = {
+  items: CartItem[];
+  discountTotal: number;
+  paymentMethod: PaymentMethod;
+  notes?: string;
+  deliveryDate?: Date | null;
+};
+
+// Edição de um pedido já salvo (Fase 16) — pedido do cliente: às vezes o comprador pede pra
+// mudar algo depois do pedido "fechado" (adicionar/remover item, trocar quantidade, forma de
+// pagamento, data de entrega). Não altera `status`/`order_number`/`created_at`/`client_id` — só
+// o conteúdo do pedido. Os itens antigos são substituídos por completo (marcados como excluídos
+// e recriados), mais simples e seguro do que tentar casar item por item com o carrinho editado.
+export async function updateOrder(orderId: string, input: UpdateOrderInput): Promise<void> {
+  const order = await database.get<Order>('orders').find(orderId);
+  const existingItems = await order.items.fetch();
+
+  const totalGross = input.items.reduce((acc, item) => acc + cartItemSubtotal(item), 0);
+  const totalNet = Math.max(0, totalGross - input.discountTotal);
+
+  const orderItemCollection = database.get<OrderItem>('order_items');
+
+  await database.write(async () => {
+    const preparedNewItems = input.items.map((item) =>
+      orderItemCollection.prepareCreate((record) => {
+        record.orderId = orderId;
+        record.productId = item.productId;
+        record.productNameSnapshot = item.productName;
+        record.unitPrice = item.unitPrice;
+        record.quantity = item.quantity;
+        record.discountValue = item.discountValue;
+        record.subtotal = cartItemSubtotal(item);
+      })
+    );
+
+    await database.batch(
+      ...existingItems.map((item) => item.prepareMarkAsDeleted()),
+      ...preparedNewItems,
+      order.prepareUpdate((record) => {
+        record.totalGross = totalGross;
+        record.discountTotal = input.discountTotal;
+        record.totalNet = totalNet;
+        record.paymentMethod = input.paymentMethod;
+        record.notes = input.notes?.trim() || undefined;
+        record.deliveryDate = input.deliveryDate ?? null;
+      })
+    );
+  });
+}
+
 export async function setOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
   const order = await database.get<Order>('orders').find(orderId);
   await database.write(async () => {

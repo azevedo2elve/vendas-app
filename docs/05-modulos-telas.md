@@ -154,6 +154,7 @@ const productSchema = z.object({
 | `QuantityStepper` | `src/components/QuantityStepper.tsx` | Controle `[- N +]` de quantidade — `N` é um `TextInput` numérico editável (Fase 15), não só texto, para digitar quantidades grandes direto pelo teclado |
 | `ReadOnlyBanner` | `src/components/ReadOnlyBanner.tsx` | Faixa fixa acima da navegação, mostrada em toda a app quando a licença está `expired` (Fases 7/8) |
 | `LicenseExpiryBanner` | `src/components/LicenseExpiryBanner.tsx` | Faixa dispensável (✕) acima da navegação, avisando vencimento próximo da licença — 5/2/1 dia, 2/1 hora antes (2026-09-01) |
+| `KeyboardAvoidingScreen` | `src/components/KeyboardAvoidingScreen.tsx` | Wrapper do `ScrollView` em telas de formulário — evita o teclado cobrir o campo em edição (Fase 15) |
 
 Utilitários: `src/utils/masks.ts` (formatação — inclui `maskDateBR`/`parseDateBR`, Fase 13, usados pelo `mask="date"` do `MaskedInput`), `src/utils/address.ts` (Fase 13 — formata o endereço estruturado do cliente para exibição/PDF), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 
@@ -207,11 +208,20 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Carrega a `Order` por id (`database.get('orders').find(orderId)`) e observa reativamente cliente + itens.
 - Mostra todos os itens (com `product_name_snapshot`, não o nome atual do produto — protege o histórico), totais (`total_gross`/`discount_total`/`total_net`), forma de pagamento e observações.
 - Botão **"Compartilhar (PDF / WhatsApp)"** → `pdfService.shareOrderPdf(order, client, items)` — mesmo mecanismo usado em `OrderSuccessScreen`, disponível aqui para reemitir o PDF de qualquer pedido já salvo (não só no momento da criação).
+- Botão **"Editar pedido"** (Fase 15) → `OrderEditScreen` (ver seção própria abaixo). Visível em qualquer status **exceto `cancelled`** (editar um pedido cancelado não faz sentido — se o cliente quiser reaproveitá-lo, cria um pedido novo).
 - Ações (`orderService.ts`):
   - "Marcar como concluído" (só se `pending`) → `setOrderStatus(id, 'completed')`.
   - "Cancelar pedido" (se não já `cancelled`) → confirmação (`Alert.alert`) → `setOrderStatus(id, 'cancelled')`.
   - "Excluir pedido" → confirmação → `deleteOrder(id)`, que também marca todos os `order_items` associados como excluídos (`markAsDeleted`, em lote) antes do próprio pedido — evita itens órfãos.
-- **Modo somente-leitura (Fases 7/8):** os 4 botões (Compartilhar/Concluir/Cancelar/Excluir) ficam `disabled`, com um aviso acima — o detalhe do pedido continua totalmente visível.
+- **Modo somente-leitura (Fases 7/8):** os botões (Editar/Compartilhar/Concluir/Cancelar/Excluir) ficam `disabled`, com um aviso acima — o detalhe do pedido continua totalmente visível.
+
+### `OrderEditScreen` (`src/screens/orders/OrderEditScreen.tsx`, Fase 15)
+- Pedido do cliente: às vezes o comprador dele pede pra mudar algo (adicionar/remover item, quantidade, forma de pagamento, data de entrega) depois que o pedido já foi "fechado" — antes só dava pra cancelar e recriar do zero.
+- Tela única (não um wizard de 3 passos como a criação) — carrega o pedido uma vez (`database.get('orders').find(orderId)` + `order.client.fetch()`/`order.items.fetch()`) para um estado local editável, só grava de volta no banco ao confirmar "Salvar alterações". O **cliente do pedido não pode ser trocado** (evita repensar toda a lógica de `order_number` sequencial por cliente e deduplicação) — só o conteúdo.
+- **Itens:** lista editável com [`QuantityStepper`](../src/components/QuantityStepper.tsx) (+/- ou digitar direto, Fase 15) e botão de remover por item; botão "Adicionar produto" abre um modal (busca por nome + filtro por categoria, mesmo padrão de `OrderItemsScreen`, mas como modal em vez de tela cheia — ação secundária dentro de uma edição, não o fluxo principal) — tocar num produto adiciona 1 unidade; se o produto já estiver na lista, a linha troca o ícone de adicionar por um `QuantityStepper` (mesmo padrão do catálogo de `OrderItemsScreen`) mostrando a quantidade já adicionada, editável ali mesmo (+/- ou teclado numérico) sem precisar fechar o modal. Diferente da lista principal (que usa o `min` padrão de 1, já que a remoção ali é sempre pelo ícone de lixeira dedicado), o `QuantityStepper` deste modal usa `min={0}` — "−" em 1 remove o produto direto (não há lixeira separada aqui), voltando a linha pro botão azul de adicionar.
+- **Fechamento:** os mesmos campos de `OrderReviewScreen` (desconto geral via `DiscountInput`, data de entrega via `MaskedInput mask="date"`, forma de pagamento em `Chip`s, observações) — deliberadamente duplicado em vez de compartilhado com o wizard de criação, pra não arriscar acoplar/instabilizar o fluxo de Nova Venda (já testado e aprovado pelo cliente em produção) só pra reaproveitar essa tela.
+- **Salvar:** `orderService.updateOrder(orderId, {...})` — substitui todos os `order_items` antigos por completo (marca como excluído + recria, mais simples e seguro que casar item a item) e recalcula `total_gross`/`total_net`; **não** altera `status`, `order_number` nem `created_at`. Bloqueia salvar com a lista de itens vazia. Volta pra `OrderDetailScreen` com um toast de confirmação.
+- **Modo somente-leitura:** "Salvar alterações", remover item e "Adicionar produto" ficam `disabled` — os itens continuam visíveis/navegáveis, só não editáveis.
 
 ### Cálculo de totais (`src/types/orderDraft.ts` + `src/services/orderService.ts`)
 
