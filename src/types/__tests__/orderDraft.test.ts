@@ -31,4 +31,9 @@ describe('cartItemSubtotal', () => {
     const item = makeItem({ unitPrice: 750, quantity: 4 });
     expect(cartItemSubtotal(item)).toBe(cartItemLineTotal(item));
   });
+
+  it('desconto de 100% zera o subtotal', () => {
+    const item = makeItem({ unitPrice: 2000, quantity: 2, discountValue: 4000 });
+    expect(cartItemSubtotal(item)).toBe(0);
+  });
 });

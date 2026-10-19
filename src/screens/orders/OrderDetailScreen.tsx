@@ -90,6 +90,9 @@ function OrderDetailScreenBase({ order, client, items, onBack, onEdit }: DetailP
     ]);
   }
 
+  const itemsSubtotal = items.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+  const itemsDiscountTotal = items.reduce((acc, item) => acc + item.discountValue, 0);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Card style={styles.card}>
@@ -145,10 +148,30 @@ function OrderDetailScreenBase({ order, client, items, onBack, onEdit }: DetailP
         ))}
 
         <View style={styles.summary}>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Total bruto</Text>
-            <Text style={styles.summaryValue}>{formatCurrencyBRL(order.totalGross)}</Text>
-          </View>
+          {itemsDiscountTotal > 0 ? (
+            <>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total dos produtos</Text>
+                <Text style={styles.summaryValue}>{formatCurrencyBRL(itemsSubtotal)}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Desconto nos itens</Text>
+                <Text style={[styles.summaryValue, styles.discountValueText]}>
+                  -{formatCurrencyBRL(itemsDiscountTotal)}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>{formatCurrencyBRL(order.totalGross)}</Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Total bruto</Text>
+              <Text style={styles.summaryValue}>{formatCurrencyBRL(order.totalGross)}</Text>
+            </View>
+          )}
+
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Desconto geral</Text>
             <Text style={styles.summaryValue}>-{formatCurrencyBRL(order.discountTotal)}</Text>
@@ -335,6 +358,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary,
     fontWeight: '600',
+  },
+  discountValueText: {
+    color: '#15803D',
   },
   summaryTotalLabel: {
     fontSize: 15,

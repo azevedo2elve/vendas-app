@@ -19,6 +19,7 @@ import Product from '@/database/models/Product';
 import Category from '@/database/models/Category';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
+import { ItemDiscountControl } from '@/components/ItemDiscountControl';
 import { OrderProgressBar } from '@/components/OrderProgressBar';
 import { QuantityStepper } from '@/components/QuantityStepper';
 import { SearchBar } from '@/components/SearchBar';
@@ -26,7 +27,7 @@ import { useOrderDraft } from '@/hooks/useOrderDraft';
 import type { OrderDraftStackParamList } from '@/navigation/types';
 import { colors, radii, shadows, spacing } from '@/theme';
 import { formatCurrencyBRL } from '@/utils/masks';
-import { cartItemLineTotal } from '@/types/orderDraft';
+import { cartItemLineTotal, cartItemSubtotal } from '@/types/orderDraft';
 
 type Props = NativeStackScreenProps<OrderDraftStackParamList, 'OrderItems'>;
 
@@ -68,7 +69,7 @@ function OrderItemsScreenBase({
   selectedCategoryId,
   onSelectCategory,
 }: ListProps) {
-  const { clientName, items, totals, addProduct, updateQuantity, removeItem } = useOrderDraft();
+  const { clientName, items, totals, addProduct, updateQuantity, updateDiscount, removeItem } = useOrderDraft();
   const [cartVisible, setCartVisible] = useState(false);
   const { width } = useWindowDimensions();
   const numColumns = width >= 760 ? 2 : 1;
@@ -198,23 +199,42 @@ function OrderItemsScreenBase({
               contentContainerStyle={styles.modalListContent}
               renderItem={({ item }) => (
                 <View style={styles.modalItem}>
-                  <View style={styles.modalItemInfo}>
-                    <Text style={styles.modalItemName} numberOfLines={1}>
-                      {item.productName}
-                    </Text>
-                    <Text style={styles.modalItemPrice}>
-                      {formatCurrencyBRL(item.unitPrice)} × {item.quantity} ={' '}
-                      {formatCurrencyBRL(cartItemLineTotal(item))}
-                    </Text>
+                  <View style={styles.modalItemTopRow}>
+                    <View style={styles.modalItemInfo}>
+                      <Text style={styles.modalItemName} numberOfLines={2}>
+                        {item.productName}
+                      </Text>
+                      <Text style={styles.modalItemPrice}>
+                        {item.quantity} × {formatCurrencyBRL(item.unitPrice)} ={' '}
+                        {formatCurrencyBRL(cartItemLineTotal(item))}
+                      </Text>
+                    </View>
+                    <View style={styles.modalItemActions}>
+                      <QuantityStepper value={item.quantity} onChange={(q) => updateQuantity(item.productId, q)} />
+                      <TouchableOpacity
+                        style={styles.modalRemove}
+                        onPress={() => removeItem(item.productId)}
+                        accessibilityLabel={`Remover ${item.productName}`}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <QuantityStepper value={item.quantity} onChange={(q) => updateQuantity(item.productId, q)} />
-                  <TouchableOpacity
-                    style={styles.modalRemove}
-                    onPress={() => removeItem(item.productId)}
-                    accessibilityLabel={`Remover ${item.productName}`}
-                  >
-                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                  </TouchableOpacity>
+
+                  <View style={styles.modalItemBottomRow}>
+                    <ItemDiscountControl
+                      unitPrice={item.unitPrice}
+                      quantity={item.quantity}
+                      discountValue={item.discountValue}
+                      onChangeDiscount={(cents) => updateDiscount(item.productId, cents)}
+                    />
+                    {item.discountValue > 0 ? (
+                      <View style={styles.itemSubtotalPill}>
+                        <Text style={styles.itemSubtotalLabel}>Subtotal: </Text>
+                        <Text style={styles.itemSubtotalValue}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
               )}
               ListEmptyComponent={
@@ -227,7 +247,16 @@ function OrderItemsScreenBase({
             />
 
             <View style={styles.modalFooter}>
-              <Text style={styles.modalFooterLabel}>Total geral</Text>
+              <View style={styles.modalFooterInfo}>
+                <Text style={styles.modalFooterLabel}>
+                  {totals.itemsDiscountTotal > 0 ? 'Total com descontos' : 'Total geral'}
+                </Text>
+                {totals.itemsDiscountTotal > 0 ? (
+                  <Text style={styles.modalFooterDiscount}>
+                    Desconto nos itens: -{formatCurrencyBRL(totals.itemsDiscountTotal)}
+                  </Text>
+                ) : null}
+              </View>
               <Text style={styles.modalFooterValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
             </View>
           </View>
@@ -489,12 +518,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    gap: 8,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
+  },
+  modalItemTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   modalItemInfo: {
     flex: 1,
@@ -508,6 +541,36 @@ const styles = StyleSheet.create({
   modalItemPrice: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  modalItemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  modalItemBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  itemSubtotalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.slate50,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: radii.sm,
+  },
+  itemSubtotalLabel: {
+    fontSize: 11.5,
+    color: colors.slate500,
+    fontWeight: '500',
+  },
+  itemSubtotalValue: {
+    fontSize: 12.5,
+    color: colors.textPrimary,
+    fontWeight: '800',
   },
   modalRemove: {
     width: 32,
@@ -526,10 +589,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  modalFooterInfo: {
+    gap: 2,
+  },
   modalFooterLabel: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.textPrimary,
+  },
+  modalFooterDiscount: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.successStrong,
   },
   modalFooterValue: {
     fontSize: 20,

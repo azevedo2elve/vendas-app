@@ -486,8 +486,15 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Tipo:** fix
 - **Resumo:** Reportado pelo cliente: em várias telas com formulário (relatado especificamente no campo "Observações" da edição de pedido, mas o mesmo problema existia em qualquer campo perto do fim de uma tela longa), o teclado abria por cima do campo sendo digitado, escondendo o que estava sendo escrito.
   - **Causa:** o app já usa `windowSoftInputMode="adjustResize"` no Android (padrão do template Expo — a janela é redimensionada quando o teclado abre), mas isso sozinho não garante que o `ScrollView` role até o campo focado ficar visível dentro da área que sobrou; no iOS não existe nenhum resize automático de janela nenhuma, então o problema era ainda mais evidente lá.
-  - **Fix:** novo componente [`KeyboardAvoidingScreen`](../src/components/KeyboardAvoidingScreen.tsx) — wrapper fino sobre o `KeyboardAvoidingView` nativo do React Native (`behavior="padding"` no iOS, `"height"` no Android), sem nenhuma dependência nova. Aplicado como wrapper do `ScrollView` nas telas de formulário: `ClientFormScreen`, `ProductFormScreen`, `SettingsScreen`, `OrderReviewScreen` (a `OrderEditScreen`, mais recente, já recebeu isso na própria Fase 15 — ver entrada de 2026-09-14/15 acima).
-- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+### 2026-10-19 — Desconto por item no carrinho e na edição de pedido
+- **Tipo:** feature
+- **Resumo:** Pedido do cliente: concessão de desconto individual por item no pedido, além do desconto geral no fechamento (ambos coexistem harmoniosamente).
+  - **Novo componente [`ItemDiscountControl`](../src/components/ItemDiscountControl.tsx):** controle compacto integrado a cada item. Exibe botão discreto de adicionar desconto ou badge verde com valor e porcentagem (`-R$ 5,00 (10%)`) e atalho para remoção rápida. Ao tocar, expande inline o [`DiscountInput`](../src/components/DiscountInput.tsx) (comutando entre R$ e %) com limitação automática para nunca ultrapassar o total da linha.
+  - **Carrinho (`OrderItemsScreen`):** itens no modal do carrinho receberam o `ItemDiscountControl` e exibição de subtotal individual. Rodapé destaca o total e o total economizado nos itens.
+  - **Revisão (`OrderReviewScreen`):** detalhamento dos itens com desconto e resumo financeiro discriminando: Total dos produtos, Desconto nos itens, Subtotal, Desconto geral e Total líquido.
+  - **Edição (`OrderEditScreen`):** lista de itens permite alterar ou conceder descontos individuais em pedidos já salvos.
+  - **Detalhe e PDF (`OrderDetailScreen` e `orderTemplate.ts`):** detalhe do pedido e ordem de venda em PDF passam a destacar os descontos individuais por item na tabela e nos totais.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
 ---
 

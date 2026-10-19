@@ -87,6 +87,7 @@ export function OrderReviewScreen({ navigation }: Props) {
                 <Text style={styles.itemName}>{item.productName}</Text>
                 <Text style={styles.itemDetail}>
                   {item.quantity} × {formatCurrencyBRL(item.unitPrice)}
+                  {item.discountValue > 0 ? ` − ${formatCurrencyBRL(item.discountValue)} desc.` : ''}
                 </Text>
               </View>
               <Text style={styles.itemSubtotal}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
@@ -144,10 +145,30 @@ export function OrderReviewScreen({ navigation }: Props) {
           </View>
 
           <View style={styles.summary}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total dos itens</Text>
-              <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
-            </View>
+            {totals.itemsDiscountTotal > 0 ? (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Total dos produtos</Text>
+                  <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.subtotal)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Desconto nos itens</Text>
+                  <Text style={[styles.summaryValue, styles.discountValueText]}>
+                    -{formatCurrencyBRL(totals.itemsDiscountTotal)}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Subtotal</Text>
+                  <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total dos itens</Text>
+                <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+              </View>
+            )}
+
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Desconto geral</Text>
               <Text style={styles.summaryValue}>-{formatCurrencyBRL(discountTotal)}</Text>
@@ -272,6 +293,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary,
     fontWeight: '600',
+  },
+  discountValueText: {
+    color: '#15803D',
   },
   summaryTotalLabel: {
     fontSize: 15,
