@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Q } from '@nozbe/watermelondb';
 import type { Clause } from '@nozbe/watermelondb/QueryDescription';
@@ -17,6 +17,14 @@ import { SearchBar } from '@/components/SearchBar';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE, type OrderStatus } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
+import {
+  formatMonthName,
+  formatMonthYear,
+  getMonthRange,
+  getNextMonth,
+  getPreviousMonth,
+  isSameMonth,
+} from '@/utils/date';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderList'>;
@@ -28,11 +36,21 @@ const STATUS_FILTERS: { label: string; value: OrderStatus | null }[] = [
   { label: ORDER_STATUS_LABELS.cancelled, value: 'cancelled' },
 ];
 
-function observeOrders(searchQuery: string, status: OrderStatus | null) {
+function observeOrders(
+  searchQuery: string,
+  status: OrderStatus | null,
+  dateFilter: { year: number; month: number } | null
+) {
   const clauses: Clause[] = [Q.sortBy('created_at', Q.desc)];
 
   if (status) {
     clauses.push(Q.where('status', status));
+  }
+
+  if (dateFilter) {
+    const { startMs, endMs } = getMonthRange(dateFilter.year, dateFilter.month);
+    clauses.push(Q.where('created_at', Q.gte(startMs)));
+    clauses.push(Q.where('created_at', Q.lte(endMs)));
   }
 
   const trimmed = searchQuery.trim();
@@ -43,6 +61,14 @@ function observeOrders(searchQuery: string, status: OrderStatus | null) {
   return database
     .get<Order>('orders')
     .query(...clauses)
+    .observe();
+}
+
+function observeMonthOrders(year: number, month: number) {
+  const { startMs, endMs } = getMonthRange(year, month);
+  return database
+    .get<Order>('orders')
+    .query(Q.where('created_at', Q.gte(startMs)), Q.where('created_at', Q.lte(endMs)))
     .observe();
 }
 
@@ -82,29 +108,154 @@ const OrderRow = enhanceRow(OrderRowBase);
 
 type ListProps = Props & {
   orders: Order[];
+  monthOrders: Order[];
+  year: number;
+  month: number;
+  filterByMonth: boolean;
+  onToggleFilterByMonth: (value: boolean) => void;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onCurrentMonth: () => void;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   statusFilter: OrderStatus | null;
   onStatusChange: (status: OrderStatus | null) => void;
 };
 
-function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter, onStatusChange }: ListProps) {
+function OrderListScreenBase({
+  navigation,
+  orders,
+  monthOrders,
+  year,
+  month,
+  filterByMonth,
+  onToggleFilterByMonth,
+  onPrevMonth,
+  onNextMonth,
+  onCurrentMonth,
+  searchQuery,
+  onSearchChange,
+  statusFilter,
+  onStatusChange,
+}: ListProps) {
   const { guard } = useReadOnlyGuard();
+
+  const validMonthOrders = useMemo(() => monthOrders.filter((order) => order.status !== 'cancelled'), [monthOrders]);
+  const monthTotalNet = useMemo(
+    () => validMonthOrders.reduce((acc, order) => acc + order.totalNet, 0),
+    [validMonthOrders]
+  );
+  const monthOrdersCount = validMonthOrders.length;
+  const monthCompletedCount = useMemo(
+    () => validMonthOrders.filter((order) => order.status === 'completed').length,
+    [validMonthOrders]
+  );
+  const monthPendingCount = useMemo(
+    () => validMonthOrders.filter((order) => order.status === 'pending').length,
+    [validMonthOrders]
+  );
+
+  const isCurrent = isSameMonth(new Date(year, month, 15), new Date());
+  const monthLabel = formatMonthYear(year, month);
+  const monthShort = formatMonthName(month);
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <View style={styles.filters}>
-          <SearchBar placeholder="Buscar por nome do cliente" onDebouncedChange={onSearchChange} />
-          <View style={styles.statusChips}>
-            {STATUS_FILTERS.map((filter) => (
+        <View style={styles.headerSection}>
+          {/* Card Resumo do Mês com navegação */}
+          <View style={styles.monthCard}>
+            <View style={styles.monthNav}>
+              <TouchableOpacity
+                style={styles.monthNavBtn}
+                onPress={onPrevMonth}
+                accessibilityLabel="Mês anterior"
+                activeOpacity={0.7}
+              >
+                <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+
+              <View style={styles.monthTitleCenter}>
+                <Text style={styles.monthTitleText}>{monthLabel}</Text>
+                {!isCurrent ? (
+                  <TouchableOpacity
+                    style={styles.currentMonthBadge}
+                    onPress={onCurrentMonth}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Voltar para o mês atual"
+                  >
+                    <Ionicons name="arrow-undo-outline" size={11} color={colors.accentDark} />
+                    <Text style={styles.currentMonthBadgeText}>Ir para mês atual</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <TouchableOpacity
+                style={styles.monthNavBtn}
+                onPress={onNextMonth}
+                accessibilityLabel="Próximo mês"
+                activeOpacity={0.7}
+              >
+                <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.monthStatsRow}>
+              <View style={styles.monthStatBlock}>
+                <Text style={styles.monthStatLabel}>Total vendido no mês</Text>
+                <Text style={styles.monthStatValue} numberOfLines={1} adjustsFontSizeToFit>
+                  {formatCurrencyBRL(monthTotalNet)}
+                </Text>
+              </View>
+
+              <View style={styles.monthStatDivider} />
+
+              <View style={styles.monthStatBlock}>
+                <Text style={styles.monthStatLabel}>Pedidos no mês</Text>
+                <Text style={styles.monthStatOrdersCount}>
+                  {monthOrdersCount} {monthOrdersCount === 1 ? 'pedido' : 'pedidos'}
+                </Text>
+                {monthOrdersCount > 0 ? (
+                  <Text style={styles.monthStatSubtitle}>
+                    {monthCompletedCount} conc. · {monthPendingCount} pend.
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
+          {/* Busca e filtros */}
+          <View style={styles.filters}>
+            <SearchBar placeholder="Buscar por nome do cliente" onDebouncedChange={onSearchChange} />
+
+            {/* Alternar entre mês selecionado e todos os períodos */}
+            <View style={styles.periodChips}>
               <Chip
-                key={filter.label}
-                label={filter.label}
-                selected={statusFilter === filter.value}
-                onPress={() => onStatusChange(filter.value)}
+                icon="calendar-outline"
+                label={`Apenas ${monthShort}`}
+                selected={filterByMonth}
+                onPress={() => onToggleFilterByMonth(true)}
               />
-            ))}
+              <Chip
+                icon="globe-outline"
+                label="Todos os períodos"
+                selected={!filterByMonth}
+                onPress={() => onToggleFilterByMonth(false)}
+              />
+            </View>
+
+            {/* Filtro por status do pedido */}
+            <View style={styles.statusChips}>
+              {STATUS_FILTERS.map((filter) => (
+                <Chip
+                  key={filter.label}
+                  label={filter.label}
+                  selected={statusFilter === filter.value}
+                  onPress={() => onStatusChange(filter.value)}
+                />
+              ))}
+            </View>
           </View>
         </View>
 
@@ -118,8 +269,12 @@ function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter,
           ListEmptyComponent={
             <EmptyState
               icon="receipt-outline"
-              title="Nenhuma ordem de venda encontrada"
-              message="Toque no botão + para criar a primeira."
+              title={filterByMonth ? `Nenhum pedido em ${monthLabel}` : 'Nenhuma ordem de venda encontrada'}
+              message={
+                filterByMonth
+                  ? 'Nenhum pedido emitido neste mês. Você pode usar as setas acima para navegar entre os meses ou selecionar "Todos os períodos".'
+                  : 'Toque no botão + para criar a primeira.'
+              }
             />
           }
         />
@@ -131,9 +286,22 @@ function OrderListScreenBase({ navigation, orders, onSearchChange, statusFilter,
 }
 
 const enhance = withObservables(
-  ['searchQuery', 'statusFilter'],
-  ({ searchQuery, statusFilter }: { searchQuery: string; statusFilter: OrderStatus | null }) => ({
-    orders: observeOrders(searchQuery, statusFilter),
+  ['searchQuery', 'statusFilter', 'year', 'month', 'filterByMonth'],
+  ({
+    searchQuery,
+    statusFilter,
+    year,
+    month,
+    filterByMonth,
+  }: {
+    searchQuery: string;
+    statusFilter: OrderStatus | null;
+    year: number;
+    month: number;
+    filterByMonth: boolean;
+  }) => ({
+    orders: observeOrders(searchQuery, statusFilter, filterByMonth ? { year, month } : null),
+    monthOrders: observeMonthOrders(year, month),
   })
 );
 
@@ -142,7 +310,48 @@ const EnhancedOrderList = enhance(OrderListScreenBase);
 export function OrderListScreen({ navigation, route }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
+  const [filterByMonth, setFilterByMonth] = useState(true);
+
+  const paramYear = route.params?.year;
+  const paramMonth = route.params?.month;
+
+  const [userPeriod, setUserPeriod] = useState<{ year: number; month: number } | null>(null);
+
+  const period = useMemo(() => {
+    if (userPeriod) return userPeriod;
+    const now = new Date();
+    return {
+      year: paramYear ?? now.getFullYear(),
+      month: paramMonth ?? now.getMonth(),
+    };
+  }, [userPeriod, paramYear, paramMonth]);
+
   const onSearchChange = useCallback((value: string) => setSearchQuery(value), []);
+
+  const handlePrevMonth = useCallback(() => {
+    setUserPeriod((curr) => {
+      const active = curr ?? {
+        year: paramYear ?? new Date().getFullYear(),
+        month: paramMonth ?? new Date().getMonth(),
+      };
+      return getPreviousMonth(active.year, active.month);
+    });
+  }, [paramYear, paramMonth]);
+
+  const handleNextMonth = useCallback(() => {
+    setUserPeriod((curr) => {
+      const active = curr ?? {
+        year: paramYear ?? new Date().getFullYear(),
+        month: paramMonth ?? new Date().getMonth(),
+      };
+      return getNextMonth(active.year, active.month);
+    });
+  }, [paramYear, paramMonth]);
+
+  const handleCurrentMonth = useCallback(() => {
+    const now = new Date();
+    setUserPeriod({ year: now.getFullYear(), month: now.getMonth() });
+  }, []);
 
   return (
     <EnhancedOrderList
@@ -152,6 +361,13 @@ export function OrderListScreen({ navigation, route }: Props) {
       onSearchChange={onSearchChange}
       statusFilter={statusFilter}
       onStatusChange={setStatusFilter}
+      year={period.year}
+      month={period.month}
+      filterByMonth={filterByMonth}
+      onToggleFilterByMonth={setFilterByMonth}
+      onPrevMonth={handlePrevMonth}
+      onNextMonth={handleNextMonth}
+      onCurrentMonth={handleCurrentMonth}
     />
   );
 }
@@ -167,10 +383,98 @@ const styles = StyleSheet.create({
     maxWidth: 820,
     alignSelf: 'center',
   },
-  filters: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xs,
+  headerSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     gap: spacing.sm,
+  },
+  monthCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+    ...shadows.card,
+  },
+  monthNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  monthNavBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    backgroundColor: colors.slate100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthTitleCenter: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  monthTitleText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  currentMonthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: spacing.xs + 2,
+    backgroundColor: colors.accentLight,
+    borderRadius: radii.pill,
+  },
+  currentMonthBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.accentDark,
+  },
+  monthStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  monthStatBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  monthStatLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  monthStatValue: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: colors.success,
+  },
+  monthStatDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.sm,
+  },
+  monthStatOrdersCount: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  monthStatSubtitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  filters: {
+    gap: spacing.xs,
+  },
+  periodChips: {
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   statusChips: {
     flexDirection: 'row',
@@ -179,11 +483,13 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
     paddingBottom: 100,
     gap: spacing.sm,
   },
   emptyContent: {
     flexGrow: 1,
+    paddingTop: spacing.md,
   },
   card: {
     backgroundColor: colors.surface,

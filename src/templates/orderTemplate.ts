@@ -201,7 +201,9 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[],
 
   <div class="totals">
     <table>
-      ${itemsDiscountTotal > 0 ? `
+      ${
+        itemsDiscountTotal > 0
+          ? `
         <tr>
           <td class="label">Total dos produtos</td>
           <td class="value">${formatCurrencyBRL(itemsSubtotal)}</td>
@@ -214,18 +216,24 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[],
           <td class="label">Subtotal</td>
           <td class="value">${formatCurrencyBRL(order.totalGross)}</td>
         </tr>
-      ` : `
+      `
+          : `
         <tr>
           <td class="label">Total bruto</td>
           <td class="value">${formatCurrencyBRL(order.totalGross)}</td>
         </tr>
-      `}
-      ${order.discountTotal > 0 ? `
+      `
+      }
+      ${
+        order.discountTotal > 0
+          ? `
         <tr>
           <td class="label">Desconto geral</td>
           <td class="value">-${formatCurrencyBRL(order.discountTotal)}</td>
         </tr>
-      ` : ''}
+      `
+          : ''
+      }
       <tr class="grand">
         <td class="label">Total líquido</td>
         <td class="value">${formatCurrencyBRL(order.totalNet)}</td>

@@ -496,6 +496,14 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
   - **Detalhe e PDF (`OrderDetailScreen` e `orderTemplate.ts`):** detalhe do pedido e ordem de venda em PDF passam a destacar os descontos individuais por item na tabela e nos totais.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-10-20 — Total vendido no mês (Dashboard e Ordens de Venda)
+- **Tipo:** feature
+- **Resumo:** Implementada visualização da soma total vendida no mês com navegação temporal:
+  - **Início (`HomeScreen`):** adicionado card em destaque "Vendido no mês" (soma do `total_net` das vendas não-canceladas do mês atual), organizado em grade 2x2 com "Vendido hoje", "Pedidos no mês" e "Clientes". Todos os cards receberam ação ao tocar para navegação direta às respectivas listagens.
+  - **Ordens de Venda (`OrderListScreen`):** adicionado cabeçalho com card de resumo mensal e navegação entre meses (`[◀] Mês/Ano [▶]`), botão de atalho para retornar ao mês atual e filtros de período (`Apenas [Mês]` vs `Todos os períodos`). Métricas destacam o total líquido faturado e quantidade de pedidos emitidos no mês selecionado.
+  - **Utilitários de data (`src/utils/date.ts`):** criada biblioteca de funções de intervalo mensal, formatação em pt-BR e navegação entre meses com 100% de cobertura de testes unitários.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)

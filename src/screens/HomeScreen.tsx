@@ -21,6 +21,7 @@ import { useLicenseAccess, useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
+import { formatMonthName, getMonthRange } from '@/utils/date';
 import { formatCurrencyBRL } from '@/utils/masks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -32,6 +33,9 @@ type DashboardData = {
   clientsCount: number;
   ordersCount: number;
   totalToday: number;
+  totalMonth: number;
+  monthOrdersCount: number;
+  monthName: string;
   recentOrders: RecentOrder[];
 };
 
@@ -39,20 +43,30 @@ async function loadDashboardData(): Promise<DashboardData> {
   const ordersCollection = database.get<Order>('orders');
   const clientsCollection = database.get<Client>('clients');
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const { startMs: startOfMonthMs, endMs: endOfMonthMs } = getMonthRange(now.getFullYear(), now.getMonth());
 
-  const [companySettings, clientsCount, ordersCount, todayOrders, recentOrders] = await Promise.all([
+  const [companySettings, clientsCount, ordersCount, monthOrders, recentOrders] = await Promise.all([
     getOrCreateCompanySettings(),
     clientsCollection.query().fetchCount(),
     ordersCollection.query().fetchCount(),
     ordersCollection
-      .query(Q.where('created_at', Q.gte(startOfDay.getTime())), Q.where('status', Q.notEq('cancelled')))
+      .query(
+        Q.where('created_at', Q.gte(startOfMonthMs)),
+        Q.where('created_at', Q.lte(endOfMonthMs)),
+        Q.where('status', Q.notEq('cancelled'))
+      )
       .fetch(),
     ordersCollection.query(Q.sortBy('created_at', Q.desc), Q.take(5)).fetch(),
   ]);
 
-  const totalToday = todayOrders.reduce((acc, order) => acc + order.totalNet, 0);
+  const totalMonth = monthOrders.reduce((acc, order) => acc + order.totalNet, 0);
+  const totalToday = monthOrders
+    .filter((order) => order.createdAt.getTime() >= startOfDay.getTime())
+    .reduce((acc, order) => acc + order.totalNet, 0);
+
+  const monthName = formatMonthName(now.getMonth());
 
   const recentWithClients = await Promise.all(
     recentOrders.map(async (order) => {
@@ -66,6 +80,9 @@ async function loadDashboardData(): Promise<DashboardData> {
     clientsCount,
     ordersCount,
     totalToday,
+    totalMonth,
+    monthOrdersCount: monthOrders.length,
+    monthName,
     recentOrders: recentWithClients,
   };
 }
@@ -173,9 +190,38 @@ export function HomeScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.statsRow}>
-        <StatCard label="Vendido hoje" value={formatCurrencyBRL(data.totalToday)} icon="cash-outline" tone="success" />
-        <StatCard label="Pedidos emitidos" value={String(data.ordersCount)} icon="receipt-outline" tone="accent" />
-        <StatCard label="Clientes cadastrados" value={String(data.clientsCount)} icon="people-outline" tone="neutral" />
+        <StatCard
+          label="Vendido no mês"
+          subtitle={data.monthName}
+          value={formatCurrencyBRL(data.totalMonth)}
+          icon="calendar-outline"
+          tone="success"
+          onPress={() => navigation.navigate('OrderList')}
+        />
+        <StatCard
+          label="Vendido hoje"
+          subtitle="Hoje"
+          value={formatCurrencyBRL(data.totalToday)}
+          icon="cash-outline"
+          tone="accent"
+          onPress={() => navigation.navigate('OrderList')}
+        />
+        <StatCard
+          label="Pedidos no mês"
+          subtitle={`${data.ordersCount} no total`}
+          value={String(data.monthOrdersCount)}
+          icon="receipt-outline"
+          tone="neutral"
+          onPress={() => navigation.navigate('OrderList')}
+        />
+        <StatCard
+          label="Clientes"
+          subtitle="Cadastrados"
+          value={String(data.clientsCount)}
+          icon="people-outline"
+          tone="neutral"
+          onPress={() => navigation.navigate('ClientList')}
+        />
       </View>
 
       <View style={styles.quickActions}>

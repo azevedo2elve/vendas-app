@@ -236,7 +236,8 @@ export function OrderEditScreen({ route, navigation }: Props) {
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemName}>{item.productName}</Text>
                     <Text style={styles.itemDetail}>
-                      {item.quantity} × {formatCurrencyBRL(item.unitPrice)} = {formatCurrencyBRL(cartItemLineTotal(item))}
+                      {item.quantity} × {formatCurrencyBRL(item.unitPrice)} ={' '}
+                      {formatCurrencyBRL(cartItemLineTotal(item))}
                     </Text>
                   </View>
                   <View style={styles.itemActions}>

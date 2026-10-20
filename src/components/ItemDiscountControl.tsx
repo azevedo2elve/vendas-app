@@ -44,12 +44,7 @@ export function ItemDiscountControl({
           </TouchableOpacity>
         </View>
 
-        <DiscountInput
-          baseAmount={baseAmount}
-          valueCents={discountValue}
-          onChange={onChangeDiscount}
-          compact
-        />
+        <DiscountInput baseAmount={baseAmount} valueCents={discountValue} onChange={onChangeDiscount} compact />
 
         {hasDiscount ? (
           <TouchableOpacity

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,13 +42,8 @@ export function OrderReviewScreen({ navigation }: Props) {
 
   // Garante que o desconto geral não ultrapasse o subtotal dos produtos caso o vendedor
   // aplique ou aumente descontos por item diretamente nesta tela.
-  useEffect(() => {
-    if (discountTotal > totals.totalGross) {
-      setDiscountTotal(totals.totalGross);
-    }
-  }, [totals.totalGross, discountTotal]);
-
-  const totalNet = Math.max(0, totals.totalGross - discountTotal);
+  const effectiveDiscountTotal = Math.min(discountTotal, totals.totalGross);
+  const totalNet = Math.max(0, totals.totalGross - effectiveDiscountTotal);
 
   async function handleSave() {
     if (!clientId) return;
@@ -65,7 +60,14 @@ export function OrderReviewScreen({ navigation }: Props) {
 
     setSaving(true);
     try {
-      const order = await createOrder({ clientId, items, discountTotal, paymentMethod, notes, deliveryDate });
+      const order = await createOrder({
+        clientId,
+        items,
+        discountTotal: effectiveDiscountTotal,
+        paymentMethod,
+        notes,
+        deliveryDate,
+      });
       reset();
       navigation.navigate('OrderSuccess', { orderId: order.id });
     } catch (error) {
@@ -191,7 +193,7 @@ export function OrderReviewScreen({ navigation }: Props) {
 
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Desconto geral</Text>
-              <Text style={styles.summaryValue}>-{formatCurrencyBRL(discountTotal)}</Text>
+              <Text style={styles.summaryValue}>-{formatCurrencyBRL(effectiveDiscountTotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryTotalLabel}>Total líquido</Text>

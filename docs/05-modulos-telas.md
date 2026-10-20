@@ -34,7 +34,11 @@ Redesenhada na Fase 10 como uma tela comercial de verdade (era um painel de diag
 - **Cabeçalho:** nome do vendedor/empresa em destaque (`resolveDisplayName()`, `src/services/settingsService.ts` — prioridade `company_settings.vendedor_nome` → `nome_fantasia` → `razao_social` → `"Vendas App"` como default; **Fase 13**, substituiu a saudação por horário "Bom dia"/"Boa tarde"/"Boa noite" usada até então), data por extenso, e dois indicadores de status:
   - **Conectividade**, via `useNetInfo()` (`@react-native-community/netinfo`) — exatamente **"Online"** ou **"Offline"** (2026-09-01 — antes dizia "Modo Offline Ativo"), refletindo o estado real do dispositivo (não é decorativo).
   - **Licença** — desde as Fases 7/8 já não é mais estático, e ganhou rótulos dinâmicos (2026-09-01, `licenseStatusLabel()` em `HomeScreen.tsx`): **"Licença Inválida"** (modo somente-leitura, `readOnly === true`); ou, com a licença normal (`readOnly === false`), **"Licença Válida"** com mais de 5 dias até o vencimento, e a partir daí uma contagem regressiva **dia a dia** — "Faltam 5 dias - validade", "Faltam 4 dias - validade", "Faltam 3 dias"... até **"Falta 1 dia - validade"** (singular no último dia; não pula direto de 5 pra 2 — ajuste pedido pelo usuário). `expiresAt` vem do contexto `useLicenseAccess()` (propagado pelo `RootNavigator`, atualizado a cada reavaliação de 5 min do `useLicenseGuard` — não precisa focar/sair da tela pra atualizar). A tela nunca é alcançável com `status === 'blocked'` (aí é só `LicenseBlockedScreen`).
-- **Cards de resumo** (`StatCard`, 3 no total): "Vendido hoje" (soma de `total_net` das ordens não-canceladas criadas desde `00:00` do dia atual), "Pedidos emitidos" (contagem total de ordens, todos os tempos) e "Clientes cadastrados" (contagem total).
+- **Cards de resumo** (`StatCard`, 4 no total, organizados em grade 2x2):
+  - **"Vendido no mês"** (destaque em verde/success): soma de `total_net` das ordens não-canceladas criadas dentro do mês civil atual (`01` até o último dia do mês às `23:59:59.999`), com subtítulo exibindo o nome do mês (ex: "Outubro"). Toque no card navega direto para `OrderListScreen`.
+  - **"Vendido hoje"** (destaque em azul/accent): soma de `total_net` das ordens não-canceladas criadas desde `00:00` do dia atual. Toque no card navega para `OrderListScreen`.
+  - **"Pedidos no mês"**: quantidade de pedidos emitidos no mês corrente (com subtítulo informando o total geral histórico de pedidos). Toque no card navega para `OrderListScreen`.
+  - **"Clientes"**: contagem total de clientes cadastrados no sistema. Toque no card navega para `ClientListScreen`.
 - **Ações rápidas:** um botão grande em destaque "Nova Venda" → `NewOrder`, e uma linha de 2 atalhos secundários: "Novo Cliente" (→ `ClientForm`), "Catálogo" (→ `ProductList`). "Nova Venda" e "Novo Cliente" passam por `useReadOnlyGuard().guard(...)` (Fases 7/8) — em modo somente-leitura, mostram um aviso em vez de navegar.
   > 🔁 **2026-09-01:** o atalho "Backup" foi removido desta linha (pedido do cliente, pra tirar da frente uma ação que não é do dia a dia de venda) — o backup continua acessível, só que exclusivamente pela tela de Configurações (seção "Dados, Backup e Armazenamento", ver abaixo). A rota `Backup` em si não foi removida, só perdeu este ponto de entrada.
 - **Últimos pedidos:** até 5 ordens mais recentes (`Q.sortBy('created_at', Q.desc), Q.take(5)`), cada uma com nome do cliente (resolvido via `order.client.fetch()` — busca pontual, não observável, porque a tela já se atualiza sozinha em cada foco), valor e `Badge` de status. Se o pedido tiver `delivery_date` definida (Fase 13), mostra uma linha extra "Entrega em dd/mm/aaaa" (ícone `cube-outline`) abaixo da data de criação — omitida quando não há data de entrega combinada. `EmptyState` quando não há nenhum pedido ainda.
@@ -147,7 +151,7 @@ const productSchema = z.object({
 | `Badge` | `src/components/Badge.tsx` | Etiqueta de status colorida |
 | `Chip` | `src/components/Chip.tsx` | Pílula selecionável (filtros, forma de pagamento, unidade) |
 | `Avatar` | `src/components/Avatar.tsx` | Iniciais do cliente em círculo colorido |
-| `StatCard` | `src/components/StatCard.tsx` | Card de métrica do dashboard |
+| `StatCard` | `src/components/StatCard.tsx` | Card de métrica do dashboard (suporta `subtitle` e ação tocável `onPress`) |
 | `SectionHeader` | `src/components/SectionHeader.tsx` | Título de seção + ação opcional |
 | `Toast` (`ToastProvider`/`useToast`) | `src/components/Toast.tsx` | Notificação flutuante de confirmação |
 | `OrderProgressBar` | `src/components/OrderProgressBar.tsx` | Indicador de progresso do wizard de Nova Venda (3 etapas) |
@@ -157,7 +161,7 @@ const productSchema = z.object({
 | `LicenseExpiryBanner` | `src/components/LicenseExpiryBanner.tsx` | Faixa dispensável (✕) acima da navegação, avisando vencimento próximo da licença — 5/2/1 dia, 2/1 hora antes (2026-09-01) |
 | `KeyboardAvoidingScreen` | `src/components/KeyboardAvoidingScreen.tsx` | Wrapper do `ScrollView` em telas de formulário — evita o teclado cobrir o campo em edição (Fase 15) |
 
-Utilitários: `src/utils/masks.ts` (formatação — inclui `maskDateBR`/`parseDateBR`, Fase 13, usados pelo `mask="date"` do `MaskedInput`), `src/utils/address.ts` (Fase 13 — formata o endereço estruturado do cliente para exibição/PDF), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
+Utilitários: `src/utils/date.ts` (cálculo de limites de mês, formatação de meses em pt-BR e navegação temporal), `src/utils/masks.ts` (formatação — inclui `maskDateBR`/`parseDateBR`, Fase 13, usados pelo `mask="date"` do `MaskedInput`), `src/utils/address.ts` (Fase 13 — formata o endereço estruturado do cliente para exibição/PDF), `src/utils/validators.ts` (dígito verificador de CPF/CNPJ), `src/utils/whatsapp.ts` (abrir conversa no WhatsApp via `wa.me`).
 
 ---
 
@@ -202,6 +206,10 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Botão secundário **"Voltar para o Início"** → `parentNavigation.reset({ index: 0, routes: [{ name: 'Home' }] })` (via `getParent()`), limpando todo o histórico do wizard — evita que o botão "voltar" do sistema retorne para uma tela do fluxo de criação já concluído. Dispara um `Toast` de confirmação ao voltar.
 
 ### `OrderListScreen` — Listagem
+- **Resumo mensal com navegação no topo (2026-10-20):** cabeçalho com card dedicado ao faturamento do mês:
+  - Navegação entre meses (`[◀] Mês/Ano [▶]`) permitindo consultar qualquer mês passado ou futuro. Se o mês selecionado for diferente do atual, um atalho "Ir para mês atual" é exibido para retornar rapidamente.
+  - Métricas do mês selecionado: **Total vendido no mês** (soma de `total_net` dos pedidos não-cancelados daquele mês) e **Pedidos no mês** (contagem de pedidos com discriminação de concluídos e pendentes).
+  - Alternância de período: chips `[📅 Apenas Mês]` e `[🌐 Todos os períodos]`. Por padrão a listagem foca nos pedidos do mês selecionado, mas o usuário pode alternar com 1 toque para visualizar todas as ordens de todos os tempos.
 - Lista reativa ordenada por `created_at` desc. Filtro por status (chips: Todos/Pendente/Concluído/Cancelado) e busca por nome do cliente via `Q.on('clients', Q.where('name', Q.like(...)))` — filtra pela tabela relacionada direto na query, sem carregar tudo em memória.
 - Cada card observa reativamente seu próprio cliente e contagem de itens (`withObservables(['order'], ({ order }) => ({ client: order.client.observe(), itemCount: order.items.observeCount() }))` — padrão comum do WatermelonDB para listas onde cada linha depende de uma relação).
 - Exibe: ID resumido (8 primeiros caracteres do `id`), nome do cliente, data/hora (`toLocaleString('pt-BR')`), contagem de itens, status (badge colorido) e `total_net` formatado em BRL. Se houver `delivery_date` (Fase 13), mostra "Entrega em dd/mm/aaaa" (ícone `cube-outline`) entre o nome do cliente e o rodapé do card — mesmo padrão usado nos cards de "Últimos pedidos" da `HomeScreen`.
