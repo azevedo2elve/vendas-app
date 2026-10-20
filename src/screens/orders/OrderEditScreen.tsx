@@ -11,6 +11,7 @@ import { Card } from '@/components/Card';
 import { Chip } from '@/components/Chip';
 import { DiscountInput } from '@/components/DiscountInput';
 import { EmptyState } from '@/components/EmptyState';
+import { ItemDiscountControl } from '@/components/ItemDiscountControl';
 import { KeyboardAvoidingScreen } from '@/components/KeyboardAvoidingScreen';
 import { LoadingView } from '@/components/LoadingView';
 import { MaskedInput } from '@/components/MaskedInput';
@@ -127,8 +128,15 @@ export function OrderEditScreen({ route, navigation }: Props) {
   }, [pickerVisible, searchQuery, selectedCategoryId]);
 
   const totals = useMemo(() => {
+    const subtotal = items.reduce((acc, item) => acc + cartItemLineTotal(item), 0);
+    const itemsDiscountTotal = items.reduce((acc, item) => acc + item.discountValue, 0);
     const totalGross = items.reduce((acc, item) => acc + cartItemSubtotal(item), 0);
-    return { totalGross, totalNet: Math.max(0, totalGross - discountTotal) };
+    return {
+      subtotal,
+      itemsDiscountTotal,
+      totalGross,
+      totalNet: Math.max(0, totalGross - discountTotal),
+    };
   }, [items, discountTotal]);
 
   function addProduct(product: Product) {
@@ -146,7 +154,27 @@ export function OrderEditScreen({ route, navigation }: Props) {
 
   function updateQuantity(productId: string, quantity: number) {
     setItems((current) =>
-      current.map((item) => (item.productId === productId ? { ...item, quantity: Math.max(1, quantity) } : item))
+      current.map((item) => {
+        if (item.productId !== productId) return item;
+        const newQty = Math.max(1, quantity);
+        const lineTotal = item.unitPrice * newQty;
+        return {
+          ...item,
+          quantity: newQty,
+          discountValue: Math.min(item.discountValue, lineTotal),
+        };
+      })
+    );
+  }
+
+  function updateDiscount(productId: string, discountValue: number) {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.productId !== productId) return item;
+        const lineTotal = cartItemLineTotal(item);
+        const clamped = Math.max(0, Math.min(discountValue, lineTotal));
+        return { ...item, discountValue: clamped };
+      })
     );
   }
 
@@ -204,21 +232,42 @@ export function OrderEditScreen({ route, navigation }: Props) {
           ) : (
             items.map((item) => (
               <View key={item.productId} style={styles.itemRow}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>{item.productName}</Text>
-                  <Text style={styles.itemDetail}>
-                    {formatCurrencyBRL(item.unitPrice)} × {item.quantity} = {formatCurrencyBRL(cartItemLineTotal(item))}
-                  </Text>
+                <View style={styles.itemTopRow}>
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName}>{item.productName}</Text>
+                    <Text style={styles.itemDetail}>
+                      {item.quantity} × {formatCurrencyBRL(item.unitPrice)} ={' '}
+                      {formatCurrencyBRL(cartItemLineTotal(item))}
+                    </Text>
+                  </View>
+                  <View style={styles.itemActions}>
+                    <QuantityStepper value={item.quantity} onChange={(q) => updateQuantity(item.productId, q)} />
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removeItem(item.productId)}
+                      accessibilityLabel={`Remover ${item.productName}`}
+                      disabled={readOnly}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <QuantityStepper value={item.quantity} onChange={(q) => updateQuantity(item.productId, q)} />
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => removeItem(item.productId)}
-                  accessibilityLabel={`Remover ${item.productName}`}
-                  disabled={readOnly}
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                </TouchableOpacity>
+
+                <View style={styles.itemBottomRow}>
+                  <ItemDiscountControl
+                    unitPrice={item.unitPrice}
+                    quantity={item.quantity}
+                    discountValue={item.discountValue}
+                    onChangeDiscount={(cents) => updateDiscount(item.productId, cents)}
+                    disabled={readOnly}
+                  />
+                  {item.discountValue > 0 ? (
+                    <View style={styles.itemSubtotalPill}>
+                      <Text style={styles.itemSubtotalLabel}>Subtotal: </Text>
+                      <Text style={styles.itemSubtotalValue}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
             ))
           )}
@@ -284,10 +333,30 @@ export function OrderEditScreen({ route, navigation }: Props) {
           </View>
 
           <View style={styles.summary}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total dos itens</Text>
-              <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
-            </View>
+            {totals.itemsDiscountTotal > 0 ? (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Total dos produtos</Text>
+                  <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.subtotal)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Desconto nos itens</Text>
+                  <Text style={[styles.summaryValue, styles.discountValueText]}>
+                    -{formatCurrencyBRL(totals.itemsDiscountTotal)}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Subtotal</Text>
+                  <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total dos itens</Text>
+                <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+              </View>
+            )}
+
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Desconto geral</Text>
               <Text style={styles.summaryValue}>-{formatCurrencyBRL(discountTotal)}</Text>
@@ -426,16 +495,50 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  itemTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   itemInfo: {
     flex: 1,
     gap: 2,
+  },
+  itemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  itemBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  itemSubtotalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.slate50,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: radii.sm,
+  },
+  itemSubtotalLabel: {
+    fontSize: 11.5,
+    color: colors.slate500,
+    fontWeight: '500',
+  },
+  itemSubtotalValue: {
+    fontSize: 12.5,
+    color: colors.textPrimary,
+    fontWeight: '800',
   },
   itemName: {
     fontSize: 14,
@@ -511,6 +614,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary,
     fontWeight: '600',
+  },
+  discountValueText: {
+    color: colors.successStrong,
   },
   summaryTotalLabel: {
     fontSize: 15,

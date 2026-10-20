@@ -7,6 +7,7 @@ import { createOrder } from '@/services/orderService';
 import { Card } from '@/components/Card';
 import { Chip } from '@/components/Chip';
 import { DiscountInput } from '@/components/DiscountInput';
+import { ItemDiscountControl } from '@/components/ItemDiscountControl';
 import { KeyboardAvoidingScreen } from '@/components/KeyboardAvoidingScreen';
 import { MaskedInput } from '@/components/MaskedInput';
 import { OrderProgressBar } from '@/components/OrderProgressBar';
@@ -31,7 +32,7 @@ const PAYMENT_ICONS: Record<PaymentMethod, keyof typeof Ionicons.glyphMap> = {
 };
 
 export function OrderReviewScreen({ navigation }: Props) {
-  const { clientId, clientName, items, totals, reset } = useOrderDraft();
+  const { clientId, clientName, items, totals, updateDiscount, reset } = useOrderDraft();
   const [discountTotal, setDiscountTotal] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
   const [notes, setNotes] = useState('');
@@ -39,7 +40,10 @@ export function OrderReviewScreen({ navigation }: Props) {
   const [deliveryDateError, setDeliveryDateError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
-  const totalNet = Math.max(0, totals.totalGross - discountTotal);
+  // Garante que o desconto geral não ultrapasse o subtotal dos produtos caso o vendedor
+  // aplique ou aumente descontos por item diretamente nesta tela.
+  const effectiveDiscountTotal = Math.min(discountTotal, totals.totalGross);
+  const totalNet = Math.max(0, totals.totalGross - effectiveDiscountTotal);
 
   async function handleSave() {
     if (!clientId) return;
@@ -56,7 +60,14 @@ export function OrderReviewScreen({ navigation }: Props) {
 
     setSaving(true);
     try {
-      const order = await createOrder({ clientId, items, discountTotal, paymentMethod, notes, deliveryDate });
+      const order = await createOrder({
+        clientId,
+        items,
+        discountTotal: effectiveDiscountTotal,
+        paymentMethod,
+        notes,
+        deliveryDate,
+      });
       reset();
       navigation.navigate('OrderSuccess', { orderId: order.id });
     } catch (error) {
@@ -83,13 +94,25 @@ export function OrderReviewScreen({ navigation }: Props) {
           <Text style={styles.cardTitle}>Itens ({totals.quantityTotal})</Text>
           {items.map((item) => (
             <View key={item.productId} style={styles.itemRow}>
-              <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.productName}</Text>
-                <Text style={styles.itemDetail}>
-                  {item.quantity} × {formatCurrencyBRL(item.unitPrice)}
-                </Text>
+              <View style={styles.itemTopRow}>
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemName}>{item.productName}</Text>
+                  <Text style={styles.itemDetail}>
+                    {item.quantity} × {formatCurrencyBRL(item.unitPrice)}
+                  </Text>
+                </View>
+                <Text style={styles.itemSubtotal}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
               </View>
-              <Text style={styles.itemSubtotal}>{formatCurrencyBRL(cartItemSubtotal(item))}</Text>
+
+              <View style={styles.itemBottomRow}>
+                <ItemDiscountControl
+                  unitPrice={item.unitPrice}
+                  quantity={item.quantity}
+                  discountValue={item.discountValue}
+                  onChangeDiscount={(cents) => updateDiscount(item.productId, cents)}
+                  disabled={saving}
+                />
+              </View>
             </View>
           ))}
         </Card>
@@ -144,13 +167,33 @@ export function OrderReviewScreen({ navigation }: Props) {
           </View>
 
           <View style={styles.summary}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total dos itens</Text>
-              <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
-            </View>
+            {totals.itemsDiscountTotal > 0 ? (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Total dos produtos</Text>
+                  <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.subtotal)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Desconto nos itens</Text>
+                  <Text style={[styles.summaryValue, styles.discountValueText]}>
+                    -{formatCurrencyBRL(totals.itemsDiscountTotal)}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Subtotal</Text>
+                  <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total dos itens</Text>
+                <Text style={styles.summaryValue}>{formatCurrencyBRL(totals.totalGross)}</Text>
+              </View>
+            )}
+
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Desconto geral</Text>
-              <Text style={styles.summaryValue}>-{formatCurrencyBRL(discountTotal)}</Text>
+              <Text style={styles.summaryValue}>-{formatCurrencyBRL(effectiveDiscountTotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryTotalLabel}>Total líquido</Text>
@@ -206,16 +249,26 @@ const styles = StyleSheet.create({
     color: colors.slate700,
   },
   itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  itemTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   itemInfo: {
     flex: 1,
     gap: 2,
+  },
+  itemBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   itemName: {
     fontSize: 14,
@@ -272,6 +325,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary,
     fontWeight: '600',
+  },
+  discountValueText: {
+    color: '#15803D',
   },
   summaryTotalLabel: {
     fontSize: 15,

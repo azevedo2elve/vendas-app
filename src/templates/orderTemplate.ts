@@ -43,6 +43,9 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[],
   const streetLine = escapeHtml(formatClientStreetLine(client)) || '—';
   const cityLine = escapeHtml(formatClientCityLine(client)) || '—';
 
+  const itemsSubtotal = items.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+  const itemsDiscountTotal = items.reduce((acc, item) => acc + item.discountValue, 0);
+
   const rows = items
     .map(
       (item) => `
@@ -198,14 +201,39 @@ export function buildOrderHtml(order: Order, client: Client, items: OrderItem[],
 
   <div class="totals">
     <table>
-      <tr>
-        <td class="label">Total bruto</td>
-        <td class="value">${formatCurrencyBRL(order.totalGross)}</td>
-      </tr>
-      <tr>
-        <td class="label">Desconto geral</td>
-        <td class="value">-${formatCurrencyBRL(order.discountTotal)}</td>
-      </tr>
+      ${
+        itemsDiscountTotal > 0
+          ? `
+        <tr>
+          <td class="label">Total dos produtos</td>
+          <td class="value">${formatCurrencyBRL(itemsSubtotal)}</td>
+        </tr>
+        <tr>
+          <td class="label">Desconto nos itens</td>
+          <td class="value">-${formatCurrencyBRL(itemsDiscountTotal)}</td>
+        </tr>
+        <tr>
+          <td class="label">Subtotal</td>
+          <td class="value">${formatCurrencyBRL(order.totalGross)}</td>
+        </tr>
+      `
+          : `
+        <tr>
+          <td class="label">Total bruto</td>
+          <td class="value">${formatCurrencyBRL(order.totalGross)}</td>
+        </tr>
+      `
+      }
+      ${
+        order.discountTotal > 0
+          ? `
+        <tr>
+          <td class="label">Desconto geral</td>
+          <td class="value">-${formatCurrencyBRL(order.discountTotal)}</td>
+        </tr>
+      `
+          : ''
+      }
       <tr class="grand">
         <td class="label">Total líquido</td>
         <td class="value">${formatCurrencyBRL(order.totalNet)}</td>

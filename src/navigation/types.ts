@@ -7,7 +7,7 @@ export type RootStackParamList = {
   CategoryList: undefined;
   Backup: undefined;
   NewOrder: undefined;
-  OrderList: undefined;
+  OrderList: { year?: number; month?: number } | undefined;
   OrderDetail: { orderId: string };
   OrderEdit: { orderId: string };
   Settings: undefined;

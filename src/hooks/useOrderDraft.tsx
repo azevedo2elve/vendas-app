@@ -50,15 +50,27 @@ export function OrderDraftProvider({ children }: { children: ReactNode }) {
 
   const updateQuantity = useCallback((productId: string, quantity: number) => {
     setItems((current) =>
-      current.map((item) => (item.productId === productId ? { ...item, quantity: Math.max(1, quantity) } : item))
+      current.map((item) => {
+        if (item.productId !== productId) return item;
+        const newQty = Math.max(1, quantity);
+        const lineTotal = item.unitPrice * newQty;
+        return {
+          ...item,
+          quantity: newQty,
+          discountValue: Math.min(item.discountValue, lineTotal),
+        };
+      })
     );
   }, []);
 
   const updateDiscount = useCallback((productId: string, discountValue: number) => {
     setItems((current) =>
-      current.map((item) =>
-        item.productId === productId ? { ...item, discountValue: Math.max(0, discountValue) } : item
-      )
+      current.map((item) => {
+        if (item.productId !== productId) return item;
+        const lineTotal = cartItemLineTotal(item);
+        const clamped = Math.max(0, Math.min(discountValue, lineTotal));
+        return { ...item, discountValue: clamped };
+      })
     );
   }, []);
 
