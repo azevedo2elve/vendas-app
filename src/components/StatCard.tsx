@@ -26,15 +26,15 @@ export function StatCard({ label, value, icon, tone = 'neutral', subtitle, onPre
     <Component style={styles.card} {...(onPress ? { onPress, activeOpacity: 0.72, accessibilityRole: 'button' } : {})}>
       <View style={styles.topRow}>
         <View style={[styles.iconWrap, { backgroundColor: toneStyle.bg }]}>
-          <Ionicons name={icon} size={20} color={toneStyle.fg} />
+          <Ionicons name={icon} size={18} color={toneStyle.fg} />
         </View>
-        {onPress ? <Ionicons name="chevron-forward" size={14} color={colors.textDisabled} /> : null}
+        {onPress ? <Ionicons name="chevron-forward" size={13} color={colors.textDisabled} /> : null}
       </View>
       <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </Text>
       <View style={styles.labelGroup}>
-        <Text style={styles.label} numberOfLines={1}>
+        <Text style={styles.label} numberOfLines={1} adjustsFontSizeToFit>
           {label}
         </Text>
         {subtitle ? (
@@ -50,15 +50,12 @@ export function StatCard({ label, value, icon, tone = 'neutral', subtitle, onPre
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    minWidth: 140,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    gap: 6,
-    minHeight: 114,
-    justifyContent: 'space-between',
+    gap: 4,
     ...shadows.card,
   },
   topRow: {
@@ -68,14 +65,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   value: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: colors.textPrimary,
   },

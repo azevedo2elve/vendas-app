@@ -189,39 +189,43 @@ export function HomeScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <View style={styles.statsRow}>
-        <StatCard
-          label="Vendido no mês"
-          subtitle={data.monthName}
-          value={formatCurrencyBRL(data.totalMonth)}
-          icon="calendar-outline"
-          tone="success"
-          onPress={() => navigation.navigate('OrderList')}
-        />
-        <StatCard
-          label="Vendido hoje"
-          subtitle="Hoje"
-          value={formatCurrencyBRL(data.totalToday)}
-          icon="cash-outline"
-          tone="accent"
-          onPress={() => navigation.navigate('OrderList')}
-        />
-        <StatCard
-          label="Pedidos no mês"
-          subtitle={`${data.ordersCount} no total`}
-          value={String(data.monthOrdersCount)}
-          icon="receipt-outline"
-          tone="neutral"
-          onPress={() => navigation.navigate('OrderList')}
-        />
-        <StatCard
-          label="Clientes"
-          subtitle="Cadastrados"
-          value={String(data.clientsCount)}
-          icon="people-outline"
-          tone="neutral"
-          onPress={() => navigation.navigate('ClientList')}
-        />
+      <View style={styles.statsContainer}>
+        <View style={styles.statsRow}>
+          <StatCard
+            label="Vendido no mês"
+            subtitle={data.monthName}
+            value={formatCurrencyBRL(data.totalMonth)}
+            icon="calendar-outline"
+            tone="success"
+            onPress={() => navigation.navigate('OrderList')}
+          />
+          <StatCard
+            label="Vendido hoje"
+            subtitle="Hoje"
+            value={formatCurrencyBRL(data.totalToday)}
+            icon="cash-outline"
+            tone="accent"
+            onPress={() => navigation.navigate('OrderList')}
+          />
+        </View>
+        <View style={styles.statsRow}>
+          <StatCard
+            label="Pedidos emitidos"
+            subtitle={`${data.monthOrdersCount} este mês`}
+            value={String(data.ordersCount)}
+            icon="receipt-outline"
+            tone="neutral"
+            onPress={() => navigation.navigate('OrderList')}
+          />
+          <StatCard
+            label="Clientes cadastrados"
+            subtitle="Cadastrados"
+            value={String(data.clientsCount)}
+            icon="people-outline"
+            tone="neutral"
+            onPress={() => navigation.navigate('ClientList')}
+          />
+        </View>
       </View>
 
       <View style={styles.quickActions}>
@@ -422,10 +426,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  statsContainer: {
+    gap: spacing.sm,
+  },
   statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    flexWrap: 'wrap',
   },
   quickActions: {
     gap: spacing.sm,
