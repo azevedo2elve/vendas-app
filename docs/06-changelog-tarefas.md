@@ -491,7 +491,7 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Pedido do cliente: concessão de desconto individual por item no pedido, além do desconto geral no fechamento (ambos coexistem harmoniosamente).
   - **Novo componente [`ItemDiscountControl`](../src/components/ItemDiscountControl.tsx):** controle compacto integrado a cada item. Exibe botão discreto de adicionar desconto ou badge verde com valor e porcentagem (`-R$ 5,00 (10%)`) e atalho para remoção rápida. Ao tocar, expande inline o [`DiscountInput`](../src/components/DiscountInput.tsx) (comutando entre R$ e %) com limitação automática para nunca ultrapassar o total da linha.
   - **Carrinho (`OrderItemsScreen`):** itens no modal do carrinho receberam o `ItemDiscountControl` e exibição de subtotal individual. Rodapé destaca o total e o total economizado nos itens.
-  - **Revisão (`OrderReviewScreen`):** detalhamento dos itens com desconto e resumo financeiro discriminando: Total dos produtos, Desconto nos itens, Subtotal, Desconto geral e Total líquido.
+  - **Revisão e fechamento (`OrderReviewScreen`):** cada item conta com `ItemDiscountControl` para aplicar ou ajustar descontos diretamente na etapa final de fechamento (sem precisar voltar ao carrinho), além do resumo financeiro discriminando: Total dos produtos, Desconto nos itens, Subtotal, Desconto geral e Total líquido.
   - **Edição (`OrderEditScreen`):** lista de itens permite alterar ou conceder descontos individuais em pedidos já salvos.
   - **Detalhe e PDF (`OrderDetailScreen` e `orderTemplate.ts`):** detalhe do pedido e ordem de venda em PDF passam a destacar os descontos individuais por item na tabela e nos totais.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.

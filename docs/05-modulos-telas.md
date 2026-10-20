@@ -182,7 +182,8 @@ As 3 telas do fluxo compartilham estado via **React Context** (`OrderDraftProvid
 - Resumo mostrado na barra flutuante: quantidade total e total geral com os descontos dos itens já deduzidos (`totals.totalGross`).
 
 ### 3. `OrderReviewScreen` — Resumo e fechamento
-- Mostra cliente e itens tabulados, exibindo quantidade, valor unitário, desconto por item (quando houver) e subtotal da linha.
+- Mostra cliente e itens tabulados, exibindo quantidade, valor unitário e subtotal da linha.
+- **Desconto por item direto no fechamento:** cada item conta com [`ItemDiscountControl`](../src/components/ItemDiscountControl.tsx), permitindo conceder ou alterar descontos individuais em R$ ou % diretamente no fechamento (sem precisar voltar ao catálogo/carrinho).
 - `DiscountInput` para o **desconto geral do pedido** (`orders.discount_total`, aplicado sobre `total_gross`). Vendedor pode combinar descontos por item com um desconto geral no fechamento.
 - **Resumo financeiro:** quando há desconto por item, detalha o "Total dos produtos" (valor cheio antes de descontos), "Desconto nos itens", "Subtotal" (líquido dos itens), "Desconto geral" e "Total líquido" final.
 - **Data de entrega (Fase 13, opcional):** `MaskedInput` com `mask="date"` (novo tipo de máscara, `dd/mm/aaaa` — dígitos puros por baixo, mesma convenção de `cep`/`phone`; parser `parseDateBR()` em `src/utils/masks.ts`, que valida se a data realmente existe, ex: rejeita 31/02). Campo livre — deixar em branco significa "sem data combinada ainda" (`orders.delivery_date = null`). Se o usuário digitar uma data incompleta e tentar salvar, o campo mostra erro "Data de entrega inválida" e bloqueia o salvamento.
