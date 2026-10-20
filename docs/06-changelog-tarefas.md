@@ -518,6 +518,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Primeira vez que `hml` é promovida para `main` desde a adoção do fluxo (2026-09-01) — até aqui, `main` seguia parada na Fase 12. Testado pelo usuário em HML (checklist completo: instalação, Fase 14, fix da logo, fluxo essencial, offline, configurações/backup — ver entradas de 2026-09-08 a 2026-09-11 acima), com 3 bugs reais encontrados e corrigidos durante os testes (reimportação de backup, seleção de logo, validação remota de licença — PRs #26/#27/#28). PRs #24–#28 mergeados em `hml` (5 PRs, `--merge`, branches excluídas) e `hml` promovida para `main` em seguida. `android.package` definitivo (`com.gabrielazevedo.vendasapp`), `versionCode 1` / `versionName "1.0.0"` — release de produção de verdade, mesma chave de assinatura usada nos builds de teste (para instalações futuras poderem atualizar por cima, sem precisar desinstalar).
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
+### 2026-10-20 — Promoção `hml` → `main`: v1.1.0 em produção
+- **Tipo:** chore (release)
+- **Resumo:** Promoção de `hml` para `main` com lançamento da versão 1.1.0 (`versionCode 2`). Inclui as novas funcionalidades testadas em homologação: desconto individual por item no carrinho e na edição de pedidos, total vendido no mês no dashboard e nas ordens de venda com navegação temporal, correção no layout dos cards de resumo e suporte à edição de pedidos finalizados. Assinado com a chave de produção oficial.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## 📎 Documentos relacionados
