@@ -35,6 +35,7 @@ type RemoteBackupOrder = {
   total_net: number;
   created_at: string;
   delivery_date: string | null;
+  payment_due_at: string | null;
   items: RemoteBackupOrderItem[];
 };
 
@@ -104,6 +105,7 @@ async function buildRemoteBackupPayload(deviceId: string): Promise<RemoteBackupP
         total_net: order.totalNet,
         created_at: order.createdAt.toISOString(),
         delivery_date: order.deliveryDate ? order.deliveryDate.toISOString() : null,
+        payment_due_at: order.paymentDueAt ? order.paymentDueAt.toISOString() : null,
         items: items.map((item) => ({
           product_name_snapshot: item.productNameSnapshot,
           unit_price: item.unitPrice,

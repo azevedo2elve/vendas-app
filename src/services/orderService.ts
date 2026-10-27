@@ -12,6 +12,7 @@ export type CreateOrderInput = {
   paymentMethod: PaymentMethod;
   notes?: string;
   deliveryDate?: Date | null;
+  paymentDueAt?: Date | null;
 };
 
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
@@ -39,6 +40,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
       record.notes = input.notes?.trim() || undefined;
       record.orderNumber = orderNumber;
       record.deliveryDate = input.deliveryDate ?? null;
+      record.paymentDueAt = input.paymentDueAt ?? null;
     });
 
     const preparedItems = input.items.map((item) =>
@@ -66,6 +68,7 @@ export type UpdateOrderInput = {
   paymentMethod: PaymentMethod;
   notes?: string;
   deliveryDate?: Date | null;
+  paymentDueAt?: Date | null;
 };
 
 // Edição de um pedido já salvo (Fase 16) — pedido do cliente: às vezes o comprador pede pra
@@ -105,6 +108,7 @@ export async function updateOrder(orderId: string, input: UpdateOrderInput): Pro
         record.paymentMethod = input.paymentMethod;
         record.notes = input.notes?.trim() || undefined;
         record.deliveryDate = input.deliveryDate ?? null;
+        record.paymentDueAt = input.paymentDueAt ?? null;
       })
     );
   });

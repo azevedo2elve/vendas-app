@@ -49,8 +49,15 @@ function observeOrders(
 
   if (dateFilter) {
     const { startMs, endMs } = getMonthRange(dateFilter.year, dateFilter.month);
-    clauses.push(Q.where('created_at', Q.gte(startMs)));
-    clauses.push(Q.where('created_at', Q.lte(endMs)));
+    // Candidatos por `created_at` OU `payment_due_at` — o filtro exato pela data de referência
+    // resolvida (`order.referenceDate`, mesmo critério do dashboard) é aplicado em memória em
+    // `OrderListScreenBase`, pois o WatermelonDB não faz COALESCE em query.
+    clauses.push(
+      Q.or(
+        Q.and(Q.where('created_at', Q.gte(startMs)), Q.where('created_at', Q.lte(endMs))),
+        Q.and(Q.where('payment_due_at', Q.gte(startMs)), Q.where('payment_due_at', Q.lte(endMs)))
+      )
+    );
   }
 
   const trimmed = searchQuery.trim();
@@ -68,7 +75,12 @@ function observeMonthOrders(year: number, month: number) {
   const { startMs, endMs } = getMonthRange(year, month);
   return database
     .get<Order>('orders')
-    .query(Q.where('created_at', Q.gte(startMs)), Q.where('created_at', Q.lte(endMs)))
+    .query(
+      Q.or(
+        Q.and(Q.where('created_at', Q.gte(startMs)), Q.where('created_at', Q.lte(endMs))),
+        Q.and(Q.where('payment_due_at', Q.gte(startMs)), Q.where('payment_due_at', Q.lte(endMs)))
+      )
+    )
     .observe();
 }
 
@@ -86,6 +98,14 @@ function OrderRowBase({ order, client, itemCount, onPress }: OrderRowProps & { c
         <View style={styles.deliveryRow}>
           <Ionicons name="cube-outline" size={13} color={colors.accent} />
           <Text style={styles.deliveryText}>Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}</Text>
+        </View>
+      ) : null}
+      {order.paymentDueAt ? (
+        <View style={styles.deliveryRow}>
+          <Ionicons name="cash-outline" size={13} color={colors.success} />
+          <Text style={[styles.deliveryText, { color: colors.success }]}>
+            Recebimento em {order.paymentDueAt.toLocaleDateString('pt-BR')}
+          </Text>
         </View>
       ) : null}
       <View style={styles.cardFooter}>
@@ -140,7 +160,27 @@ function OrderListScreenBase({
 }: ListProps) {
   const { guard } = useReadOnlyGuard();
 
-  const validMonthOrders = useMemo(() => monthOrders.filter((order) => order.status !== 'cancelled'), [monthOrders]);
+  const { startMs: activeMonthStartMs, endMs: activeMonthEndMs } = useMemo(
+    () => getMonthRange(year, month),
+    [year, month]
+  );
+  const isInActiveMonth = useCallback(
+    (order: Order) => {
+      const ref = order.referenceDate.getTime();
+      return ref >= activeMonthStartMs && ref <= activeMonthEndMs;
+    },
+    [activeMonthStartMs, activeMonthEndMs]
+  );
+
+  const displayedOrders = useMemo(
+    () => (filterByMonth ? orders.filter(isInActiveMonth) : orders),
+    [orders, filterByMonth, isInActiveMonth]
+  );
+
+  const validMonthOrders = useMemo(
+    () => monthOrders.filter((order) => order.status !== 'cancelled' && isInActiveMonth(order)),
+    [monthOrders, isInActiveMonth]
+  );
   const monthTotalNet = useMemo(
     () => validMonthOrders.reduce((acc, order) => acc + order.totalNet, 0),
     [validMonthOrders]
@@ -260,9 +300,9 @@ function OrderListScreenBase({
         </View>
 
         <FlatList
-          data={orders}
+          data={displayedOrders}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={orders.length === 0 ? styles.emptyContent : styles.listContent}
+          contentContainerStyle={displayedOrders.length === 0 ? styles.emptyContent : styles.listContent}
           renderItem={({ item }) => (
             <OrderRow order={item} onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })} />
           )}

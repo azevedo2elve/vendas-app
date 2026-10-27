@@ -25,7 +25,18 @@ export default class Order extends Model {
 
   @readonly @date('created_at') declare createdAt: Date;
   @date('delivery_date') declare deliveryDate: Date | null;
+  // Data prevista de recebimento, quando a venda é a prazo e cai num mês diferente do da venda
+  // (ex.: vendida em 27/10, cliente paga em novembro). Null = recebido no ato / não informado;
+  // nesse caso o dashboard usa `createdAt` como mês de referência.
+  @date('payment_due_at') declare paymentDueAt: Date | null;
 
   @relation('clients', 'client_id') declare client: Relation<Client>;
   @children('order_items') declare items: Query<OrderItem>;
+
+  // Data usada para decidir "em qual mês essa venda conta" nos relatórios (dashboard e listagem
+  // de ordens): `paymentDueAt` quando informado (venda a prazo cujo recebimento cai num mês
+  // diferente do da emissão), senão `createdAt`.
+  get referenceDate(): Date {
+    return this.paymentDueAt ?? this.createdAt;
+  }
 }

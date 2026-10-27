@@ -504,6 +504,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
   - **Utilitários de data (`src/utils/date.ts`):** criada biblioteca de funções de intervalo mensal, formatação em pt-BR e navegação entre meses com 100% de cobertura de testes unitários.
 - **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-10-27 — Mês de competência do recebimento (venda a prazo em mês diferente do pagamento)
+- **Tipo:** feature
+- **Resumo:** Cliente pediu: vender hoje (ex. 27/10) com recebimento combinado para o mês seguinte deve contar no mês do recebimento, não no mês da venda. Adicionado campo opcional **"Data prevista de recebimento"** (`payment_due_at`, schema v7 → v8) na revisão/edição do pedido (`OrderReviewScreen`, `OrderEditScreen`, mesmo padrão de UI do campo "Data de entrega"). Novo getter `Order.referenceDate` resolve `paymentDueAt ?? createdAt` e passa a ser o critério usado pelo `HomeScreen` ("Vendido no mês"/"Vendido hoje") e pelo `OrderListScreen` (resumo e filtro "Apenas [Mês]") para decidir em qual mês a venda conta. Pedidos sem a data informada continuam contando no mês da emissão (comportamento anterior, sem mudança). Campo também passou a ser exportado/importado em `backupService.ts` e exportado em `remoteBackupService.ts`.
+- **Docs afetados:** `docs/03-banco-de-dados.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)
@@ -521,6 +526,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 ### 2026-10-20 — Promoção `hml` → `main`: v1.1.0 em produção
 - **Tipo:** chore (release)
 - **Resumo:** Promoção de `hml` para `main` com lançamento da versão 1.1.0 (`versionCode 2`). Inclui as novas funcionalidades testadas em homologação: desconto individual por item no carrinho e na edição de pedidos, total vendido no mês no dashboard e nas ordens de venda com navegação temporal, correção no layout dos cards de resumo e suporte à edição de pedidos finalizados. Assinado com a chave de produção oficial.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
+### 2026-10-27 — Release v1.2.0: mês de competência do recebimento
+- **Tipo:** chore (release)
+- **Resumo:** Lançamento da versão 1.2.0 (`versionCode 3`), direto em `main`. Inclui a feature "Mês de competência do recebimento" (ver entrada acima no mesmo dia): campo opcional de data prevista de recebimento no pedido, usado pelo Dashboard e pela listagem de Ordens de Venda para contar vendas a prazo no mês do pagamento combinado, não no mês da emissão. Build local assinado com a chave de produção oficial (`assembleRelease`, `arm64-v8a`, minify + shrinkResources).
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
 ---

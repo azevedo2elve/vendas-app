@@ -38,6 +38,8 @@ export function OrderReviewScreen({ navigation }: Props) {
   const [notes, setNotes] = useState('');
   const [deliveryDateDigits, setDeliveryDateDigits] = useState('');
   const [deliveryDateError, setDeliveryDateError] = useState<string | undefined>();
+  const [paymentDueDateDigits, setPaymentDueDateDigits] = useState('');
+  const [paymentDueDateError, setPaymentDueDateError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
   // Garante que o desconto geral não ultrapasse o subtotal dos produtos caso o vendedor
@@ -58,6 +60,16 @@ export function OrderReviewScreen({ navigation }: Props) {
     }
     setDeliveryDateError(undefined);
 
+    let paymentDueAt: Date | null = null;
+    if (paymentDueDateDigits.length > 0) {
+      paymentDueAt = parseDateBR(paymentDueDateDigits);
+      if (!paymentDueAt) {
+        setPaymentDueDateError('Data de recebimento inválida');
+        return;
+      }
+    }
+    setPaymentDueDateError(undefined);
+
     setSaving(true);
     try {
       const order = await createOrder({
@@ -67,6 +79,7 @@ export function OrderReviewScreen({ navigation }: Props) {
         paymentMethod,
         notes,
         deliveryDate,
+        paymentDueAt,
       });
       reset();
       navigation.navigate('OrderSuccess', { orderId: order.id });
@@ -137,6 +150,18 @@ export function OrderReviewScreen({ navigation }: Props) {
               setDeliveryDateError(undefined);
             }}
             error={deliveryDateError}
+          />
+
+          <MaskedInput
+            label="Data prevista de recebimento"
+            mask="date"
+            placeholder="dd/mm/aaaa (opcional, p/ vendas a prazo)"
+            value={paymentDueDateDigits}
+            onChangeText={(value) => {
+              setPaymentDueDateDigits(value);
+              setPaymentDueDateError(undefined);
+            }}
+            error={paymentDueDateError}
           />
 
           <View>

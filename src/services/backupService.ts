@@ -65,6 +65,7 @@ const backupOrderSchema = z.object({
   notes: z.string().nullable().optional(),
   order_number: z.number(),
   delivery_date: z.string().nullable().optional(),
+  payment_due_at: z.string().nullable().optional(),
   // Só informativo — o WatermelonDB grava `created_at` como a data da importação, não dá pra
   // restaurar a data original (campo `@readonly`, sempre "agora" na criação do registro).
   created_at: z.string(),
@@ -112,6 +113,7 @@ async function buildBackupData(): Promise<BackupData> {
         notes: order.notes,
         order_number: order.orderNumber,
         delivery_date: order.deliveryDate ? order.deliveryDate.toISOString() : null,
+        payment_due_at: order.paymentDueAt ? order.paymentDueAt.toISOString() : null,
         created_at: order.createdAt.toISOString(),
         items: items.map((item) => ({
           product_name_snapshot: item.productNameSnapshot,
@@ -449,6 +451,7 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
       record.notes = order.notes ?? undefined;
       record.orderNumber = order.order_number;
       record.deliveryDate = order.delivery_date ? new Date(order.delivery_date) : null;
+      record.paymentDueAt = order.payment_due_at ? new Date(order.payment_due_at) : null;
       // `created_at` não pode ser definido aqui (@readonly) — nasce com a data da importação.
     });
 

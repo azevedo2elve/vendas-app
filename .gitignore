@@ -50,3 +50,9 @@ yarn-error.*
 # de importação; o JSON final não fica no repositório, o vendedor guarda o arquivo por fora
 # (entregue diretamente) e usa a tela de Importar/Restaurar Backup pra cadastrar num aparelho novo.
 assets/catalogo/
+
+# APKs gerados localmente (builds/<data>) — binário de entrega pro cliente, não versionado.
+/builds/
+
+# Mockups HTML/Playwright de tela (não são capturas reais do app) — material de referência local.
+/screenshots/

@@ -163,7 +163,7 @@ export default class Product extends Model {
 
 ## 🧾 Tabela `orders`
 
-> 🔁 Redesenhada na **Fase 5** (schema v2 — ver [Migrations](#-migrations) abaixo). Antes da Fase 5 essa tabela existia só como esqueleto (Fase 2), sem nenhuma tela usando os campos antigos (`total_amount`/`discount`). Ganhou `order_number`/`delivery_date` na **Fase 13** (schema v4 → v5), para o cabeçalho do PDF.
+> 🔁 Redesenhada na **Fase 5** (schema v2 — ver [Migrations](#-migrations) abaixo). Antes da Fase 5 essa tabela existia só como esqueleto (Fase 2), sem nenhuma tela usando os campos antigos (`total_amount`/`discount`). Ganhou `order_number`/`delivery_date` na **Fase 13** (schema v4 → v5), para o cabeçalho do PDF. Ganhou `payment_due_at` em 2026-10-27 (schema v7 → v8), para o dashboard somar "vendido no mês" pelo mês em que o dinheiro entra, não pelo mês em que o pedido foi emitido, em vendas a prazo.
 
 | Coluna | Tipo (schema) | Tipo TS | Obrigatório | Descrição |
 |---|---|---|---|---|
@@ -177,6 +177,7 @@ export default class Product extends Model {
 | `notes` | `string` | `string` | ⛔ | Observações gerais do pedido (opcional) |
 | `order_number` | `number` | `number` | ✔️ | Número sequencial do pedido **específico do cliente** (1º, 2º, 3º pedido daquele cliente — não um id global), calculado em `orderService.createOrder()` como `(pedidos anteriores do cliente) + 1`. Pedidos criados antes da Fase 13 têm `0` (sentinela de "legado", sem numeração) |
 | `delivery_date` | `number` (timestamp) | `Date \| null` | ⛔ | Data combinada de entrega (opcional — nem todo pedido tem data definida no fechamento) |
+| `payment_due_at` | `number` (timestamp) | `Date \| null` | ⛔ | Data prevista de recebimento, para vendas a prazo cujo mês de recebimento difere do mês da venda (ex.: vendida em 27/10, cliente paga em novembro). Quando preenchida, o dashboard (`HomeScreen.loadDashboardData`) usa essa data — e não `created_at` — para decidir em qual mês a venda conta em "Vendido no mês"/"Vendido hoje". Quando `null` (venda à vista ou não informada), continua usando `created_at` |
 | `created_at` | `number` | `Date` | ✔️ | Gerenciado automaticamente |
 
 ### Model (`src/database/models/Order.ts`)
@@ -206,6 +207,7 @@ export default class Order extends Model {
 
   @readonly @date('created_at') declare createdAt: Date;
   @date('delivery_date') declare deliveryDate: Date | null;
+  @date('payment_due_at') declare paymentDueAt: Date | null;
 
   @relation('clients', 'client_id') declare client: Relation<Client>;
   @children('order_items') declare items: Query<OrderItem>;
@@ -466,6 +468,7 @@ Toda alteração de schema (nova coluna, nova tabela) deve:
 | 5 | Fase 13 (PDF personalizado + endereço estruturado): `clients` ganhou `address_street`/`address_number`/`address_complement`/`address_city`/`address_state`/`address_zip` (`addColumns`, opcionais — `address` fica órfã, mesmo padrão do `sku`); `orders` ganhou `order_number` (obrigatório — pedidos existentes recebem `0` como sentinela de "legado") e `delivery_date` (`addColumns`, opcional); `company_settings` ganhou `vendedor_nome` e `logo_base64` (`addColumns`, opcionais). | `src/database/migrations.ts` |
 | 6 | Foto do produto (2026-09-01): `products` ganhou `photo_path` (`addColumns`, opcional) — caminho local do arquivo de imagem, não a imagem em si. | `src/database/migrations.ts` |
 | 7 | Backup remoto automático (2026-09-07): `license_control` ganhou `last_remote_backup_at` (`addColumns`, opcional) — controla o "no máximo 1x por dia" do envio silencioso pro Supabase Storage. | `src/database/migrations.ts` |
+| 8 | Mês de competência do recebimento (2026-10-27): `orders` ganhou `payment_due_at` (`addColumns`, opcional) — data prevista de recebimento, usada pelo dashboard para contar vendas a prazo no mês em que o cliente paga, não no mês em que o pedido foi emitido. | `src/database/migrations.ts` |
 
 ```ts
 // src/database/migrations.ts
@@ -473,6 +476,15 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 
 export default schemaMigrations({
   migrations: [
+    {
+      toVersion: 8,
+      steps: [
+        addColumns({
+          table: 'orders',
+          columns: [{ name: 'payment_due_at', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
     {
       toVersion: 7,
       steps: [

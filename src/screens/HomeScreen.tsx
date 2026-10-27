@@ -47,23 +47,37 @@ async function loadDashboardData(): Promise<DashboardData> {
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const { startMs: startOfMonthMs, endMs: endOfMonthMs } = getMonthRange(now.getFullYear(), now.getMonth());
 
-  const [companySettings, clientsCount, ordersCount, monthOrders, recentOrders] = await Promise.all([
+  // "Mês de referência" de um pedido é `paymentDueAt` quando o vendedor informou uma data
+  // prevista de recebimento (venda a prazo que deve contar no mês em que o dinheiro entra, não
+  // no mês em que o pedido foi emitido) — senão cai em `createdAt`. WatermelonDB não faz
+  // COALESCE em query, então buscamos os pedidos candidatos por `created_at` OU `payment_due_at`
+  // dentro do mês e filtramos/somamos em memória pela data de referência resolvida.
+  const [companySettings, clientsCount, ordersCount, monthCandidateOrders, recentOrders] = await Promise.all([
     getOrCreateCompanySettings(),
     clientsCollection.query().fetchCount(),
     ordersCollection.query().fetchCount(),
     ordersCollection
       .query(
-        Q.where('created_at', Q.gte(startOfMonthMs)),
-        Q.where('created_at', Q.lte(endOfMonthMs)),
-        Q.where('status', Q.notEq('cancelled'))
+        Q.and(
+          Q.where('status', Q.notEq('cancelled')),
+          Q.or(
+            Q.and(Q.where('created_at', Q.gte(startOfMonthMs)), Q.where('created_at', Q.lte(endOfMonthMs))),
+            Q.and(Q.where('payment_due_at', Q.gte(startOfMonthMs)), Q.where('payment_due_at', Q.lte(endOfMonthMs)))
+          )
+        )
       )
       .fetch(),
     ordersCollection.query(Q.sortBy('created_at', Q.desc), Q.take(5)).fetch(),
   ]);
 
+  const monthOrders = monthCandidateOrders.filter((order) => {
+    const ref = order.referenceDate.getTime();
+    return ref >= startOfMonthMs && ref <= endOfMonthMs;
+  });
+
   const totalMonth = monthOrders.reduce((acc, order) => acc + order.totalNet, 0);
   const totalToday = monthOrders
-    .filter((order) => order.createdAt.getTime() >= startOfDay.getTime())
+    .filter((order) => order.referenceDate.getTime() >= startOfDay.getTime())
     .reduce((acc, order) => acc + order.totalNet, 0);
 
   const monthName = formatMonthName(now.getMonth());
@@ -300,6 +314,14 @@ export function HomeScreen({ navigation }: Props) {
                       <Ionicons name="cube-outline" size={12} color={colors.accent} />
                       <Text style={styles.recentDeliveryText}>
                         Entrega em {order.deliveryDate.toLocaleDateString('pt-BR')}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {order.paymentDueAt ? (
+                    <View style={styles.recentDeliveryRow}>
+                      <Ionicons name="cash-outline" size={12} color={colors.success} />
+                      <Text style={[styles.recentDeliveryText, { color: colors.success }]}>
+                        Recebimento em {order.paymentDueAt.toLocaleDateString('pt-BR')}
                       </Text>
                     </View>
                   ) : null}

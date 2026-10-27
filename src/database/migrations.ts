@@ -3,6 +3,20 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export default schemaMigrations({
   migrations: [
     {
+      toVersion: 8,
+      steps: [
+        // Mês de competência do recebimento (2026-10-27): quando a venda é feita a prazo (ex.:
+        // vendida em outubro, mas o cliente só paga em novembro), o vendedor pode informar a data
+        // prevista de recebimento. O dashboard passa a somar "vendido no mês" por essa data quando
+        // ela existir, e cai de volta para `created_at` nos pedidos sem data informada (legado ou
+        // recebidos à vista no ato).
+        addColumns({
+          table: 'orders',
+          columns: [{ name: 'payment_due_at', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
+    {
       toVersion: 7,
       steps: [
         // Backup remoto automático (2026-09-07): guarda quando foi o último envio bem-sucedido

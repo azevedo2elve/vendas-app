@@ -62,6 +62,8 @@ export function OrderEditScreen({ route, navigation }: Props) {
   const [notes, setNotes] = useState('');
   const [deliveryDateDigits, setDeliveryDateDigits] = useState('');
   const [deliveryDateError, setDeliveryDateError] = useState<string | undefined>();
+  const [paymentDueDateDigits, setPaymentDueDateDigits] = useState('');
+  const [paymentDueDateError, setPaymentDueDateError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -94,6 +96,7 @@ export function OrderEditScreen({ route, navigation }: Props) {
       setPaymentMethod(order.paymentMethod);
       setNotes(order.notes ?? '');
       setDeliveryDateDigits(order.deliveryDate ? dateToDigitsBR(order.deliveryDate) : '');
+      setPaymentDueDateDigits(order.paymentDueAt ? dateToDigitsBR(order.paymentDueAt) : '');
       setLoading(false);
     })();
 
@@ -198,9 +201,19 @@ export function OrderEditScreen({ route, navigation }: Props) {
     }
     setDeliveryDateError(undefined);
 
+    let paymentDueAt: Date | null = null;
+    if (paymentDueDateDigits.length > 0) {
+      paymentDueAt = parseDateBR(paymentDueDateDigits);
+      if (!paymentDueAt) {
+        setPaymentDueDateError('Data de recebimento inválida');
+        return;
+      }
+    }
+    setPaymentDueDateError(undefined);
+
     setSaving(true);
     try {
-      await updateOrder(orderId, { items, discountTotal, paymentMethod, notes, deliveryDate });
+      await updateOrder(orderId, { items, discountTotal, paymentMethod, notes, deliveryDate, paymentDueAt });
       showToast('Pedido atualizado com sucesso!', 'success');
       navigation.goBack();
     } catch (error) {
@@ -303,6 +316,18 @@ export function OrderEditScreen({ route, navigation }: Props) {
               setDeliveryDateError(undefined);
             }}
             error={deliveryDateError}
+          />
+
+          <MaskedInput
+            label="Data prevista de recebimento"
+            mask="date"
+            placeholder="dd/mm/aaaa (opcional, p/ vendas a prazo)"
+            value={paymentDueDateDigits}
+            onChangeText={(value) => {
+              setPaymentDueDateDigits(value);
+              setPaymentDueDateError(undefined);
+            }}
+            error={paymentDueDateError}
           />
 
           <View>
