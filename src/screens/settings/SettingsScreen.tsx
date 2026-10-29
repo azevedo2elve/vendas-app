@@ -19,6 +19,7 @@ import { isSupportEmailConfigured, isSupportPhoneConfigured, SUPPORT_WHATSAPP_PH
 import { emailBackup, exportBackup } from '@/services/backupService';
 import { getCurrentLicenseSnapshot } from '@/services/licenseService';
 import { clearAllOrders } from '@/services/orderService';
+import { clearAllBusinessData, DEV_TOOLS_ENABLED } from '@/services/devDataService';
 import { useLicenseAccess } from '@/hooks/useLicenseAccess';
 import {
   getDatabaseSummary,
@@ -86,6 +87,7 @@ export function SettingsScreen({ navigation }: Props) {
   const [sendingBackupEmail, setSendingBackupEmail] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
+  const [wipingAll, setWipingAll] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'company' | 'system' | 'data' | null>(null);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [pickingLogo, setPickingLogo] = useState(false);
@@ -289,6 +291,35 @@ export function SettingsScreen({ navigation }: Props) {
     } finally {
       setClearing(false);
     }
+  }
+
+  function handleWipeAllData() {
+    Alert.alert(
+      'Apagar TODOS os dados? (dev)',
+      'Remove permanentemente clientes, produtos, categorias, pedidos e itens. Licença e dados da empresa são mantidos. Não pode ser desfeito.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Apagar tudo',
+          style: 'destructive',
+          onPress: async () => {
+            setWipingAll(true);
+            try {
+              const removed = await clearAllBusinessData();
+              showToast(
+                `Removidos: ${removed.orders} pedido(s), ${removed.clients} cliente(s), ${removed.products} produto(s), ${removed.categories} categoria(s).`,
+                'success'
+              );
+              await refreshSummary();
+            } catch (error) {
+              showToast(`Não foi possível apagar os dados: ${String(error)}`, 'error');
+            } finally {
+              setWipingAll(false);
+            }
+          },
+        },
+      ]
+    );
   }
 
   if (loading || !license) {
@@ -703,6 +734,20 @@ export function SettingsScreen({ navigation }: Props) {
             onPress={() => setConfirmClearVisible(true)}
             disabled={readOnly}
           />
+          {DEV_TOOLS_ENABLED ? (
+            <>
+              <PrimaryButton
+                label="[DEV] Apagar todos os dados"
+                variant="danger"
+                icon="nuclear-outline"
+                onPress={handleWipeAllData}
+                loading={wipingAll}
+              />
+              <Text style={styles.helperText}>
+                Só em build de desenvolvimento. Apaga clientes, catálogo e pedidos para reimportar um backup do zero.
+              </Text>
+            </>
+          ) : null}
         </CollapsibleCard>
 
         <Modal

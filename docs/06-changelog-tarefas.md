@@ -509,6 +509,36 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Cliente pediu: vender hoje (ex. 27/10) com recebimento combinado para o mês seguinte deve contar no mês do recebimento, não no mês da venda. Adicionado campo opcional **"Data prevista de recebimento"** (`payment_due_at`, schema v7 → v8) na revisão/edição do pedido (`OrderReviewScreen`, `OrderEditScreen`, mesmo padrão de UI do campo "Data de entrega"). Novo getter `Order.referenceDate` resolve `paymentDueAt ?? createdAt` e passa a ser o critério usado pelo `HomeScreen` ("Vendido no mês"/"Vendido hoje") e pelo `OrderListScreen` (resumo e filtro "Apenas [Mês]") para decidir em qual mês a venda conta. Pedidos sem a data informada continuam contando no mês da emissão (comportamento anterior, sem mudança). Campo também passou a ser exportado/importado em `backupService.ts` e exportado em `remoteBackupService.ts`.
 - **Docs afetados:** `docs/03-banco-de-dados.md`, `docs/06-changelog-tarefas.md`.
 
+### 2026-10-28 — Fix: "Vendido hoje" somava vendas a prazo de dias anteriores
+- **Tipo:** fix
+- **Resumo:** Cliente relatou que as vendas de 27/10 continuaram somando em "Vendido hoje" no dia 28/10. Causa: `HomeScreen.loadDashboardData()` filtrava "hoje" só com `referenceDate >= 00:00 de hoje`, sem limite superior — venda a prazo de ontem com `payment_due_at` mais adiante no mês (ex. 30/10) tinha data de referência no futuro e entrava na soma. Agora o filtro usa o intervalo fechado do dia (novo `getDayRange()` em `src/utils/date.ts`, com teste).
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-10-28 — Filtro "Por dia" nas Ordens de Venda
+- **Tipo:** feature
+- **Resumo:** `OrderListScreen` ganhou o chip de período "Por dia" (além de "Apenas [Mês]" e "Todos os períodos"), com navegação dia a dia e total/contagem do dia pelo mesmo critério do "Vendido hoje" do Dashboard (`order.referenceDate` dentro de `getDayRange()`), para conferir quais pedidos compõem esse valor. `observeOrders` passou a receber o intervalo (`MonthRange`) em vez de ano/mês.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-10-28 — Fix: importação de backup preserva a data original dos pedidos
+- **Tipo:** fix
+- **Resumo:** Revoga a "limitação conhecida" de 2026-09-08: `importBackup()` agora restaura o `created_at` de cada pedido a partir do JSON (sobrescrevendo `record._raw.created_at` no builder do `prepareCreate`, que roda depois do WatermelonDB preencher "agora"). Sem isso, restaurar um backup jogava todo o histórico para o dia da importação — "Vendido hoje" somava tudo e o filtro por dia/mês ficava errado. Novo teste de regressão `src/services/__tests__/backupImport.test.ts` (falhava antes do fix). Texto da `BackupScreen` atualizado.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-10-28 — Botão de dev "Apagar todos os dados" em Configurações
+- **Tipo:** feature (dev tooling)
+- **Resumo:** Novo `src/services/devDataService.ts` com `clearAllBusinessData()` (apaga de vez pedidos, itens, clientes, produtos+fotos e categorias; mantém licença/`device_id` e dados da empresa) e a flag `DEV_TOOLS_ENABLED` (`__DEV__` ou `EXPO_PUBLIC_DEV_TOOLS=true` no build). Botão "[DEV] Apagar todos os dados" na seção "Dados, Backup e Armazenamento" da `SettingsScreen`, visível só com a flag. Teste em `src/services/__tests__/devDataService.test.ts` garante que licença e empresa não são tocadas.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-10-28 — Dashboard: "Vendido hoje" (pela emissão) + "A receber hoje" (pelo recebimento)
+- **Tipo:** feature
+- **Resumo:** O card "Vendido hoje" somava pelo recebimento (`referenceDate`), não pela venda — venda a prazo emitida hoje não aparecia e venda antiga com recebimento hoje aparecia. Agora são dois cards: **"Vendido hoje"** (pedidos emitidos hoje, qualquer prazo) e **"A receber hoje"** (recebimento previsto hoje + à vista emitidos hoje — o cálculo antigo, renomeado). "Vendido no mês" segue pelo recebimento. Grade passou a 2 + 1 + 2 cards. Regras extraídas para `src/utils/orderTotals.ts` (`isSoldInRange`/`isReceivableInRange`/`sumTotalNet`) e usadas também pelo filtro "Por dia" de `OrderListScreen`, que passou a mostrar "Vendido · A receber" e a listar a união dos dois. Testes em `src/utils/__tests__/orderTotals.test.ts` com o cenário do backup do cliente — conferido por mutação que falham sem o limite superior do dia.
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
+### 2026-10-28 — Cards do dia abrem a lista de pedidos do dia
+- **Tipo:** feature
+- **Resumo:** Tocar em "Vendido hoje"/"A receber hoje" no Dashboard abre Ordens de Venda já em "Por dia" (hoje) com a seleção correspondente. O filtro "Por dia" ganhou os chips "Vendidos | A receber | Todos". Novo param opcional `dayKind` na rota `OrderList` (`src/navigation/types.ts`).
+- **Docs afetados:** `docs/05-modulos-telas.md`, `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## Processo — Fluxo de branches (`hml` → `main`)
@@ -531,6 +561,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 ### 2026-10-27 — Release v1.2.0: mês de competência do recebimento
 - **Tipo:** chore (release)
 - **Resumo:** Lançamento da versão 1.2.0 (`versionCode 3`), direto em `main`. Inclui a feature "Mês de competência do recebimento" (ver entrada acima no mesmo dia): campo opcional de data prevista de recebimento no pedido, usado pelo Dashboard e pela listagem de Ordens de Venda para contar vendas a prazo no mês do pagamento combinado, não no mês da emissão. Build local assinado com a chave de produção oficial (`assembleRelease`, `arm64-v8a`, minify + shrinkResources).
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
+### 2026-10-28 — Release v1.2.1: "Vendido hoje" / "A receber hoje"
+- **Tipo:** chore (release)
+- **Resumo:** Versão 1.2.1 (`versionCode 4`), gerada a partir da branch `fix/vendido-hoje-e-a-receber-hoje` (PR #37) para entrega ao cliente. Inclui a correção do "Vendido hoje" (vendas a prazo de dias anteriores somavam em hoje), os cards separados "Vendido hoje"/"A receber hoje", o filtro "Por dia" nas Ordens de Venda e a importação de backup preservando a data original dos pedidos. Build local assinado com a chave de produção oficial (`assembleRelease`, `arm64-v8a`, minify + shrinkResources), **sem** `EXPO_PUBLIC_DEV_TOOLS` — o botão de dev não aparece.
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
 ---

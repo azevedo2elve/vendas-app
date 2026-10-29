@@ -20,12 +20,15 @@ import { colors, radii, shadows, spacing } from '@/theme';
 import {
   formatMonthName,
   formatMonthYear,
+  getDayRange,
   getMonthRange,
   getNextMonth,
   getPreviousMonth,
   isSameMonth,
+  type MonthRange,
 } from '@/utils/date';
 import { formatCurrencyBRL } from '@/utils/masks';
+import { isReceivableInRange, isSoldInRange, sumTotalNet } from '@/utils/orderTotals';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderList'>;
 
@@ -36,11 +39,16 @@ const STATUS_FILTERS: { label: string; value: OrderStatus | null }[] = [
   { label: ORDER_STATUS_LABELS.cancelled, value: 'cancelled' },
 ];
 
-function observeOrders(
-  searchQuery: string,
-  status: OrderStatus | null,
-  dateFilter: { year: number; month: number } | null
-) {
+type PeriodMode = 'month' | 'day' | 'all';
+type DayKind = 'sold' | 'receivable' | 'all';
+
+const DAY_KIND_FILTERS: { label: string; value: DayKind }[] = [
+  { label: 'Vendidos', value: 'sold' },
+  { label: 'A receber', value: 'receivable' },
+  { label: 'Todos', value: 'all' },
+];
+
+function observeOrders(searchQuery: string, status: OrderStatus | null, dateFilter: MonthRange | null) {
   const clauses: Clause[] = [Q.sortBy('created_at', Q.desc)];
 
   if (status) {
@@ -48,7 +56,7 @@ function observeOrders(
   }
 
   if (dateFilter) {
-    const { startMs, endMs } = getMonthRange(dateFilter.year, dateFilter.month);
+    const { startMs, endMs } = dateFilter;
     // Candidatos por `created_at` OU `payment_due_at` — o filtro exato pela data de referência
     // resolvida (`order.referenceDate`, mesmo critério do dashboard) é aplicado em memória em
     // `OrderListScreenBase`, pois o WatermelonDB não faz COALESCE em query.
@@ -131,8 +139,13 @@ type ListProps = Props & {
   monthOrders: Order[];
   year: number;
   month: number;
-  filterByMonth: boolean;
-  onToggleFilterByMonth: (value: boolean) => void;
+  periodMode: PeriodMode;
+  onPeriodModeChange: (value: PeriodMode) => void;
+  day: Date;
+  dayKind: DayKind;
+  onDayKindChange: (value: DayKind) => void;
+  onPrevDay: () => void;
+  onNextDay: () => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onCurrentMonth: () => void;
@@ -148,8 +161,13 @@ function OrderListScreenBase({
   monthOrders,
   year,
   month,
-  filterByMonth,
-  onToggleFilterByMonth,
+  periodMode,
+  onPeriodModeChange,
+  day,
+  dayKind,
+  onDayKindChange,
+  onPrevDay,
+  onNextDay,
   onPrevMonth,
   onNextMonth,
   onCurrentMonth,
@@ -172,10 +190,35 @@ function OrderListScreenBase({
     [activeMonthStartMs, activeMonthEndMs]
   );
 
-  const displayedOrders = useMemo(
-    () => (filterByMonth ? orders.filter(isInActiveMonth) : orders),
-    [orders, filterByMonth, isInActiveMonth]
+  // Lista do dia = pedidos vendidos (emitidos) no dia OU a receber no dia — os dois critérios dos
+  // cards "Vendido hoje"/"A receber hoje" do Dashboard.
+  const dayRange = useMemo(() => getDayRange(day), [day]);
+  const isInActiveDay = useCallback(
+    (order: Order) => {
+      if (dayKind === 'sold') return isSoldInRange(order, dayRange);
+      if (dayKind === 'receivable') return isReceivableInRange(order, dayRange);
+      return isSoldInRange(order, dayRange) || isReceivableInRange(order, dayRange);
+    },
+    [dayRange, dayKind]
   );
+
+  const displayedOrders = useMemo(() => {
+    if (periodMode === 'month') return orders.filter(isInActiveMonth);
+    if (periodMode === 'day') return orders.filter(isInActiveDay);
+    return orders;
+  }, [orders, periodMode, isInActiveMonth, isInActiveDay]);
+
+  // O dia selecionado sempre cai no mês ativo (ver `selectDay`), então `monthOrders` já contém
+  // todos os candidatos — totais do dia sem cancelados e sem depender da busca/status.
+  const nonCancelledMonthOrders = useMemo(
+    () => monthOrders.filter((order) => order.status !== 'cancelled'),
+    [monthOrders]
+  );
+  const daySoldTotal = sumTotalNet(nonCancelledMonthOrders.filter((order) => isSoldInRange(order, dayRange)));
+  const dayReceivableTotal = sumTotalNet(
+    nonCancelledMonthOrders.filter((order) => isReceivableInRange(order, dayRange))
+  );
+  const dayLabel = day.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const validMonthOrders = useMemo(
     () => monthOrders.filter((order) => order.status !== 'cancelled' && isInActiveMonth(order)),
@@ -274,16 +317,62 @@ function OrderListScreenBase({
               <Chip
                 icon="calendar-outline"
                 label={`Apenas ${monthShort}`}
-                selected={filterByMonth}
-                onPress={() => onToggleFilterByMonth(true)}
+                selected={periodMode === 'month'}
+                onPress={() => onPeriodModeChange('month')}
+              />
+              <Chip
+                icon="today-outline"
+                label="Por dia"
+                selected={periodMode === 'day'}
+                onPress={() => onPeriodModeChange('day')}
               />
               <Chip
                 icon="globe-outline"
                 label="Todos os períodos"
-                selected={!filterByMonth}
-                onPress={() => onToggleFilterByMonth(false)}
+                selected={periodMode === 'all'}
+                onPress={() => onPeriodModeChange('all')}
               />
             </View>
+
+            {periodMode === 'day' ? (
+              <View style={styles.dayBar}>
+                <TouchableOpacity
+                  style={styles.monthNavBtn}
+                  onPress={onPrevDay}
+                  accessibilityLabel="Dia anterior"
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-back" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+                <View style={styles.dayBarCenter}>
+                  <Text style={styles.dayBarDate}>{dayLabel}</Text>
+                  <Text style={styles.dayBarTotal}>
+                    Vendido {formatCurrencyBRL(daySoldTotal)} · A receber {formatCurrencyBRL(dayReceivableTotal)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.monthNavBtn}
+                  onPress={onNextDay}
+                  accessibilityLabel="Próximo dia"
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {periodMode === 'day' ? (
+              <View style={styles.periodChips}>
+                {DAY_KIND_FILTERS.map((filter) => (
+                  <Chip
+                    key={filter.value}
+                    label={filter.label}
+                    selected={dayKind === filter.value}
+                    onPress={() => onDayKindChange(filter.value)}
+                  />
+                ))}
+              </View>
+            ) : null}
 
             {/* Filtro por status do pedido */}
             <View style={styles.statusChips}>
@@ -309,11 +398,19 @@ function OrderListScreenBase({
           ListEmptyComponent={
             <EmptyState
               icon="receipt-outline"
-              title={filterByMonth ? `Nenhum pedido em ${monthLabel}` : 'Nenhuma ordem de venda encontrada'}
+              title={
+                periodMode === 'month'
+                  ? `Nenhum pedido em ${monthLabel}`
+                  : periodMode === 'day'
+                    ? `Nenhum pedido em ${day.toLocaleDateString('pt-BR')}`
+                    : 'Nenhuma ordem de venda encontrada'
+              }
               message={
-                filterByMonth
+                periodMode === 'month'
                   ? 'Nenhum pedido emitido neste mês. Você pode usar as setas acima para navegar entre os meses ou selecionar "Todos os períodos".'
-                  : 'Toque no botão + para criar a primeira.'
+                  : periodMode === 'day'
+                    ? 'Nenhum pedido neste dia. Use as setas para navegar entre os dias.'
+                    : 'Toque no botão + para criar a primeira.'
               }
             />
           }
@@ -326,21 +423,27 @@ function OrderListScreenBase({
 }
 
 const enhance = withObservables(
-  ['searchQuery', 'statusFilter', 'year', 'month', 'filterByMonth'],
+  ['searchQuery', 'statusFilter', 'year', 'month', 'periodMode', 'day'],
   ({
     searchQuery,
     statusFilter,
     year,
     month,
-    filterByMonth,
+    periodMode,
+    day,
   }: {
     searchQuery: string;
     statusFilter: OrderStatus | null;
     year: number;
     month: number;
-    filterByMonth: boolean;
+    periodMode: PeriodMode;
+    day: Date;
   }) => ({
-    orders: observeOrders(searchQuery, statusFilter, filterByMonth ? { year, month } : null),
+    orders: observeOrders(
+      searchQuery,
+      statusFilter,
+      periodMode === 'month' ? getMonthRange(year, month) : periodMode === 'day' ? getDayRange(day) : null
+    ),
     monthOrders: observeMonthOrders(year, month),
   })
 );
@@ -350,7 +453,12 @@ const EnhancedOrderList = enhance(OrderListScreenBase);
 export function OrderListScreen({ navigation, route }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
-  const [filterByMonth, setFilterByMonth] = useState(true);
+  // Vindo de um card do Dashboard: abre "Por dia" em hoje com a seleção do card. Só no mount —
+  // a lista fica empilhada sobre a Home, então voltar e tocar de novo sempre remonta a tela.
+  const paramDayKind = route.params?.dayKind;
+  const [periodMode, setPeriodMode] = useState<PeriodMode>(paramDayKind ? 'day' : 'month');
+  const [day, setDay] = useState(() => new Date());
+  const [dayKind, setDayKind] = useState<DayKind>(paramDayKind ?? 'all');
 
   const paramYear = route.params?.year;
   const paramMonth = route.params?.month;
@@ -368,7 +476,35 @@ export function OrderListScreen({ navigation, route }: Props) {
 
   const onSearchChange = useCallback((value: string) => setSearchQuery(value), []);
 
+  // Mantém o mês ativo sempre no mês do dia selecionado (o resumo do mês e o total do dia saem
+  // da mesma consulta `monthOrders`).
+  const selectDay = useCallback((next: Date) => {
+    setDay(next);
+    setUserPeriod({ year: next.getFullYear(), month: next.getMonth() });
+  }, []);
+
+  const handlePeriodModeChange = useCallback(
+    (mode: PeriodMode) => {
+      setPeriodMode(mode);
+      if (mode === 'day') selectDay(day);
+    },
+    [day, selectDay]
+  );
+
+  const handlePrevDay = useCallback(
+    () => selectDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1)),
+    [day, selectDay]
+  );
+  const handleNextDay = useCallback(
+    () => selectDay(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)),
+    [day, selectDay]
+  );
+
   const handlePrevMonth = useCallback(() => {
+    if (periodMode === 'day') {
+      selectDay(new Date(day.getFullYear(), day.getMonth() - 1, 1));
+      return;
+    }
     setUserPeriod((curr) => {
       const active = curr ?? {
         year: paramYear ?? new Date().getFullYear(),
@@ -376,9 +512,13 @@ export function OrderListScreen({ navigation, route }: Props) {
       };
       return getPreviousMonth(active.year, active.month);
     });
-  }, [paramYear, paramMonth]);
+  }, [paramYear, paramMonth, periodMode, day, selectDay]);
 
   const handleNextMonth = useCallback(() => {
+    if (periodMode === 'day') {
+      selectDay(new Date(day.getFullYear(), day.getMonth() + 1, 1));
+      return;
+    }
     setUserPeriod((curr) => {
       const active = curr ?? {
         year: paramYear ?? new Date().getFullYear(),
@@ -386,12 +526,16 @@ export function OrderListScreen({ navigation, route }: Props) {
       };
       return getNextMonth(active.year, active.month);
     });
-  }, [paramYear, paramMonth]);
+  }, [paramYear, paramMonth, periodMode, day, selectDay]);
 
   const handleCurrentMonth = useCallback(() => {
     const now = new Date();
+    if (periodMode === 'day') {
+      selectDay(now);
+      return;
+    }
     setUserPeriod({ year: now.getFullYear(), month: now.getMonth() });
-  }, []);
+  }, [periodMode, selectDay]);
 
   return (
     <EnhancedOrderList
@@ -403,8 +547,13 @@ export function OrderListScreen({ navigation, route }: Props) {
       onStatusChange={setStatusFilter}
       year={period.year}
       month={period.month}
-      filterByMonth={filterByMonth}
-      onToggleFilterByMonth={setFilterByMonth}
+      periodMode={periodMode}
+      onPeriodModeChange={handlePeriodModeChange}
+      day={day}
+      dayKind={dayKind}
+      onDayKindChange={setDayKind}
+      onPrevDay={handlePrevDay}
+      onNextDay={handleNextDay}
       onPrevMonth={handlePrevMonth}
       onNextMonth={handleNextMonth}
       onCurrentMonth={handleCurrentMonth}
@@ -514,7 +663,33 @@ const styles = StyleSheet.create({
   },
   periodChips: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.xs,
+  },
+  dayBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xs,
+  },
+  dayBarCenter: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  dayBarDate: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textTransform: 'capitalize',
+  },
+  dayBarTotal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.success,
   },
   statusChips: {
     flexDirection: 'row',

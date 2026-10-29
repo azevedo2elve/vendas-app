@@ -7,7 +7,8 @@ export type RootStackParamList = {
   CategoryList: undefined;
   Backup: undefined;
   NewOrder: undefined;
-  OrderList: { year?: number; month?: number } | undefined;
+  // `dayKind`: abre no filtro "Por dia" de hoje já com essa seleção (cards do Dashboard).
+  OrderList: { year?: number; month?: number; dayKind?: 'sold' | 'receivable' } | undefined;
   OrderDetail: { orderId: string };
   OrderEdit: { orderId: string };
   Settings: undefined;

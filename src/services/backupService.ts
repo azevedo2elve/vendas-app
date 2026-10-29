@@ -2,6 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as MailComposer from 'expo-mail-composer';
 import * as Sharing from 'expo-sharing';
 import { z } from 'zod';
+import type { DirtyRaw } from '@nozbe/watermelondb/RawRecord';
 import { database } from '@/database';
 import Client from '@/database/models/Client';
 import Product from '@/database/models/Product';
@@ -66,8 +67,8 @@ const backupOrderSchema = z.object({
   order_number: z.number(),
   delivery_date: z.string().nullable().optional(),
   payment_due_at: z.string().nullable().optional(),
-  // Só informativo — o WatermelonDB grava `created_at` como a data da importação, não dá pra
-  // restaurar a data original (campo `@readonly`, sempre "agora" na criação do registro).
+  // Restaurado na importação (ver `importBackup`) — é a data que define em qual dia/mês a venda
+  // conta nos totais quando não há `payment_due_at`.
   created_at: z.string(),
   items: z.array(backupOrderItemSchema),
 });
@@ -452,7 +453,11 @@ export async function importBackup(data: BackupData): Promise<ImportResult> {
       record.orderNumber = order.order_number;
       record.deliveryDate = order.delivery_date ? new Date(order.delivery_date) : null;
       record.paymentDueAt = order.payment_due_at ? new Date(order.payment_due_at) : null;
-      // `created_at` não pode ser definido aqui (@readonly) — nasce com a data da importação.
+      // `@readonly` só bloqueia o setter `createdAt`; o WatermelonDB preenche o raw com "agora"
+      // antes de rodar este builder, então dá pra sobrescrever com a data original do backup —
+      // senão todo o histórico vira "vendido hoje". Data inválida no JSON mantém a da importação.
+      const createdAtMs = Date.parse(order.created_at);
+      if (Number.isFinite(createdAtMs)) (record._raw as DirtyRaw).created_at = createdAtMs;
     });
 
     for (const item of order.items) {
