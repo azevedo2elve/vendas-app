@@ -21,8 +21,9 @@ import { useLicenseAccess, useReadOnlyGuard } from '@/hooks/useLicenseAccess';
 import type { RootStackParamList } from '@/navigation/types';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_TONE } from '@/types/database';
 import { colors, radii, shadows, spacing } from '@/theme';
-import { formatMonthName, getMonthRange } from '@/utils/date';
+import { formatMonthName, getDayRange, getMonthRange } from '@/utils/date';
 import { formatCurrencyBRL } from '@/utils/masks';
+import { isReceivableInRange, isSoldInRange, sumTotalNet } from '@/utils/orderTotals';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -32,7 +33,8 @@ type DashboardData = {
   displayName: string;
   clientsCount: number;
   ordersCount: number;
-  totalToday: number;
+  totalSoldToday: number;
+  totalReceivableToday: number;
   totalMonth: number;
   monthOrdersCount: number;
   monthName: string;
@@ -44,7 +46,6 @@ async function loadDashboardData(): Promise<DashboardData> {
   const clientsCollection = database.get<Client>('clients');
 
   const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const { startMs: startOfMonthMs, endMs: endOfMonthMs } = getMonthRange(now.getFullYear(), now.getMonth());
 
   // "Mês de referência" de um pedido é `paymentDueAt` quando o vendedor informou uma data
@@ -75,10 +76,12 @@ async function loadDashboardData(): Promise<DashboardData> {
     return ref >= startOfMonthMs && ref <= endOfMonthMs;
   });
 
-  const totalMonth = monthOrders.reduce((acc, order) => acc + order.totalNet, 0);
-  const totalToday = monthOrders
-    .filter((order) => order.referenceDate.getTime() >= startOfDay.getTime())
-    .reduce((acc, order) => acc + order.totalNet, 0);
+  const totalMonth = sumTotalNet(monthOrders);
+  const today = getDayRange(now);
+  // Os candidatos incluem todo pedido emitido no mês (inclusive os com recebimento no mês
+  // seguinte), então "vendido hoje" sai deles, não de `monthOrders`.
+  const totalSoldToday = sumTotalNet(monthCandidateOrders.filter((order) => isSoldInRange(order, today)));
+  const totalReceivableToday = sumTotalNet(monthOrders.filter((order) => isReceivableInRange(order, today)));
 
   const monthName = formatMonthName(now.getMonth());
 
@@ -93,7 +96,8 @@ async function loadDashboardData(): Promise<DashboardData> {
     displayName: resolveDisplayName(companySettings),
     clientsCount,
     ordersCount,
-    totalToday,
+    totalSoldToday,
+    totalReceivableToday,
     totalMonth,
     monthOrdersCount: monthOrders.length,
     monthName,
@@ -206,19 +210,29 @@ export function HomeScreen({ navigation }: Props) {
       <View style={styles.statsContainer}>
         <View style={styles.statsRow}>
           <StatCard
+            label="Vendido hoje"
+            subtitle="Pedidos emitidos hoje"
+            value={formatCurrencyBRL(data.totalSoldToday)}
+            icon="cart-outline"
+            tone="accent"
+            onPress={() => navigation.navigate('OrderList', { dayKind: 'sold' })}
+          />
+          <StatCard
+            label="A receber hoje"
+            subtitle="Prazo hoje ou à vista"
+            value={formatCurrencyBRL(data.totalReceivableToday)}
+            icon="cash-outline"
+            tone="success"
+            onPress={() => navigation.navigate('OrderList', { dayKind: 'receivable' })}
+          />
+        </View>
+        <View style={styles.statsRow}>
+          <StatCard
             label="Vendido no mês"
             subtitle={data.monthName}
             value={formatCurrencyBRL(data.totalMonth)}
             icon="calendar-outline"
             tone="success"
-            onPress={() => navigation.navigate('OrderList')}
-          />
-          <StatCard
-            label="Vendido hoje"
-            subtitle="Hoje"
-            value={formatCurrencyBRL(data.totalToday)}
-            icon="cash-outline"
-            tone="accent"
             onPress={() => navigation.navigate('OrderList')}
           />
         </View>

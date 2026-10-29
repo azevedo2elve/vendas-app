@@ -2,6 +2,7 @@ import {
   formatMonthName,
   formatMonthShort,
   formatMonthYear,
+  getDayRange,
   getMonthRange,
   getNextMonth,
   getPreviousMonth,
@@ -9,6 +10,18 @@ import {
 } from '../date';
 
 describe('date utils', () => {
+  describe('getDayRange', () => {
+    it('cobre só o dia informado — data futura no mesmo mês fica de fora', () => {
+      const range = getDayRange(new Date(2026, 9, 28, 15, 30));
+      expect(range.start).toEqual(new Date(2026, 9, 28, 0, 0, 0, 0));
+      expect(range.end).toEqual(new Date(2026, 9, 28, 23, 59, 59, 999));
+
+      // Venda de 27/10 com recebimento em 30/10 não pode contar como "hoje" (28/10).
+      const dueAt = new Date(2026, 9, 30).getTime();
+      expect(dueAt >= range.startMs && dueAt <= range.endMs).toBe(false);
+    });
+  });
+
   describe('getMonthRange', () => {
     it('returns exact boundary for October 2026', () => {
       const range = getMonthRange(2026, 9);

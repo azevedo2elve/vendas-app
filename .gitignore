@@ -56,3 +56,6 @@ assets/catalogo/
 
 # Mockups HTML/Playwright de tela (não são capturas reais do app) — material de referência local.
 /screenshots/
+
+# Backups JSON de clientes (dados pessoais reais: nomes, CPF/CNPJ, telefones) — nunca versionar.
+/backup/

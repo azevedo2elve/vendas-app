@@ -130,7 +130,7 @@ export function BackupScreen() {
         <Text style={styles.description}>
           Restaura Clientes, Categorias, Produtos e Ordens de Venda a partir de um arquivo de backup exportado
           anteriormente. Registros já existentes (mesmo CPF/CNPJ, nome, ou cliente+número do pedido) são ignorados — não
-          duplica dados. A data de criação original dos pedidos não é preservada (vira a data da importação).
+          duplica dados. Os pedidos mantêm a data original da venda.
         </Text>
         {readOnly ? (
           <Text style={styles.readOnlyNotice}>

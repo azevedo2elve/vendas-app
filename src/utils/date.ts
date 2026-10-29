@@ -25,6 +25,20 @@ export function getMonthRange(year: number, month: number): MonthRange {
 }
 
 /**
+ * Retorna o intervalo exato do dia da data informada (00:00:00.000 até 23:59:59.999, hora local).
+ */
+export function getDayRange(date: Date): MonthRange {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  return {
+    start,
+    end,
+    startMs: start.getTime(),
+    endMs: end.getTime(),
+  };
+}
+
+/**
  * Retorna o nome por extenso do mês capitalizado (ex: "Outubro", "Janeiro").
  */
 export function formatMonthName(month: number, locale = 'pt-BR'): string {
