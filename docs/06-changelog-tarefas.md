@@ -563,6 +563,11 @@ Legenda: ⚪ Não iniciado · 🟡 Em andamento · 🟢 Concluído · 🔴 Bloqu
 - **Resumo:** Lançamento da versão 1.2.0 (`versionCode 3`), direto em `main`. Inclui a feature "Mês de competência do recebimento" (ver entrada acima no mesmo dia): campo opcional de data prevista de recebimento no pedido, usado pelo Dashboard e pela listagem de Ordens de Venda para contar vendas a prazo no mês do pagamento combinado, não no mês da emissão. Build local assinado com a chave de produção oficial (`assembleRelease`, `arm64-v8a`, minify + shrinkResources).
 - **Docs afetados:** `docs/06-changelog-tarefas.md`.
 
+### 2026-10-28 — Release v1.2.1: "Vendido hoje" / "A receber hoje"
+- **Tipo:** chore (release)
+- **Resumo:** Versão 1.2.1 (`versionCode 4`), gerada a partir da branch `fix/vendido-hoje-e-a-receber-hoje` (PR #37) para entrega ao cliente. Inclui a correção do "Vendido hoje" (vendas a prazo de dias anteriores somavam em hoje), os cards separados "Vendido hoje"/"A receber hoje", o filtro "Por dia" nas Ordens de Venda e a importação de backup preservando a data original dos pedidos. Build local assinado com a chave de produção oficial (`assembleRelease`, `arm64-v8a`, minify + shrinkResources), **sem** `EXPO_PUBLIC_DEV_TOOLS` — o botão de dev não aparece.
+- **Docs afetados:** `docs/06-changelog-tarefas.md`.
+
 ---
 
 ## 📎 Documentos relacionados
